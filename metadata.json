@@ -1,0 +1,5 @@
+{
+  "name": "FluxIA",
+  "description": "Sistema de gestão de fluxo de produção de café com parsing automático de pedidos do WhatsApp.",
+  "requestFramePermissions": []
+}

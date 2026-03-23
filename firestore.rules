@@ -1,0 +1,65 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - role: string (required, 'admin' or 'user')
+    //
+    // Collection: product_mapping
+    // Document ID: auto-generated
+    // Fields:
+    //   - appName: string (required, 1-100 chars)
+    //   - blingSku: string (required, 1-50 chars)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /product_mapping/{mappingId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && 
+                    request.resource.data.appName is string && request.resource.data.appName.size() > 0 && request.resource.data.appName.size() <= 100 &&
+                    request.resource.data.blingSku is string && request.resource.data.blingSku.size() > 0 && request.resource.data.blingSku.size() <= 50;
+      allow update: if isAuthenticated() && 
+                    request.resource.data.appName is string && request.resource.data.appName.size() > 0 && request.resource.data.appName.size() <= 100 &&
+                    request.resource.data.blingSku is string && request.resource.data.blingSku.size() > 0 && request.resource.data.blingSku.size() <= 50;
+      allow delete: if isAuthenticated();
+    }
+
+    match /bling_config/{configId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

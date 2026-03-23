@@ -1,0 +1,31 @@
+{
+  "id": "PRW89AsIPjT0Sb2SDUyVxOfQ",
+  "idCorreios": "16795729000131",
+  "numeroCartaoPostagem": "0078971764",
+  "codigoObjeto": "AD243780785BR",
+  "codigoServico": "03220",
+  "modalidadePagamento": 2,
+  "itensDeclaracaoConteudo": [
+    {
+      "conteudo": "Cafe",
+      "quantidade": "1",
+      "valor": "100.00"
+    }
+  ],
+  "pesoInformado": "1000",
+  "codigoFormatoObjetoInformado": "2",
+  "alturaInformada": "2",
+  "larguraInformada": "11",
+  "comprimentoInformado": "16",
+  "diametroInformado": "0",
+  "cienteObjetoNaoProibido": 1,
+  "logisticaReversa": "N",
+  "statusAtual": 2,
+  "dataHoraStatusAtual": "2026-03-21T22:58:55.990018547",
+  "descStatusAtual": "Pré-postado",
+  "dataHora": "2026-03-21T22:58:55",
+  "tipoRotulo": "EN",
+  "sistemaOrigem": "",
+  "tipoObjeto": "R",
+  "prazoPostagem": "2026-04-04T23:59:59"
+}

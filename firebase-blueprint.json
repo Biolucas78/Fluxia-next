@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user in the system.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The Firebase Auth UID." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "The user's role." }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "ProductMapping": {
+      "title": "ProductMapping",
+      "description": "Maps an App product name to a Bling SKU.",
+      "type": "object",
+      "properties": {
+        "appName": { "type": "string", "description": "The name of the product in the App." },
+        "blingSku": { "type": "string", "description": "The SKU of the product in Bling." }
+      },
+      "required": ["appName", "blingSku"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User profiles."
+    },
+    "/product_mapping/{mappingId}": {
+      "schema": { "$ref": "ProductMapping" },
+      "description": "Product mappings."
+    }
+  }
+}
