@@ -284,11 +284,19 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     const targetOrder = updatedOrder || order;
 
     try {
-      const cepMatch = targetOrder.address?.match(/\d{5}-?\d{3}/);
-      if (!cepMatch) {
+      let destinationCep = '';
+      if (targetOrder.addressDetails?.zip) {
+        destinationCep = targetOrder.addressDetails.zip.toString().replace(/\D/g, '');
+      } else {
+        const cepMatch = targetOrder.address?.match(/\d{5}-?\d{3}/);
+        if (cepMatch) {
+          destinationCep = cepMatch[0].replace(/\D/g, '');
+        }
+      }
+
+      if (!destinationCep) {
         throw new Error('CEP não encontrado no endereço.');
       }
-      const destinationCep = cepMatch[0].replace(/\D/g, '');
 
       const totalWeightG = targetOrder.boxWeight 
         ? targetOrder.boxWeight * 1000 

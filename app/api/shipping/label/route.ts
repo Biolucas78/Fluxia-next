@@ -6,7 +6,7 @@ const CORREIOS_TOKEN = process.env.CORREIOS_ACCESS_CODE;
 const CORREIOS_CARD = process.env.CORREIOS_POSTAGE_CARD;
 const CORREIOS_CONTRACT = process.env.CORREIOS_CONTRACT;
 
-async function generateCorreiosLabel(order: any, selectedOption: any, token: string, origin: any) {
+async function generateCorreiosLabel(order: any, selectedOption: any, token: string, origin: any, destCpfCnpj: string, destCep: string) {
   // 1. Extrair e formatar o código do serviço (ex: "03220")
   const serviceCode = selectedOption.id.toString().replace(/\D/g, '').padStart(5, '0');
   
@@ -28,7 +28,7 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
     bairro: order.addressDetails?.district || (order.address ? order.address.split(',')[3]?.trim() : ''),
     cidade: order.addressDetails?.city || (order.address ? order.address.split(',')[4]?.trim() : ''),
     uf: order.addressDetails?.state || (order.address ? order.address.split(',')[5]?.trim() : 'UF'),
-    cep: order.addressDetails?.zip?.toString().replace(/\D/g, '') || (order.address ? order.address.match(/\d{5}-\d{3}/)?.[0]?.replace('-', '') : '')
+    cep: destCep
   };
 
   // 4. Montar a declaração de conteúdo
@@ -67,7 +67,7 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
     destinatario: {
       nome: order.clientName.substring(0, 50),
       email: order.email || 'cliente@email.com',
-      cpfCnpj: order.cnpj?.replace(/\D/g, '') || order.cpf?.replace(/\D/g, '') || '00000000000',
+      cpfCnpj: destCpfCnpj,
       dddCelular: order.phone?.replace(/\D/g, '').substring(0, 2) || '11',
       celular: order.phone?.replace(/\D/g, '').substring(2, 11) || '999999999',
       endereco: parsedAddress
@@ -107,7 +107,8 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
 
   if (!response.ok) {
     console.error('Erro Correios PLP:', data);
-    throw new Error(data.msg || data.mensagem || 'Erro ao gerar etiqueta Correios');
+    const errorMessage = data.msg || data.mensagem || data.causa || 'Erro ao gerar etiqueta Correios';
+    throw new Error(errorMessage);
   }
 
   // Extrair o ID da pré-postagem (pode vir como 'id' ou 'idPrePostagem')
@@ -154,6 +155,16 @@ export async function POST(req: Request) {
   try {
     const { order, selectedOption } = await req.json();
 
+    const destCpfCnpj = (order.cnpj || order.cpf || '').replace(/\D/g, '');
+    if (!destCpfCnpj || (destCpfCnpj.length !== 11 && destCpfCnpj.length !== 14)) {
+      return NextResponse.json({ error: 'O cliente precisa ter um CPF ou CNPJ válido (11 ou 14 dígitos) cadastrado para emitir a etiqueta.' }, { status: 400 });
+    }
+
+    const destCep = (order.addressDetails?.zip || (order.address ? order.address.match(/\d{5}-?\d{3}/)?.[0] : '') || '').replace(/\D/g, '');
+    if (!destCep || destCep.length !== 8) {
+      return NextResponse.json({ error: 'O cliente precisa ter um CEP válido (8 dígitos) cadastrado para emitir a etiqueta.' }, { status: 400 });
+    }
+
     // Lógica para definir a origem (remetente)
     const isMelhorEnvio = selectedOption.provider === 'Melhor Envio';
     let origin: any = {};
@@ -195,7 +206,7 @@ export async function POST(req: Request) {
 
     if (selectedOption.provider === 'Correios') {
       const token = await getCorreiosToken();
-      const labelData = await generateCorreiosLabel(order, selectedOption, token, origin);
+      const labelData = await generateCorreiosLabel(order, selectedOption, token, origin, destCpfCnpj, destCep);
       
       // Construir a URL para download da etiqueta através do nosso proxy
       const labelUrl = labelData.idRecibo ? `/api/shipping/label/download?idRecibo=${labelData.idRecibo}` : null;
@@ -239,14 +250,14 @@ export async function POST(req: Request) {
           name: order.clientName,
           phone: order.phone || '00000000000',
           email: order.email || 'cliente@exemplo.com',
-          document: order.cnpj || order.cpf || '00000000000',
+          document: destCpfCnpj,
           address: order.addressDetails?.street || (order.address ? order.address.split(',')[0] : 'Rua Padrão'),
           number: order.addressDetails?.number || (order.address ? order.address.split(',')[1] : 'S/N'),
           complement: order.addressDetails?.complement || '',
           district: order.addressDetails?.district || (order.address ? order.address.split(',')[3] : 'Centro'),
           city: order.addressDetails?.city || (order.address ? order.address.split(',')[4] : 'São Paulo'),
           state_abbr: (order.addressDetails?.state || (order.address ? order.address.split(',')[5] : 'SP') || 'SP').trim().substring(0, 2),
-          postal_code: order.addressDetails?.zip || (order.address ? order.address.match(/\d{5}-?\d{3}/)?.[0]?.replace(/\D/g, '') : '01001000') || '01001000',
+          postal_code: destCep,
           country_id: 'BR'
         },
         products: order.products.map((p: any) => ({

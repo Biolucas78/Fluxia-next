@@ -223,6 +223,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Dados de destino ou peso ausentes.' }, { status: 400 });
     }
 
+    const cleanDestinationCep = destinationCep.replace(/\D/g, '');
+    if (cleanDestinationCep.length !== 8) {
+      return NextResponse.json({ error: 'CEP de destino inválido. Deve conter 8 dígitos.' }, { status: 400 });
+    }
+
     const dimensions = {
       width: Math.max(11, boxDimensions?.width || 15),
       height: Math.max(2, boxDimensions?.height || 15),
@@ -231,9 +236,9 @@ export async function POST(req: Request) {
     const safeWeight = Math.max(100, weight); // minimum 100g
 
     const [meQuotes, sfQuotes, correiosQuotes] = await Promise.all([
-      getMelhorEnvioQuotes(destinationCep, safeWeight, dimensions),
-      getSuperfreteQuotes(destinationCep, safeWeight, dimensions),
-      getCorreiosQuotes(destinationCep, safeWeight, dimensions)
+      getMelhorEnvioQuotes(cleanDestinationCep, safeWeight, dimensions),
+      getSuperfreteQuotes(cleanDestinationCep, safeWeight, dimensions),
+      getCorreiosQuotes(cleanDestinationCep, safeWeight, dimensions)
     ]);
     
     const allOptions = [...meQuotes, ...sfQuotes, ...correiosQuotes].sort((a, b) => a.price - b.price);
