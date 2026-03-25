@@ -278,6 +278,23 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
     setSelectedOrder(updatedOrder);
   };
 
+  const currentColumnOrders = selectedOrder ? filteredOrders.filter(o => o.status === selectedOrder.status) : [];
+  const selectedOrderIndex = selectedOrder ? currentColumnOrders.findIndex(o => o.id === selectedOrder.id) : -1;
+  const hasNextOrder = selectedOrderIndex !== -1 && selectedOrderIndex < currentColumnOrders.length - 1;
+
+  const handleAdvanceAndNext = (updatedOrder: Order) => {
+    onUpdateOrder(updatedOrder);
+    
+    if (selectedOrder) {
+      if (hasNextOrder) {
+        const nextOrder = currentColumnOrders[selectedOrderIndex + 1];
+        setSelectedOrder(nextOrder);
+      } else {
+        setSelectedOrder(null);
+      }
+    }
+  };
+
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const startX = React.useRef(0);
@@ -354,13 +371,16 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
           ))}
         </div>
 
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {selectedOrder && (
             <OrderDetailsModal 
+              key={selectedOrder.id}
               order={selectedOrder}
               onClose={() => setSelectedOrder(null)}
               onUpdateOrder={handleUpdateFromModal}
               onArchiveOrder={onArchiveOrder}
+              hasNextOrder={hasNextOrder}
+              onAdvanceAndNext={handleAdvanceAndNext}
             />
           )}
         </AnimatePresence>

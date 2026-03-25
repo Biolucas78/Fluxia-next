@@ -28,6 +28,7 @@ export interface Order {
     city: string;
     state: string;
     zip: string;
+    warning?: string;
   };
   products: ProductItem[];
   status: OrderStatus;

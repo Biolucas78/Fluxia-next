@@ -97,3 +97,56 @@ export function enrichOrderWithCustomerData(order: any) {
     }
   };
 }
+
+export async function enrichOrderDataAsync(order: any) {
+  // 1. First, enrich with local customer database (simulate Bling)
+  let enrichedOrder = enrichOrderWithCustomerData(order);
+
+  // 2. Extract CEP (only numbers)
+  const cep = enrichedOrder.cep ? enrichedOrder.cep.replace(/\D/g, '') : null;
+
+  if (cep && cep.length === 8) {
+    try {
+      // Fetch data from ViaCEP
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const viaCepData = await response.json();
+
+      if (!viaCepData.erro) {
+        // We have valid ViaCEP data
+        const streetFromCep = viaCepData.logradouro;
+        const rawAddress = enrichedOrder.address || '';
+
+        // Check if the raw address contains the street name from ViaCEP
+        // We normalize both strings to ignore accents and case, and remove common prefixes
+        const removePrefixes = (str: string) => str.replace(/^(rua|r\.|r|avenida|av\.|av|travessa|tv\.|tv|praça|praca|pc\.|pc|rodovia|rod\.|rod|estrada|est\.|est)\s+/i, '');
+        const normalizedStreet = removePrefixes(removeAccents(streetFromCep.toLowerCase()));
+        const normalizedRawAddress = removePrefixes(removeAccents(rawAddress.toLowerCase()));
+
+        let addressWarning = '';
+        if (rawAddress && !normalizedRawAddress.includes(normalizedStreet)) {
+          addressWarning = `Atenção: A rua do CEP (${streetFromCep}) parece diferente do endereço fornecido.`;
+        }
+
+        enrichedOrder.addressDetails = {
+          street: streetFromCep,
+          number: enrichedOrder.number || '',
+          complement: enrichedOrder.complement || '',
+          district: viaCepData.bairro,
+          city: viaCepData.localidade,
+          state: viaCepData.uf,
+          zip: viaCepData.cep,
+          warning: addressWarning
+        };
+      } else {
+        enrichedOrder.addressDetails = {
+          ...enrichedOrder.addressDetails,
+          warning: 'CEP não encontrado na base dos Correios.'
+        };
+      }
+    } catch (error) {
+      console.error("Erro ao buscar CEP:", error);
+    }
+  }
+
+  return enrichedOrder;
+}

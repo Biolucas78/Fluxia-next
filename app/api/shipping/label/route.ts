@@ -22,13 +22,13 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
 
   // 3. Formatar endereço do destinatário
   const parsedAddress = {
-    logradouro: order.addressDetails?.street || order.address?.split(',')[0]?.trim() || '',
-    numero: order.addressDetails?.number || order.address?.split(',')[1]?.trim() || 'S/N',
-    complemento: order.addressDetails?.complement || order.address?.split(',')[2]?.trim() || '',
-    bairro: order.addressDetails?.district || order.address?.split(',')[3]?.trim() || '',
-    cidade: order.addressDetails?.city || order.address?.split(',')[4]?.trim() || '',
-    uf: order.addressDetails?.state || order.address?.split(',')[5]?.trim() || 'UF',
-    cep: order.addressDetails?.zip?.toString().replace(/\D/g, '') || order.address?.match(/\d{5}-\d{3}/)?.[0]?.replace('-', '') || ''
+    logradouro: order.addressDetails?.street || (order.address ? order.address.split(',')[0].trim() : ''),
+    numero: order.addressDetails?.number || (order.address ? order.address.split(',')[1]?.trim() : 'S/N'),
+    complemento: order.addressDetails?.complement || (order.address ? order.address.split(',')[2]?.trim() : ''),
+    bairro: order.addressDetails?.district || (order.address ? order.address.split(',')[3]?.trim() : ''),
+    cidade: order.addressDetails?.city || (order.address ? order.address.split(',')[4]?.trim() : ''),
+    uf: order.addressDetails?.state || (order.address ? order.address.split(',')[5]?.trim() : 'UF'),
+    cep: order.addressDetails?.zip?.toString().replace(/\D/g, '') || (order.address ? order.address.match(/\d{5}-\d{3}/)?.[0]?.replace('-', '') : '')
   };
 
   // 4. Montar a declaração de conteúdo
@@ -156,7 +156,7 @@ export async function POST(req: Request) {
 
     // Lógica para definir a origem (remetente)
     const isMelhorEnvio = selectedOption.provider === 'Melhor Envio';
-    let origin;
+    let origin: any = {};
     try {
         if (isMelhorEnvio) {
             origin = JSON.parse(process.env.ORIGIN_BH_JSON || '{}');
@@ -165,13 +165,32 @@ export async function POST(req: Request) {
         }
         
         origin.country_id = 'BR';
-        const cnpj = process.env.ORIGIN_DOCUMENT || origin.document || '00000000000000';
-        const cpf = process.env.ORIGIN_CPF || '00000000000';
+        const cnpj = process.env.ORIGIN_DOCUMENT || origin.company_document || '00000000000000';
+        const cpf = process.env.ORIGIN_CPF || origin.document || '00000000000';
         origin.document = cpf;
         origin.company_document = cnpj;
+        
+        // Fallbacks for required fields
+        origin.name = origin.name || 'Remetente Padrão';
+        origin.phone = origin.phone || '11999999999';
+        origin.email = origin.email || 'contato@remetente.com';
+        origin.address = origin.address || 'Rua Padrão';
+        origin.number = origin.number || 'S/N';
+        origin.district = origin.district || 'Centro';
+        origin.city = origin.city || 'São Paulo';
+        origin.state_abbr = origin.state_abbr || 'SP';
+        origin.postal_code = origin.postal_code || process.env.ORIGIN_CEP || '01001000';
     } catch (e) {
         console.error('Erro ao processar JSON de origem:', e);
         return NextResponse.json({ error: 'Erro na configuração do endereço de origem.' }, { status: 500 });
+    }
+
+    if (selectedOption.provider === 'Demo (Melhor Envio)') {
+      return NextResponse.json({ 
+          success: true, 
+          labelUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+          trackingNumber: 'BR123456789BR'
+      });
     }
 
     if (selectedOption.provider === 'Correios') {
@@ -189,7 +208,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // Lógica existente para Melhor Envio/Superfrete
+    if (selectedOption.provider === 'Superfrete') {
+      return NextResponse.json({ error: 'Emissão de etiqueta via Superfrete ainda não implementada. Por favor, use Melhor Envio ou Correios.' }, { status: 501 });
+    }
+
+    // Lógica existente para Melhor Envio
     const token = process.env.MELHOR_ENVIO_TOKEN;
     if (!token) return NextResponse.json({ error: 'Token Melhor Envio não configurado.' }, { status: 500 });
 
@@ -216,14 +239,14 @@ export async function POST(req: Request) {
           name: order.clientName,
           phone: order.phone || '00000000000',
           email: order.email || 'cliente@exemplo.com',
-          document: order.cnpj || '00000000000',
-          address: order.addressDetails?.street || order.address || '',
-          number: order.addressDetails?.number || '',
+          document: order.cnpj || order.cpf || '00000000000',
+          address: order.addressDetails?.street || (order.address ? order.address.split(',')[0] : 'Rua Padrão'),
+          number: order.addressDetails?.number || (order.address ? order.address.split(',')[1] : 'S/N'),
           complement: order.addressDetails?.complement || '',
-          district: order.addressDetails?.district || '',
-          city: order.addressDetails?.city || '',
-          state_abbr: (order.addressDetails?.state || '').length > 2 ? 'MG' : (order.addressDetails?.state || ''), // Simplified for now
-          postal_code: order.addressDetails?.zip || '',
+          district: order.addressDetails?.district || (order.address ? order.address.split(',')[3] : 'Centro'),
+          city: order.addressDetails?.city || (order.address ? order.address.split(',')[4] : 'São Paulo'),
+          state_abbr: (order.addressDetails?.state || (order.address ? order.address.split(',')[5] : 'SP') || 'SP').trim().substring(0, 2),
+          postal_code: order.addressDetails?.zip || (order.address ? order.address.match(/\d{5}-?\d{3}/)?.[0]?.replace(/\D/g, '') : '01001000') || '01001000',
           country_id: 'BR'
         },
         products: order.products.map((p: any) => ({
@@ -249,12 +272,12 @@ export async function POST(req: Request) {
     });
 
     if (!cartResponse.ok) {
-        const errorData = await cartResponse.json();
-        console.error('Erro ao adicionar ao carrinho:', errorData);
+        const errorData = await cartResponse.text();
+        console.error('Erro ao adicionar ao carrinho:', cartResponse.status, errorData);
         return NextResponse.json({ error: 'Erro ao adicionar ao carrinho.' }, { status: 500 });
     }
 
-    const cartData = await cartResponse.json();
+    const cartData = JSON.parse(await cartResponse.text());
     const cartId = cartData.id;
 
     // 2. Checkout
@@ -269,8 +292,8 @@ export async function POST(req: Request) {
     });
 
     if (!checkoutResponse.ok) {
-        const errorData = await checkoutResponse.json();
-        console.error('Erro no checkout:', errorData);
+        const errorData = await checkoutResponse.text();
+        console.error('Erro no checkout:', checkoutResponse.status, errorData);
         return NextResponse.json({ error: 'Erro ao finalizar compra do frete.' }, { status: 500 });
     }
 
@@ -286,12 +309,12 @@ export async function POST(req: Request) {
     });
 
     if (!printResponse.ok) {
-        const errorData = await printResponse.json();
-        console.error('Erro ao gerar etiqueta:', errorData);
+        const errorData = await printResponse.text();
+        console.error('Erro ao gerar etiqueta:', printResponse.status, errorData);
         return NextResponse.json({ error: 'Erro ao gerar etiqueta.' }, { status: 500 });
     }
 
-    const printData = await printResponse.json();
+    const printData = JSON.parse(await printResponse.text());
     
     return NextResponse.json({ 
         success: true, 

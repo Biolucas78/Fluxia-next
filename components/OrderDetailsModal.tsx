@@ -29,7 +29,8 @@ import {
   Loader2,
   Printer,
   ExternalLink,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProductItem, ShippingOption } from '@/lib/types';
@@ -42,6 +43,8 @@ interface OrderDetailsModalProps {
   onClose: () => void;
   onUpdateOrder: (order: Order) => void;
   onArchiveOrder: (orderId: string) => void;
+  hasNextOrder?: boolean;
+  onAdvanceAndNext?: (order: Order) => void;
 }
 
 const COLUMNS: { id: OrderStatus; title: string; color: string; textColor: string }[] = [
@@ -55,7 +58,7 @@ const COLUMNS: { id: OrderStatus; title: string; color: string; textColor: strin
 
 const CARRIERS = ['Correio', 'Total', 'Braspress', 'MelhorEnvio', 'Lalamove'];
 
-export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArchiveOrder }: OrderDetailsModalProps) {
+export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArchiveOrder, hasNextOrder, onAdvanceAndNext }: OrderDetailsModalProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<ProductItem>>({});
@@ -221,7 +224,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     return productsReady;
   }, [order]);
 
-  const handleStatusChange = (newStatus: OrderStatus) => {
+  const handleStatusChange = (newStatus: OrderStatus, callback?: (updatedOrder: Order) => void) => {
     let updatedProducts = order.products;
     
     const newIndex = COLUMNS.findIndex(c => c.id === newStatus);
@@ -238,17 +241,29 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       updatedProducts = order.products.map((p: any) => ({ ...p, checked: false }));
     }
 
-    onUpdateOrder({
+    const updatedOrder = {
       ...order,
       status: newStatus,
       products: updatedProducts
-    });
+    };
+
+    if (callback) {
+      callback(updatedOrder);
+    } else {
+      onUpdateOrder(updatedOrder);
+    }
     setIsDropdownOpen(false);
   };
 
   const handleAdvance = () => {
     if (nextPhase && isReadyToMove) {
       handleStatusChange(nextPhase.id);
+    }
+  };
+
+  const handleAdvanceAndNext = () => {
+    if (nextPhase && isReadyToMove && onAdvanceAndNext) {
+      handleStatusChange(nextPhase.id, onAdvanceAndNext);
     }
   };
 
@@ -361,7 +376,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+    >
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -652,6 +672,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic">
                         {order.address || 'Endereço não informado'}
                       </p>
+                      {order.addressDetails?.warning && (
+                        <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-xs text-yellow-800 dark:text-yellow-300 flex items-start gap-2">
+                          <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                          <span>{order.addressDetails.warning}</span>
+                        </div>
+                      )}
                       {order.addressDetails && (
                         <div className="pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-x-4 gap-y-2">
                           <div className="col-span-2">
@@ -1283,6 +1309,20 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           />
 
           <div className="flex gap-2 relative">
+            {nextPhase && (
+              <button
+                onClick={handleAdvanceAndNext}
+                disabled={!isReadyToMove}
+                className={`px-6 py-3 rounded-xl text-sm font-bold text-white transition-all flex items-center gap-2 shadow-lg ${
+                  !isReadyToMove 
+                    ? 'bg-slate-400 cursor-not-allowed shadow-none' 
+                    : 'bg-primary hover:bg-primary/90 shadow-primary/20'
+                }`}
+              >
+                {hasNextOrder ? 'Próximo Pedido' : 'Avançar e Fechar'}
+                <ChevronRight className="size-4" />
+              </button>
+            )}
             <div className="flex rounded-xl overflow-hidden shadow-lg shadow-primary/20">
               <button 
                 onClick={() => {
@@ -1368,6 +1408,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           </div>
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

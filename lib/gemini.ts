@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { enrichOrderWithCustomerData } from "./customerService";
+import { enrichOrderDataAsync } from "./customerService";
 
 export async function parseOrderWithGemini(text: string) {
   const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
@@ -147,14 +147,41 @@ export async function parseOrderWithGemini(text: string) {
     
     // Sanitize phone numbers to prevent malformed data and enrich with customer database
     if (parsed.orders) {
-      parsed.orders = parsed.orders.map((order: any) => {
+      parsed.orders = await Promise.all(parsed.orders.map(async (order: any) => {
         const sanitized = {
           ...order,
           phone: order.phone ? order.phone.toString().slice(0, 50) : ''
         };
-        // Enrich with customer database if fields are missing
-        return enrichOrderWithCustomerData(sanitized);
-      });
+        
+        // Enrich with customer database and ViaCEP if fields are missing
+        let enriched = await enrichOrderDataAsync(sanitized);
+        
+        // If we have a raw address but missing structured data, use Gemini to extract it
+        if (enriched.address && (!enriched.number || !enriched.cpf || !enriched.cnpj)) {
+          const viaCepStreet = enriched.addressDetails?.street;
+          const extracted = await parseAddressWithGemini(enriched.address, viaCepStreet);
+          
+          if (extracted) {
+            enriched = {
+              ...enriched,
+              number: enriched.number || extracted.number || '',
+              complement: enriched.complement || extracted.complement || '',
+              cpf: enriched.cpf || extracted.cpf || '',
+              cnpj: enriched.cnpj || extracted.cnpj || '',
+              phone: enriched.phone || extracted.phone || '',
+              cep: enriched.cep || extracted.cep || ''
+            };
+            
+            // Update addressDetails if it exists
+            if (enriched.addressDetails) {
+              enriched.addressDetails.number = enriched.number;
+              enriched.addressDetails.complement = enriched.complement;
+            }
+          }
+        }
+        
+        return enriched;
+      }));
     }
     
     return parsed;
@@ -164,7 +191,7 @@ export async function parseOrderWithGemini(text: string) {
   }
 }
 
-export async function parseAddressWithGemini(addressString: string) {
+export async function parseAddressWithGemini(addressString: string, viaCepStreet?: string) {
   if (!addressString) return null;
 
   const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
@@ -173,15 +200,21 @@ export async function parseAddressWithGemini(addressString: string) {
   }
   const ai = new GoogleGenAI({ apiKey: apiKey as string });
 
+  const contextPrompt = viaCepStreet 
+    ? `\n\nCONTEXTO: Sabemos que a rua (obtida via CEP) é "${viaCepStreet}". Use isso para ajudar a identificar qual é o número e o complemento no texto abaixo.`
+    : '';
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analise o seguinte endereço e extraia as informações estruturadas. Procure também por CPF ou CNPJ se estiverem presentes no texto do endereço.
-      "${addressString}"
+      contents: `Analise o seguinte endereço e extraia as informações estruturadas. Procure também por CPF ou CNPJ se estiverem presentes no texto do endereço.${contextPrompt}
+      
+      TEXTO: "${addressString}"
       
       REGRAS:
       1. TELEFONE: Extraia apenas o número de telefone. Se houver muito texto, ignore o que não for telefone.
       2. CPF/CNPJ: Remova formatação se possível, mas mantenha os dígitos.
+      3. NÚMERO E COMPLEMENTO: Se o contexto da rua for fornecido, procure o número e complemento que vêm logo após ou perto do nome da rua.
       
       Retorne um objeto JSON:
       {
@@ -209,7 +242,9 @@ export async function parseAddressWithGemini(addressString: string) {
       }
     });
 
-    const parsed = JSON.parse(response.text || '{}');
+    let rawText = response.text || '{}';
+    rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(rawText);
     if (parsed.phone) {
       parsed.phone = parsed.phone.toString().slice(0, 50);
     }

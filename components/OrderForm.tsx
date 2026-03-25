@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { parseWhatsAppOrder } from '@/lib/parser';
 import { parseOrderWithGemini } from '@/lib/gemini';
 import { Order } from '@/lib/types';
-import { enrichOrderWithCustomerData } from '@/lib/customerService';
 import { Plus, X, ClipboardPaste, Loader2, Sparkles } from 'lucide-react';
 
 interface OrderFormProps {
@@ -48,56 +47,26 @@ export default function OrderForm({ onOrderCreated, onClose }: OrderFormProps) {
 
         validOrdersCount++;
 
-        // 1. Enrich with local customer database first
-        const orderData = enrichOrderWithCustomerData(rawOrderData);
-
-        // Fetch address details if CEP is found and addressDetails is missing
-        let addressDetails = orderData.addressDetails;
-        let finalAddress = orderData.address || '';
-
-        if (orderData.cep && !addressDetails) {
-          try {
-            const cepResponse = await fetch(`https://viacep.com.br/ws/${orderData.cep.replace(/\D/g, '')}/json/`);
-            if (cepResponse.ok) {
-              const cepData = await cepResponse.json();
-              if (!cepData.erro) {
-                addressDetails = {
-                  street: cepData.logradouro,
-                  number: orderData.number || '',
-                  complement: orderData.complement || '',
-                  district: cepData.bairro,
-                  city: cepData.localidade,
-                  state: cepData.uf,
-                  zip: cepData.cep
-                };
-                finalAddress = `${cepData.logradouro}, ${orderData.number || ''} ${orderData.complement ? '- ' + orderData.complement : ''}, ${cepData.bairro}, ${cepData.localidade} - ${cepData.uf}, ${cepData.cep}`;
-              }
-            }
-          } catch (cepErr) {
-            console.error("Erro ao buscar CEP:", cepErr);
-          }
-        }
-
         const newOrder: Order = {
           id: Math.random().toString(36).substring(2, 9),
-          clientName: orderData.clientName!,
-          cnpj: orderData.cnpj || '',
-          cpf: orderData.cpf || '',
-          phone: orderData.phone || '',
-          address: finalAddress,
-          number: orderData.number || '',
-          complement: orderData.complement || '',
-          addressDetails: addressDetails || orderData.addressDetails || {
-            street: orderData.address || '',
-            number: orderData.number || '',
-            complement: orderData.complement || '',
+          clientName: rawOrderData.clientName!,
+          cnpj: rawOrderData.cnpj || '',
+          cpf: rawOrderData.cpf || '',
+          phone: rawOrderData.phone || '',
+          address: rawOrderData.address || '',
+          number: rawOrderData.number || '',
+          complement: rawOrderData.complement || '',
+          addressDetails: rawOrderData.addressDetails || {
+            street: rawOrderData.address || '',
+            number: rawOrderData.number || '',
+            complement: rawOrderData.complement || '',
             district: '',
             city: '',
             state: '',
-            zip: orderData.cep || ''
+            zip: rawOrderData.cep || ''
           },
-          isSample: orderData.isSample || false,
-          products: orderData.products.map((p: any) => ({
+          isSample: rawOrderData.isSample || false,
+          products: rawOrderData.products.map((p: any) => ({
             ...p,
             id: p.id || Math.random().toString(36).substring(2, 9),
             checked: false

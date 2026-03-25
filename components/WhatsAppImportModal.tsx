@@ -5,7 +5,6 @@ import { X, MessageSquare, Loader2, CheckCircle2, AlertCircle, Package } from 'l
 import { motion, AnimatePresence } from 'motion/react';
 import { parseOrderWithGemini } from '@/lib/gemini';
 import { Order, OrderStatus, ProductItem } from '@/lib/types';
-import { enrichOrderWithCustomerData } from '@/lib/customerService';
 
 interface WhatsAppImportModalProps {
   onOrdersImported: (orders: Order[]) => void;
@@ -27,41 +26,7 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
     try {
       const result = await parseOrderWithGemini(text);
       if (result && result.orders && result.orders.length > 0) {
-        // Fetch address details for each order that has a CEP
-        const ordersWithDetails = await Promise.all(result.orders.map(async (parsedOrder: any) => {
-          // 1. Enrich with local customer database first
-          let order = enrichOrderWithCustomerData(parsedOrder);
-
-          // 2. If still no addressDetails but we have a CEP, fetch from ViaCEP
-          if (order.cep && !order.addressDetails) {
-            try {
-              const cepResponse = await fetch(`https://viacep.com.br/ws/${order.cep.replace(/\D/g, '')}/json/`);
-              if (cepResponse.ok) {
-                const cepData = await cepResponse.json();
-                if (!cepData.erro) {
-                  return {
-                    ...order,
-                    addressDetails: {
-                      street: cepData.logradouro,
-                      number: order.number || '',
-                      complement: order.complement || '',
-                      district: cepData.bairro,
-                      city: cepData.localidade,
-                      state: cepData.uf,
-                      zip: cepData.cep
-                    },
-                    // Update address string to be more structured
-                    address: `${cepData.logradouro}, ${order.number || ''} ${order.complement ? '- ' + order.complement : ''}, ${cepData.bairro}, ${cepData.localidade} - ${cepData.uf}, ${cepData.cep}`
-                  };
-                }
-              }
-            } catch (cepErr) {
-              console.error("Erro ao buscar CEP:", cepErr);
-            }
-          }
-          return order;
-        }));
-        setParsedOrders(ordersWithDetails);
+        setParsedOrders(result.orders);
       } else {
         setError('Não foi possível identificar pedidos no texto fornecido.');
       }
@@ -196,6 +161,23 @@ Maria Oliveira: 5 pacotes Catuaí em grãos 500g"
                         </div>
                       ))}
                     </div>
+                    
+                    {(order.cpf || order.cnpj || order.phone || order.cep) && (
+                      <div className="pt-2 pb-2 border-t border-slate-100 dark:border-slate-700 grid grid-cols-2 gap-2 text-[10px] text-slate-500">
+                        {order.cpf && <div><span className="font-bold text-slate-400">CPF:</span> {order.cpf}</div>}
+                        {order.cnpj && <div><span className="font-bold text-slate-400">CNPJ:</span> {order.cnpj}</div>}
+                        {order.phone && <div><span className="font-bold text-slate-400">TEL:</span> {order.phone}</div>}
+                        {order.cep && <div><span className="font-bold text-slate-400">CEP:</span> {order.cep}</div>}
+                      </div>
+                    )}
+                    
+                    {order.addressDetails?.warning && (
+                      <div className="mb-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-[10px] text-yellow-800 dark:text-yellow-300 flex items-start gap-1">
+                        <AlertCircle className="size-3 shrink-0 mt-0.5" />
+                        <span>{order.addressDetails.warning}</span>
+                      </div>
+                    )}
+
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Endereço / Info Extra:</p>
                       <textarea 
