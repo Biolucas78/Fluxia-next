@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Order, ProductItem, ShippingOption } from '@/lib/types';
 import { MapPin, Hash, CheckCircle2, Truck, Package, FileText, Receipt, X as CloseIcon, AlertCircle, Trash2, Calculator, Loader2, Calendar } from 'lucide-react';
@@ -41,6 +41,32 @@ export default function OrderCard({
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<ShippingOption | null>(null);
   const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = () => {
+    // Clear any existing timeout just in case
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsExpanded(true);
+    }, 1200); // 1.2 seconds delay as requested
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setIsExpanded(false);
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
 
   const getCarrierColor = (carrier: string) => {
     const c = carrier.toLowerCase();
@@ -279,6 +305,8 @@ export default function OrderCard({
     <motion.div 
       layout
       onClick={onClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={`order-card bg-white dark:bg-slate-900 p-3 rounded-xl shadow-sm border transition-all cursor-pointer relative group ${
         selected ? 'ring-2 ring-primary border-primary' : ''
       } ${
@@ -348,7 +376,7 @@ export default function OrderCard({
               </span>
             )}
           </div>
-          <div className="flex items-center justify-between mt-1 group-hover:hidden">
+          <div className={`flex items-center justify-between mt-1 ${isExpanded ? 'hidden' : 'flex'}`}>
             <div className="flex items-center gap-2">
               {getStatusBadge()}
               {order.carrier && (
@@ -376,8 +404,8 @@ export default function OrderCard({
         </div>
       </div>
 
-      {/* Expanded View (Visible on hover) */}
-      <div className="hidden group-hover:block mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-2 duration-200">
+      {/* Expanded View (Visible on hover with delay) */}
+      <div className={`${isExpanded ? 'block' : 'hidden'} mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-2 duration-200`}>
         <div className="flex justify-between items-start mb-3">
           <div className="flex items-center gap-2">
             {getStatusBadge()}

@@ -21,10 +21,17 @@ export function useOrders() {
 
   useEffect(() => {
     if (!userId) {
-      setOrders([]);
-      setIsLoaded(true);
-      return;
+      const timer = setTimeout(() => {
+        setOrders([]);
+        setIsLoaded(true);
+      }, 0);
+      return () => clearTimeout(timer);
     }
+
+    // Determine collection name based on environment
+    // In AI Studio/Development, we use 'orders_dev' to avoid affecting production data
+    const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+    const collectionName = isDev ? 'orders_dev' : 'orders';
 
     // Migration logic: check localStorage and move to Firestore
     const migrateData = async () => {
@@ -33,9 +40,9 @@ export function useOrders() {
         try {
           const loadedOrders: Order[] = JSON.parse(saved);
           if (loadedOrders.length > 0) {
-            console.log("Migrating orders to Firestore...");
+            console.log(`Migrating orders to Firestore collection: ${collectionName}...`);
             for (const order of loadedOrders) {
-              await addDoc(collection(db, 'orders'), order);
+              await addDoc(collection(db, collectionName), order);
             }
             localStorage.removeItem('coffee_crm_orders');
             console.log("Migration complete.");
@@ -47,7 +54,7 @@ export function useOrders() {
     };
 
     migrateData().then(() => {
-      const q = query(collection(db, 'orders'));
+      const q = query(collection(db, collectionName));
       const unsubscribeOrders = onSnapshot(q, (snapshot) => {
         const loadedOrders: Order[] = snapshot.docs.map(doc => ({
           ...doc.data(),
@@ -56,7 +63,7 @@ export function useOrders() {
         setOrders(loadedOrders);
         setIsLoaded(true);
       }, (error) => {
-        console.error("Failed to fetch orders from Firestore", error);
+        console.error(`Failed to fetch orders from Firestore (${collectionName})`, error);
         setIsLoaded(true);
       });
 
@@ -64,9 +71,14 @@ export function useOrders() {
     });
   }, [userId]);
 
+  const getCollectionName = () => {
+    const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+    return isDev ? 'orders_dev' : 'orders';
+  };
+
   const handleOrderCreated = async (order: Order) => {
     try {
-      await addDoc(collection(db, 'orders'), order);
+      await addDoc(collection(db, getCollectionName()), order);
     } catch (e) {
       console.error("Failed to save to Firestore", e);
     }
@@ -74,7 +86,7 @@ export function useOrders() {
 
   const handleUpdateOrder = async (updatedOrder: Order) => {
     try {
-      const orderRef = doc(db, 'orders', updatedOrder.id);
+      const orderRef = doc(db, getCollectionName(), updatedOrder.id);
       await updateDoc(orderRef, { ...updatedOrder });
     } catch (e) {
       console.error("Failed to update in Firestore", e);
@@ -83,7 +95,7 @@ export function useOrders() {
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
-      await deleteDoc(doc(db, 'orders', orderId));
+      await deleteDoc(doc(db, getCollectionName(), orderId));
     } catch (e) {
       console.error("Failed to delete from Firestore", e);
     }
@@ -91,7 +103,7 @@ export function useOrders() {
 
   const handleArchiveOrder = async (orderId: string) => {
     try {
-      const orderRef = doc(db, 'orders', orderId);
+      const orderRef = doc(db, getCollectionName(), orderId);
       await updateDoc(orderRef, { archived: true, archivedAt: new Date().toISOString() });
     } catch (e) {
       console.error("Failed to archive in Firestore", e);
@@ -100,7 +112,7 @@ export function useOrders() {
 
   const handleRestoreOrder = async (orderId: string) => {
     try {
-      const orderRef = doc(db, 'orders', orderId);
+      const orderRef = doc(db, getCollectionName(), orderId);
       await updateDoc(orderRef, { archived: false, archivedAt: null });
     } catch (e) {
       console.error("Failed to restore in Firestore", e);
