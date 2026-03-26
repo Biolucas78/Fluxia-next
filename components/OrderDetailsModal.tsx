@@ -83,6 +83,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   });
   const [isEditingObservations, setIsEditingObservations] = useState(false);
   const [editedObservations, setEditedObservations] = useState(order.observations || '');
+  const [originType, setOriginType] = useState(order.originType || 'BH');
   const [isSyncingTracking, setIsSyncingTracking] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
@@ -313,7 +314,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           destinationCep,
           weight: totalWeightG,
           products: targetOrder.products,
-          boxDimensions: targetOrder.boxDimensions
+          boxDimensions: targetOrder.boxDimensions,
+          originType: originType // Use local state
         })
       });
 
@@ -481,7 +483,13 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       </button>
                       <button 
                         onClick={() => {
-                          onUpdateOrder({ ...order, ...editedCustomer });
+                          onUpdateOrder({ 
+                            ...order, 
+                            clientName: editedCustomer.clientName,
+                            cnpj: editedCustomer.cnpj,
+                            cpf: editedCustomer.cpf,
+                            phone: editedCustomer.phone
+                          });
                           setIsEditingCustomer(false);
                         }}
                         className="text-[10px] font-bold text-emerald-500 hover:text-emerald-600"
@@ -559,7 +567,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
               <section>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <MapPin className="size-4" /> Endereço de Entrega
+                    <MapPin className="size-4" /> Informações
                   </h3>
                   {!isEditingAddress ? (
                     <button 
@@ -651,7 +659,30 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           <input 
                             type="text" 
                             value={editedAddressDetails.zip} 
-                            onChange={e => setEditedAddressDetails({...editedAddressDetails, zip: e.target.value})}
+                            onChange={async (e) => {
+                              const newZip = e.target.value.replace(/\D/g, '');
+                              setEditedAddressDetails({...editedAddressDetails, zip: newZip});
+                              if (newZip.length === 8) {
+                                try {
+                                  const response = await fetch(`https://viacep.com.br/ws/${newZip}/json/`);
+                                  const data = await response.json();
+                                  if (!data.erro) {
+                                    setEditedAddressDetails(prev => ({
+                                      ...prev,
+                                      street: data.logradouro || prev.street,
+                                      district: data.bairro || prev.district,
+                                      city: data.localidade || prev.city,
+                                      state: data.uf || prev.state
+                                    }));
+                                  } else {
+                                    alert('CEP não encontrado.');
+                                  }
+                                } catch (error) {
+                                  console.error('Erro ao buscar CEP:', error);
+                                  alert('Erro ao buscar CEP.');
+                                }
+                              }
+                            }}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
                           />
                         </div>
@@ -964,16 +995,31 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         </button>
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Transportadora Preferencial</label>
-                        <select 
-                          value={order.carrier || ''}
-                          onChange={(e) => onUpdateOrder({ ...order, carrier: e.target.value })}
-                          className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-                        >
-                          <option value="">Selecionar Manualmente...</option>
-                          {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Remetente</label>
+                            <select 
+                              value={originType}
+                              onChange={(e) => setOriginType(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+                            >
+                              <option value="BH">Remetente BH</option>
+                              <option value="CRV">Remetente CRV</option>
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Transportadora Preferencial</label>
+                            <select 
+                              value={order.carrier || ''}
+                              onChange={(e) => onUpdateOrder({ ...order, carrier: e.target.value })}
+                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+                            >
+                              <option value="">Selecionar Manualmente...</option>
+                              {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                        </div>
                       </div>
                     </div>
 

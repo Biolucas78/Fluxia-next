@@ -25,8 +25,8 @@ const CORREIOS_TOKEN = process.env.CORREIOS_ACCESS_CODE;
 const CORREIOS_CARD = process.env.CORREIOS_POSTAGE_CARD;
 const CORREIOS_CONTRACT = process.env.CORREIOS_CONTRACT;
 
-async function getCorreiosQuotes(destinationCep: string, weight: number, dimensions: any) {
-  if (!CORREIOS_USER || !CORREIOS_TOKEN || !ORIGIN_CEP) return [];
+async function getCorreiosQuotes(destinationCep: string, weight: number, dimensions: any, originCep: string) {
+  if (!CORREIOS_USER || !CORREIOS_TOKEN || !originCep) return [];
 
   try {
     // 1. Autenticação (Usando a função compartilhada)
@@ -40,7 +40,7 @@ async function getCorreiosQuotes(destinationCep: string, weight: number, dimensi
 
     const quotePromises = services.map(async (service) => {
       const queryParams = new URLSearchParams({
-        cepOrigem: ORIGIN_CEP.replace(/\D/g, ''),
+        cepOrigem: originCep.replace(/\D/g, ''),
         cepDestino: destinationCep.replace(/\D/g, ''),
         psObjeto: Math.round(weight).toString(),
         tpObjeto: "2",
@@ -84,12 +84,12 @@ async function getCorreiosQuotes(destinationCep: string, weight: number, dimensi
   }
 }
 
-async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dimensions: any) {
-  if (!MELHOR_ENVIO_TOKEN || !ORIGIN_CEP) return [];
-
+async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dimensions: any, originCep: string) {
+  if (!MELHOR_ENVIO_TOKEN || !originCep) return [];
+  
   try {
     const payload = {
-      from: { postal_code: ORIGIN_CEP.replace(/\D/g, '') },
+      from: { postal_code: originCep.replace(/\D/g, '') },
       to: { postal_code: destinationCep.replace(/\D/g, '') },
       volumes: [{
         width: dimensions.width,
@@ -138,12 +138,12 @@ async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dime
     return [];
   }
 }
-async function getSuperfreteQuotes(destinationCep: string, weight: number, dimensions: any) {
-  if (!SUPERFRETE_TOKEN || !ORIGIN_CEP) return [];
+async function getSuperfreteQuotes(destinationCep: string, weight: number, dimensions: any, originCep: string) {
+  if (!SUPERFRETE_TOKEN || !originCep) return [];
 
   try {
     const payload = {
-      from: { postal_code: ORIGIN_CEP.replace(/\D/g, '') },
+      from: { postal_code: originCep.replace(/\D/g, '') },
       to: { postal_code: destinationCep.replace(/\D/g, '') },
       services: "1,2", // 1: PAC, 2: SEDEX
       package: {
@@ -193,30 +193,23 @@ async function getSuperfreteQuotes(destinationCep: string, weight: number, dimen
 
 export async function POST(req: Request) {
   try {
-    const { destinationCep, weight, boxDimensions } = await req.json();
+    const { destinationCep, weight, boxDimensions, originType } = await req.json();
+
+    let ORIGIN_CEP = '';
+    try {
+      if (originType === 'BH') {
+        const bh = JSON.parse(process.env.ORIGIN_BH_JSON || '{}');
+        ORIGIN_CEP = bh.postal_code || bh.zip || '';
+      } else if (originType === 'CRV') {
+        const crv = JSON.parse(process.env.ORIGIN_CRV_JSON || '{}');
+        ORIGIN_CEP = crv.postal_code || crv.zip || '';
+      }
+    } catch (e) {
+      console.error('Erro ao parsear JSON de origem', e);
+    }
 
     if (!ORIGIN_CEP) {
-      console.warn('CEP de origem não configurado. Usando mock data.');
-      return NextResponse.json([
-        {
-          id: 'mock-1',
-          provider: 'Demo (Melhor Envio)',
-          name: 'SEDEX',
-          price: 25.90,
-          currency: 'BRL',
-          delivery_time: 3,
-          company: { id: 1, name: 'Correios', picture: 'https://www.melhorenvio.com.br/images/shipping-companies/correios.png' }
-        },
-        {
-          id: 'mock-2',
-          provider: 'Demo (Melhor Envio)',
-          name: 'PAC',
-          price: 18.50,
-          currency: 'BRL',
-          delivery_time: 8,
-          company: { id: 1, name: 'Correios', picture: 'https://www.melhorenvio.com.br/images/shipping-companies/correios.png' }
-        }
-      ]);
+      return NextResponse.json({ error: 'CEP de origem não configurado para o tipo selecionado.' }, { status: 400 });
     }
 
     if (!destinationCep || !weight) {
@@ -236,9 +229,9 @@ export async function POST(req: Request) {
     const safeWeight = Math.max(100, weight); // minimum 100g
 
     const [meQuotes, sfQuotes, correiosQuotes] = await Promise.all([
-      getMelhorEnvioQuotes(cleanDestinationCep, safeWeight, dimensions),
-      getSuperfreteQuotes(cleanDestinationCep, safeWeight, dimensions),
-      getCorreiosQuotes(cleanDestinationCep, safeWeight, dimensions)
+      getMelhorEnvioQuotes(cleanDestinationCep, safeWeight, dimensions, ORIGIN_CEP),
+      getSuperfreteQuotes(cleanDestinationCep, safeWeight, dimensions, ORIGIN_CEP),
+      getCorreiosQuotes(cleanDestinationCep, safeWeight, dimensions, ORIGIN_CEP)
     ]);
     
     const allOptions = [...meQuotes, ...sfQuotes, ...correiosQuotes].sort((a, b) => a.price - b.price);
