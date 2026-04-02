@@ -1,22 +1,48 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import OrderForm from '@/components/OrderForm';
+import Login from '@/components/Login';
 import { useOrders } from '@/lib/hooks';
-import { RotateCcw, Trash2, Search, Calendar, User, Package, MapPin } from 'lucide-react';
+import { RotateCcw, Trash2, Search, Calendar, User, Package, MapPin, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'react-hot-toast';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function ArchivedOrdersPage() {
   const { archivedOrders, handleRestoreOrder, handleDeleteOrder, handleOrderCreated, isLoaded } = useOrders();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const filteredOrders = archivedOrders.filter(o => 
     o.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     o.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
+        <Loader2 className="animate-spin size-8 text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   if (!isLoaded) return null;
 
@@ -104,9 +130,28 @@ export default function ArchivedOrdersPage() {
                         </button>
                         <button
                           onClick={() => {
-                            if (confirm('Tenha certeza que deseja excluir permanentemente este pedido?')) {
-                              handleDeleteOrder(order.id);
-                            }
+                            toast((t) => (
+                              <div className="flex flex-col gap-3">
+                                <p className="text-sm font-medium">Tem certeza que deseja excluir permanentemente este pedido?</p>
+                                <div className="flex gap-2 justify-end">
+                                  <button 
+                                    onClick={() => toast.dismiss(t.id)}
+                                    className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      toast.dismiss(t.id);
+                                      handleDeleteOrder(order.id);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-white bg-rose-500 rounded-md hover:bg-rose-600"
+                                  >
+                                    Excluir
+                                  </button>
+                                </div>
+                              </div>
+                            ), { duration: Infinity });
                           }}
                           className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-xl text-xs font-bold transition-all"
                         >

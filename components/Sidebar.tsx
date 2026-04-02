@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, Plus, Factory, Truck, Settings } from 'lucide-react';
+import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -17,7 +17,10 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
     { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, href: '/' },
     { id: 'producao', title: 'Produção', icon: Factory, href: '/producao' },
     { id: 'logistica', title: 'Logística', icon: Truck, href: '/logistica' },
+    { id: 'clientes', title: 'Clientes', icon: User, href: '/clientes' },
+    { id: 'produtos', title: 'Produtos', icon: Package, href: '/produtos' },
     { id: 'arquivados', title: 'Arquivados', icon: Settings, href: '/arquivados' },
+    { id: 'configuracoes', title: 'Configurações', icon: Settings, href: '/configuracoes' },
   ];
 
   return (

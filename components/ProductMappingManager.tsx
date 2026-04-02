@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query } from 'firebase/firestore';
+import { getValidBlingToken } from '@/lib/bling-client';
 import { getFirebaseInstances } from '@/lib/firebase';
+import { handleFirestoreError, OperationType } from '@/lib/firebase-errors';
 import { Trash2, Plus, Package, Hash, Loader2 } from 'lucide-react';
 
 interface ProductMapping {
@@ -36,11 +38,16 @@ export default function ProductMappingManager() {
       setMappings(data);
     }, (error) => {
       console.error('Snapshot listener error:', error);
+      handleFirestoreError(error, OperationType.LIST, 'product_mapping');
     });
 
     const fetchBlingProducts = async () => {
       try {
-        const response = await fetch('/api/bling/products');
+        const token = await getValidBlingToken();
+
+        const response = await fetch('/api/bling/products', {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
         }
@@ -74,6 +81,7 @@ export default function ProductMappingManager() {
       setNewMappings(prev => ({ ...prev, [blingSku]: '' }));
     } catch (error) {
       console.error('Error adding mapping:', error);
+      handleFirestoreError(error, OperationType.CREATE, 'product_mapping');
     } finally {
       setLoading(false);
     }
@@ -85,6 +93,7 @@ export default function ProductMappingManager() {
       await deleteDoc(doc(db, 'product_mapping', id));
     } catch (error) {
       console.error('Error deleting mapping:', error);
+      handleFirestoreError(error, OperationType.DELETE, `product_mapping/${id}`);
     }
   };
 

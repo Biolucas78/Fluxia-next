@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
+import { toast } from 'react-hot-toast';
 import { Order, OrderStatus } from '@/lib/types';
 import { 
   X, 
@@ -92,6 +93,94 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<ShippingOption | null>(order.selectedShippingOption || null);
+  const [isSearchingBling, setIsSearchingBling] = useState(false);
+  const [isCreatingBlingOrder, setIsCreatingBlingOrder] = useState(false);
+  const [blingSearchResults, setBlingSearchResults] = useState<any[]>([]);
+  const [showBlingResults, setShowBlingResults] = useState(false);
+
+  const handleSearchBling = async () => {
+    if (!editedCustomer.clientName) return;
+    setIsSearchingBling(true);
+    console.log(`[Bling] Iniciando busca para: ${editedCustomer.clientName}`);
+    try {
+      const { searchBlingCustomers } = await import('@/lib/bling-search');
+      const data = await searchBlingCustomers(editedCustomer.clientName);
+      console.log('[Bling] Resultados:', data);
+      
+      if (data && data.length > 0) {
+        setBlingSearchResults(data);
+        setShowBlingResults(true);
+      } else {
+        toast.error('Nenhum cliente encontrado no Bling com este nome exato. Tente um nome mais curto ou diferente.');
+      }
+    } catch (error: any) {
+      console.error('[Bling] Erro de conexão:', error);
+      toast.error(`Erro de conexão ao buscar no Bling: ${error.message}`);
+    } finally {
+      setIsSearchingBling(false);
+    }
+  };
+
+  const handleSelectBlingCustomer = (blingCustomer: any) => {
+    // Prioriza Nome Fantasia conforme solicitado pelo usuário
+    const clientName = blingCustomer.fantasia && blingCustomer.fantasia !== blingCustomer.nome 
+      ? `${blingCustomer.fantasia} (${blingCustomer.nome})` 
+      : blingCustomer.nome;
+
+    setEditedCustomer({
+      clientName,
+      cnpj: blingCustomer.tipo === 'J' ? blingCustomer.numeroDocumento : '',
+      cpf: blingCustomer.tipo === 'F' ? blingCustomer.numeroDocumento : '',
+      phone: blingCustomer.celular || blingCustomer.telefone || ''
+    });
+    
+    // Also update address if available
+    if (blingCustomer.endereco) {
+      setEditedAddressDetails({
+        street: blingCustomer.endereco.endereco || '',
+        number: blingCustomer.endereco.numero || '',
+        complement: blingCustomer.endereco.complemento || '',
+        district: blingCustomer.endereco.bairro || '',
+        city: blingCustomer.endereco.municipio || '',
+        state: blingCustomer.endereco.uf || '',
+        zip: blingCustomer.endereco.cep || ''
+      });
+    }
+    
+    setShowBlingResults(false);
+  };
+  
+  const handleCreateBlingOrder = async () => {
+    if (isCreatingBlingOrder) return;
+    setIsCreatingBlingOrder(true);
+    
+    try {
+      const { getValidBlingToken } = await import('@/lib/bling-client');
+      const token = await getValidBlingToken();
+      
+      const response = await fetch('/api/bling/create-order', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(order)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erro ao criar pedido no Bling');
+      }
+      
+      toast.success('Pedido criado no Bling com sucesso!');
+      onUpdateOrder({ ...order, hasOrderDocument: true }); // Mark as having order doc
+    } catch (error: any) {
+      console.error('[Bling] Erro ao criar pedido:', error);
+      toast.error(`Erro ao criar pedido no Bling: ${error.message}`);
+    } finally {
+      setIsCreatingBlingOrder(false);
+    }
+  };
 
   const handleSyncTracking = async () => {
     if (!order.trackingNumber) return;
@@ -154,9 +243,11 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   };
 
   const toggleProduct = (productId: string) => {
+    console.log("Toggling product:", productId);
     const updatedProducts = order.products.map(p => 
       p.id === productId ? { ...p, checked: !p.checked } : p
     );
+    console.log("Updated products for order:", order.id, updatedProducts);
     onUpdateOrder({ ...order, products: updatedProducts });
   };
 
@@ -488,7 +579,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             clientName: editedCustomer.clientName,
                             cnpj: editedCustomer.cnpj,
                             cpf: editedCustomer.cpf,
-                            phone: editedCustomer.phone
+                            phone: editedCustomer.phone,
+                            addressDetails: editedAddressDetails
                           });
                           setIsEditingCustomer(false);
                         }}
@@ -503,7 +595,17 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                   {isEditingCustomer ? (
                     <div className="space-y-3">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Nome</label>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block">Nome</label>
+                          <button 
+                            onClick={handleSearchBling}
+                            disabled={isSearchingBling || !editedCustomer.clientName}
+                            className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1 disabled:opacity-50"
+                          >
+                            {isSearchingBling ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+                            BUSCAR NO BLING
+                          </button>
+                        </div>
                         <input 
                           type="text" 
                           value={editedCustomer.clientName} 
@@ -675,11 +777,11 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                       state: data.uf || prev.state
                                     }));
                                   } else {
-                                    alert('CEP não encontrado.');
+                                    toast.error('CEP não encontrado.');
                                   }
                                 } catch (error) {
                                   console.error('Erro ao buscar CEP:', error);
-                                  alert('Erro ao buscar CEP.');
+                                  toast.error('Erro ao buscar CEP.');
                                 }
                               }
                             }}
@@ -1001,7 +1103,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Remetente</label>
                             <select 
                               value={originType}
-                              onChange={(e) => setOriginType(e.target.value)}
+                              onChange={(e) => setOriginType(e.target.value as 'BH' | 'CRV')}
                               className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
                             >
                               <option value="BH">Remetente BH</option>
@@ -1363,6 +1465,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           />
 
           <div className="flex gap-2 relative">
+            <button
+              onClick={handleCreateBlingOrder}
+              disabled={isCreatingBlingOrder}
+              className="px-6 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+            >
+              {isCreatingBlingOrder ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              Enviar para o Bling
+            </button>
+
             {nextPhase && (
               <button
                 onClick={handleAdvanceAndNext}
@@ -1446,10 +1557,29 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
                     <button
                       onClick={() => {
-                        if (confirm('Deseja arquivar este pedido?')) {
-                          onArchiveOrder(order.id);
-                          onClose();
-                        }
+                        toast((t) => (
+                          <div className="flex flex-col gap-3">
+                            <p className="text-sm font-medium">Deseja arquivar este pedido?</p>
+                            <div className="flex gap-2 justify-end">
+                              <button 
+                                onClick={() => toast.dismiss(t.id)}
+                                className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200"
+                              >
+                                Cancelar
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  toast.dismiss(t.id);
+                                  onArchiveOrder(order.id);
+                                  onClose();
+                                }}
+                                className="px-3 py-1.5 text-xs font-medium text-white bg-amber-500 rounded-md hover:bg-amber-600"
+                              >
+                                Arquivar
+                              </button>
+                            </div>
+                          </div>
+                        ), { duration: Infinity });
                       }}
                       className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center gap-2"
                     >
@@ -1462,6 +1592,85 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           </div>
         </div>
       </motion.div>
+
+      {/* Bling Search Results Modal */}
+      <AnimatePresence>
+        {showBlingResults && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Clientes no Bling</h3>
+                  <p className="text-xs text-slate-500">Selecione o cliente para preencher os dados</p>
+                </div>
+                <button onClick={() => setShowBlingResults(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                  <X className="size-5 text-slate-500" />
+                </button>
+              </div>
+              
+              <div className="max-h-[400px] overflow-y-auto p-2 custom-scrollbar">
+                {blingSearchResults.map((customer) => (
+                  <button
+                    key={customer.id}
+                    onClick={() => handleSelectBlingCustomer(customer)}
+                    className="w-full p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700 group"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+                        <User className="size-5 text-primary" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
+                          {customer.fantasia && customer.fantasia !== customer.nome ? (
+                            <>
+                              <span className="text-primary">{customer.fantasia}</span>
+                              <span className="text-xs text-slate-400 font-normal ml-2">({customer.nome})</span>
+                            </>
+                          ) : (
+                            customer.nome
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                          {customer.numeroDocumento && (
+                            <span className="flex items-center gap-1">
+                              <Hash className="size-3" /> {customer.numeroDocumento}
+                            </span>
+                          )}
+                          {(customer.celular || customer.telefone) && (
+                            <span className="flex items-center gap-1">
+                              <User className="size-3" /> {customer.celular || customer.telefone}
+                            </span>
+                          )}
+                        </div>
+                        {customer.endereco && (
+                          <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                            <MapPin className="size-3" />
+                            {customer.endereco.municipio} - {customer.endereco.uf}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
+                <button 
+                  onClick={() => setShowBlingResults(false)}
+                  className="w-full py-3 text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

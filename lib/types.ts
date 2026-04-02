@@ -41,6 +41,7 @@ export interface Order {
   archived?: boolean;
   archivedAt?: string;
   isSample?: boolean;
+  originType?: 'BH' | 'CRV';
   shippingQuote?: ShippingOption[];
   selectedShippingOption?: ShippingOption;
   boxDimensions?: {

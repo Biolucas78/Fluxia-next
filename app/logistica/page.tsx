@@ -1,16 +1,29 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import OrderForm from '@/components/OrderForm';
+import Login from '@/components/Login';
 import { useOrders } from '@/lib/hooks';
-import { Truck, Package, MapPin, Search } from 'lucide-react';
+import { Truck, Package, MapPin, Search, Loader2 } from 'lucide-react';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function LogisticaPage() {
   const { orders, handleOrderCreated, handleUpdateOrder, isLoaded } = useOrders();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Logistics focus: orders in 'caixa_montada', 'enviado', 'entregue'
   const logisticsOrders = orders.filter(o => 
@@ -24,6 +37,18 @@ export default function LogisticaPage() {
       status: newStatus
     });
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
+        <Loader2 className="animate-spin size-8 text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   if (!isLoaded) return null;
 

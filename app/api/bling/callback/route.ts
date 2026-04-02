@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { doc, setDoc } from 'firebase/firestore';
-import { getFirebaseInstances } from '@/lib/firebase';
 
 export async function GET(request: Request) {
-  const { db } = getFirebaseInstances();
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const state = searchParams.get('state');
@@ -15,13 +12,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Invalid or missing state/code' }, { status: 400 });
   }
 
-  const clientId = process.env.BLING_CLIENT_ID;
-  const clientSecret = process.env.BLING_CLIENT_SECRET;
-  const redirectUri = `${process.env.APP_URL}/api/bling/callback`;
+  const clientId = process.env.BLING_CLIENT_ID?.trim();
+  const clientSecret = process.env.BLING_CLIENT_SECRET?.trim();
+  const appUrl = process.env.APP_URL?.replace(/\/$/, '');
+  
+  if (!clientId || !clientSecret || !appUrl) {
+    console.error('BLING_CLIENT_ID, BLING_CLIENT_SECRET or APP_URL not configured');
+    return NextResponse.json({ 
+      error: 'Environment variables not configured', 
+      details: 'BLING_CLIENT_ID, BLING_CLIENT_SECRET or APP_URL is missing. Please check your AI Studio settings.' 
+    }, { status: 500 });
+  }
+
+  const redirectUri = `${appUrl}/api/bling/callback`;
+  console.log('Exchanging code for token with Bling...');
+  console.log('Redirect URI used:', redirectUri);
+  console.log('Client ID (masked):', clientId.substring(0, 5) + '...');
 
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
-  const response = await fetch('https://bling.com.br/Api/v3/oauth/token', {
+  const response = await fetch('https://www.bling.com.br/Api/v3/oauth/token', {
     method: 'POST',
     headers: {
       'Authorization': `Basic ${credentials}`,
@@ -40,20 +50,33 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Failed to exchange code for token', details: data }, { status: response.status });
   }
 
-  // Store tokens in Firestore
-  try {
-    await setDoc(doc(db, 'bling_config', 'tokens'), {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expires_at: Date.now() + (data.expires_in * 1000),
-      updated_at: Date.now()
-    });
-  } catch (error) {
-    console.error('Error saving tokens to Firestore:', error);
-    return NextResponse.json({ error: 'Failed to save tokens' }, { status: 500 });
-  }
-
-  const finalResponse = NextResponse.json({ message: 'Authentication successful and tokens saved' });
   cookieStore.delete('bling_oauth_state');
-  return finalResponse;
+
+  // Return HTML to post message to opener and close popup
+  const html = `
+    <html>
+      <body>
+        <script>
+          if (window.opener) {
+            window.opener.postMessage({ 
+              type: 'BLING_AUTH_SUCCESS', 
+              tokens: {
+                access_token: '${data.access_token}',
+                refresh_token: '${data.refresh_token}',
+                expires_in: ${data.expires_in}
+              }
+            }, '*');
+            window.close();
+          } else {
+            window.location.href = '/configuracoes?bling_token=${data.access_token}&bling_refresh=${data.refresh_token}&expires_in=${data.expires_in}';
+          }
+        </script>
+        <p>Autenticação concluída. Esta janela deve fechar automaticamente.</p>
+      </body>
+    </html>
+  `;
+
+  return new NextResponse(html, {
+    headers: { 'Content-Type': 'text/html' }
+  });
 }

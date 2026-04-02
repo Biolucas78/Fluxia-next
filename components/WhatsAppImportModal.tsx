@@ -1,10 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, MessageSquare, Loader2, CheckCircle2, AlertCircle, Package } from 'lucide-react';
+import { X, MessageSquare, Loader2, CheckCircle2, AlertCircle, Package, UserPlus, UserCheck, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseOrderWithGemini } from '@/lib/gemini';
 import { Order, OrderStatus, ProductItem } from '@/lib/types';
+import { db } from '@/lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { getValidBlingToken } from '@/lib/bling-client';
+import { toast } from 'react-hot-toast';
+import CustomerSearchForm from './CustomerSearchForm';
 
 interface WhatsAppImportModalProps {
   onOrdersImported: (orders: Order[]) => void;
@@ -16,6 +21,7 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
   const [isParsing, setIsParsing] = useState(false);
   const [parsedOrders, setParsedOrders] = useState<any[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSavingCustomers, setIsSavingCustomers] = useState(false);
 
   const handleParse = async () => {
     if (!text.trim()) return;
@@ -26,7 +32,13 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
     try {
       const result = await parseOrderWithGemini(text);
       if (result && result.orders && result.orders.length > 0) {
-        setParsedOrders(result.orders);
+        // Initialize saveToDb for new customers with data
+        const ordersWithDbState = result.orders.map((order: any) => ({
+          ...order,
+          saveToDb: !order.foundInDb && (order.cnpj || order.cpf || order.addressDetails?.street),
+          customerData: null // Will be filled by CustomerSearchForm
+        }));
+        setParsedOrders(ordersWithDbState);
       } else {
         setError('Não foi possível identificar pedidos no texto fornecido.');
       }
@@ -38,46 +50,124 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!parsedOrders) return;
 
-    const newOrders: Order[] = parsedOrders.map(po => ({
-      id: Math.random().toString(36).substr(2, 9),
-      clientName: po.clientName,
-      cnpj: po.cnpj,
-      cpf: po.cpf,
-      phone: po.phone,
-      address: po.address || '',
-      number: po.number || '',
-      complement: po.complement || '',
-      addressDetails: po.addressDetails || (po.cep ? undefined : {
-        street: po.address || '',
-        number: po.number || '',
-        complement: po.complement || '',
-        district: '',
-        city: '',
-        state: '',
-        zip: po.cep || ''
-      }),
-      isSample: po.isSample || false,
-      status: 'pedidos' as OrderStatus,
-      hasInvoice: false,
-      hasBoleto: false,
-      hasOrderDocument: false,
-      createdAt: new Date().toISOString(),
-      products: po.products.map((p: any) => ({
-        id: Math.random().toString(36).substr(2, 9),
-        quantity: p.quantity,
-        name: p.name,
-        weight: p.weight,
-        grindType: p.grindType as any,
-        productionNotes: p.productionNotes,
-        checked: false
-      }))
-    }));
+    setIsSavingCustomers(true);
+    try {
+      const token = await getValidBlingToken();
+      
+      // Save new customers to DB if requested
+      for (let i = 0; i < parsedOrders.length; i++) {
+        const po = parsedOrders[i];
+        const cd = po.customerData;
+        
+        // Se o usuário confirmou um cliente (seja novo ou da base)
+        if (cd) {
+          // Se for um cliente novo (sem ID ou ID 'new' ou ID começando com 'local_')
+          // e o usuário marcou para salvar na base (ou se for necessário para o Bling)
+          const isNew = !cd.id || cd.id === 'new' || (typeof cd.id === 'string' && cd.id.startsWith('local_'));
+          
+          if (isNew && po.saveToDb) {
+            try {
+              if (!token) {
+                console.warn("Sem token do Bling, pulando cadastro de cliente no Bling.");
+                continue;
+              }
 
-    onOrdersImported(newOrders);
-    onClose();
+              const payload = {
+                nome: cd.nome,
+                fantasia: cd.fantasia,
+                tipo: cd.tipo,
+                situacao: 'A',
+                indicadorIe: parseInt(cd.contribuinte),
+                ie: cd.ie,
+                numeroDocumento: cd.numeroDocumento,
+                telefones: {
+                  celular: cd.celular
+                },
+                email: cd.email,
+                endereco: {
+                  geral: cd.endereco.geral
+                },
+                dadosAdicionais: {
+                  codigoRegimeTributario: parseInt(cd.codigoRegimeTributario)
+                }
+              };
+
+              const response = await fetch('/api/bling/customers', {
+                method: 'POST',
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+              });
+
+              const result = await response.json();
+              if (response.ok && result.data && result.data.id) {
+                await setDoc(doc(db, 'bling_customers', String(result.data.id)), {
+                  ...result.data,
+                  updatedAt: Date.now()
+                }, { merge: true });
+                // Update po.customerData with the new ID
+                po.customerData.id = String(result.data.id);
+              }
+            } catch (err) {
+              console.error(`Erro ao salvar cliente ${cd.nome}:`, err);
+            }
+          }
+        }
+      }
+
+      const newOrders: Order[] = parsedOrders.map(po => {
+        const cd = po.customerData;
+        return {
+          id: Math.random().toString(36).substr(2, 9),
+          clientName: cd?.nome || po.clientName,
+          cnpj: cd?.tipo === 'J' ? cd.numeroDocumento : '',
+          cpf: cd?.tipo === 'F' ? cd.numeroDocumento : '',
+          phone: cd?.celular || po.phone,
+          email: cd?.email || po.email,
+          address: cd?.endereco?.geral?.endereco || po.address || '',
+          number: cd?.endereco?.geral?.numero || po.number || '',
+          complement: cd?.endereco?.geral?.complemento || po.complement || '',
+          addressDetails: {
+            street: cd?.endereco?.geral?.endereco || po.addressDetails?.street || po.address || '',
+            number: cd?.endereco?.geral?.numero || po.number || po.addressDetails?.number || '',
+            complement: cd?.endereco?.geral?.complemento || po.complement || po.addressDetails?.complement || '',
+            district: cd?.endereco?.geral?.bairro || po.addressDetails?.district || '',
+            city: cd?.endereco?.geral?.municipio || po.addressDetails?.city || '',
+            state: cd?.endereco?.geral?.uf || po.addressDetails?.state || '',
+            zip: cd?.endereco?.geral?.cep || po.cep || po.addressDetails?.zip || '',
+            warning: po.addressDetails?.warning || null
+          },
+          isSample: po.isSample || false,
+          status: 'pedidos' as OrderStatus,
+          hasInvoice: false,
+          hasBoleto: false,
+          hasOrderDocument: false,
+          createdAt: new Date().toISOString(),
+          products: po.products.map((p: any) => ({
+            id: Math.random().toString(36).substr(2, 9),
+            quantity: p.quantity,
+            name: p.name,
+            weight: p.weight,
+            grindType: p.grindType as any,
+            productionNotes: p.productionNotes,
+            checked: false
+          }))
+        };
+      });
+
+      onOrdersImported(newOrders);
+      onClose();
+    } catch (err) {
+      console.error("Erro ao confirmar pedidos:", err);
+      toast.error("Erro ao processar pedidos. Verifique o console.");
+    } finally {
+      setIsSavingCustomers(false);
+    }
   };
 
   return (
@@ -145,9 +235,14 @@ Maria Oliveira: 5 pacotes Catuaí em grãos 500g"
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-slate-900 dark:text-white">{order.clientName}</span>
-                        {(order.cnpj || order.cpf) && (
-                          <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold rounded-full">
-                            Cliente Identificado
+                        {order.foundInDb ? (
+                          <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold rounded-full flex items-center gap-1">
+                            <Database className="size-3" />
+                            Na Base
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 text-[10px] font-bold rounded-full">
+                            Não Cadastrado
                           </span>
                         )}
                       </div>
@@ -161,36 +256,24 @@ Maria Oliveira: 5 pacotes Catuaí em grãos 500g"
                         </div>
                       ))}
                     </div>
-                    
-                    {(order.cpf || order.cnpj || order.phone || order.cep) && (
-                      <div className="pt-2 pb-2 border-t border-slate-100 dark:border-slate-700 grid grid-cols-2 gap-2 text-[10px] text-slate-500">
-                        {order.cpf && <div><span className="font-bold text-slate-400">CPF:</span> {order.cpf}</div>}
-                        {order.cnpj && <div><span className="font-bold text-slate-400">CNPJ:</span> {order.cnpj}</div>}
-                        {order.phone && <div><span className="font-bold text-slate-400">TEL:</span> {order.phone}</div>}
-                        {order.cep && <div><span className="font-bold text-slate-400">CEP:</span> {order.cep}</div>}
-                      </div>
-                    )}
+
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+                      <CustomerSearchForm 
+                        initialData={order}
+                        onConfirm={(customerData) => {
+                          const updated = [...parsedOrders];
+                          updated[idx] = { ...updated[idx], customerData };
+                          setParsedOrders(updated);
+                        }}
+                      />
+                    </div>
                     
                     {order.addressDetails?.warning && (
-                      <div className="mb-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-[10px] text-yellow-800 dark:text-yellow-300 flex items-start gap-1">
+                      <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-[10px] text-yellow-800 dark:text-yellow-300 flex items-start gap-1">
                         <AlertCircle className="size-3 shrink-0 mt-0.5" />
                         <span>{order.addressDetails.warning}</span>
                       </div>
                     )}
-
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Endereço / Info Extra:</p>
-                      <textarea 
-                        value={order.address || ''}
-                        onChange={(e) => {
-                          const updated = [...parsedOrders];
-                          updated[idx] = { ...updated[idx], address: e.target.value };
-                          setParsedOrders(updated);
-                        }}
-                        className="w-full text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-600 dark:text-slate-400 outline-none focus:ring-1 focus:ring-primary resize-none h-16"
-                        placeholder="Nenhum endereço identificado"
-                      />
-                    </div>
                   </div>
                 ))}
               </div>
@@ -225,9 +308,19 @@ Maria Oliveira: 5 pacotes Catuaí em grãos 500g"
           ) : (
             <button
               onClick={handleConfirm}
-              className="flex-[2] bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
+              disabled={isSavingCustomers}
+              className="flex-[2] bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
             >
-              Confirmar e Criar Pedidos
+              {isSavingCustomers ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  Confirmar e Criar Pedidos
+                </>
+              )}
             </button>
           )}
         </div>

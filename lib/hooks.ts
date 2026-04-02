@@ -4,8 +4,36 @@ import { useState, useEffect, useMemo } from 'react';
 import { Order, DashboardStats } from './types';
 import { calculateWeightInKg } from './parser';
 import { db, auth } from './firebase';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+
+const sanitizeForFirestore = (obj: any): any => {
+  if (obj === undefined) return undefined;
+  if (obj === null) return null;
+  
+  // Handle basic types
+  if (typeof obj !== 'object') return obj;
+  
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    return obj
+      .map(sanitizeForFirestore)
+      .filter(item => item !== undefined);
+  }
+  
+  // Handle plain objects
+  const sanitized: any = {};
+  let hasValue = false;
+  Object.keys(obj).forEach(key => {
+    const value = obj[key];
+    const sanitizedValue = sanitizeForFirestore(value);
+    if (sanitizedValue !== undefined) {
+      sanitized[key] = sanitizedValue;
+      hasValue = true;
+    }
+  });
+  return hasValue ? sanitized : {};
+};
 
 export function useOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -21,6 +49,7 @@ export function useOrders() {
 
   useEffect(() => {
     if (!userId) {
+      // Use a microtask or timeout to avoid synchronous setState in effect body
       const timer = setTimeout(() => {
         setOrders([]);
         setIsLoaded(true);
@@ -42,7 +71,9 @@ export function useOrders() {
           if (loadedOrders.length > 0) {
             console.log(`Migrating orders to Firestore collection: ${collectionName}...`);
             for (const order of loadedOrders) {
-              await addDoc(collection(db, collectionName), order);
+              const sanitizedOrder = sanitizeForFirestore(order);
+              // Use setDoc with the existing ID to maintain consistency
+              await setDoc(doc(db, collectionName, order.id), sanitizedOrder);
             }
             localStorage.removeItem('coffee_crm_orders');
             console.log("Migration complete.");
@@ -53,9 +84,17 @@ export function useOrders() {
       }
     };
 
-    migrateData().then(() => {
+    let isMounted = true;
+    let unsubscribeOrders: (() => void) | undefined;
+
+    const setupListener = async () => {
+      await migrateData();
+      
+      if (!isMounted) return;
+
       const q = query(collection(db, collectionName));
-      const unsubscribeOrders = onSnapshot(q, (snapshot) => {
+      unsubscribeOrders = onSnapshot(q, (snapshot) => {
+        if (!isMounted) return;
         const loadedOrders: Order[] = snapshot.docs.map(doc => ({
           ...doc.data(),
           id: doc.id
@@ -63,12 +102,18 @@ export function useOrders() {
         setOrders(loadedOrders);
         setIsLoaded(true);
       }, (error) => {
+        if (!isMounted) return;
         console.error(`Failed to fetch orders from Firestore (${collectionName})`, error);
         setIsLoaded(true);
       });
+    };
 
-      return () => unsubscribeOrders();
-    });
+    setupListener();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribeOrders) unsubscribeOrders();
+    };
   }, [userId]);
 
   const getCollectionName = () => {
@@ -77,25 +122,46 @@ export function useOrders() {
   };
 
   const handleOrderCreated = async (order: Order) => {
+    console.log("Creating order in Firestore:", order.id);
     try {
-      await addDoc(collection(db, getCollectionName()), order);
+      const sanitizedOrder = sanitizeForFirestore(order);
+      console.log("Sanitized order for creation:", JSON.stringify(sanitizedOrder));
+      
+      // Use setDoc with the client-side ID to maintain consistency
+      const collectionName = getCollectionName();
+      await setDoc(doc(db, collectionName, order.id), sanitizedOrder);
+      
+      console.log("Order created successfully");
     } catch (e) {
       console.error("Failed to save to Firestore", e);
     }
   };
 
   const handleUpdateOrder = async (updatedOrder: Order) => {
+    console.log("Updating order in Firestore:", updatedOrder.id);
     try {
       const orderRef = doc(db, getCollectionName(), updatedOrder.id);
-      await updateDoc(orderRef, { ...updatedOrder });
+      const sanitizedOrder = sanitizeForFirestore(updatedOrder);
+      
+      // Remove id from update payload as it's part of the path
+      const { id, ...updateData } = sanitizedOrder;
+      
+      console.log("Update data for Firestore:", JSON.stringify(updateData));
+      
+      await updateDoc(orderRef, updateData);
+      console.log("Order updated successfully");
     } catch (e) {
       console.error("Failed to update in Firestore", e);
     }
   };
 
   const handleDeleteOrder = async (orderId: string) => {
+    console.log("handleDeleteOrder called with ID:", orderId);
     try {
-      await deleteDoc(doc(db, getCollectionName(), orderId));
+      const collectionName = getCollectionName();
+      console.log("Deleting from collection:", collectionName);
+      await deleteDoc(doc(db, collectionName, orderId));
+      console.log("Successfully deleted from Firestore");
     } catch (e) {
       console.error("Failed to delete from Firestore", e);
     }

@@ -18,7 +18,11 @@ service cloud.firestore {
     // Document ID: auto-generated
     // Fields:
     //   - appName: string (required, 1-100 chars)
+    //   - appWeight: string (required, 1-20 chars)
+    //   - appGrind: string (required, 1-20 chars)
+    //   - blingId: number (optional)
     //   - blingSku: string (required, 1-50 chars)
+    //   - blingName: string (optional)
     //
     // ===============================================================
 
@@ -35,7 +39,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+              (request.auth.token.email == "biolucas@gmail.com" && request.auth.token.email_verified == true));
     }
 
     // ===============================================================
@@ -62,18 +67,25 @@ service cloud.firestore {
     }
 
     match /product_mapping/{mappingId} {
-      allow read: if true;
-      allow create: if isAuthenticated() && 
-                    request.resource.data.appName is string && request.resource.data.appName.size() > 0 && request.resource.data.appName.size() <= 100 &&
-                    request.resource.data.blingSku is string && request.resource.data.blingSku.size() > 0 && request.resource.data.blingSku.size() <= 50;
-      allow update: if isAuthenticated() && 
-                    request.resource.data.appName is string && request.resource.data.appName.size() > 0 && request.resource.data.appName.size() <= 100 &&
-                    request.resource.data.blingSku is string && request.resource.data.blingSku.size() > 0 && request.resource.data.blingSku.size() <= 50;
+      allow read: if isAuthenticated();
+      
+      function isValidMapping(data) {
+        return data.appName is string && data.appName.size() > 0 &&
+               data.appWeight is string && data.appWeight.size() > 0 &&
+               data.appGrind is string && data.appGrind.size() > 0 &&
+               data.blingSku is string && data.blingSku.size() > 0;
+      }
+
+      allow create, update: if isAuthenticated() && (isValidMapping(request.resource.data) || isAdmin());
       allow delete: if isAuthenticated();
     }
 
     match /bling_config/{configId} {
-      allow read, write: if isAdmin();
+      allow read, write: if isAuthenticated();
+    }
+
+    match /bling_customers/{customerId} {
+      allow read, write: if isAuthenticated();
     }
   }
 }

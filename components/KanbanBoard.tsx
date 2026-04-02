@@ -268,7 +268,11 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
   };
 
   const handleDeleteSelected = () => {
-    selectedOrderIds.forEach(id => onDeleteOrder(id));
+    console.log("Deleting selected orders:", Array.from(selectedOrderIds));
+    selectedOrderIds.forEach(id => {
+      console.log("Calling onDeleteOrder for:", id);
+      onDeleteOrder(id);
+    });
     setSelectedOrderIds(new Set());
     setIsConfirmingDelete(false);
   };

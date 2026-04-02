@@ -79,14 +79,19 @@ export default function OrderCard({
   };
 
   const handleDelete = (e: React.MouseEvent) => {
+    console.log("handleDelete clicked");
     e.stopPropagation();
     setShowDeleteConfirm(true);
   };
 
   const confirmDelete = (e: React.MouseEvent) => {
+    console.log("Confirming delete for order:", order.id);
     e.stopPropagation();
     if (onDeleteOrder) {
+      console.log("Calling onDeleteOrder prop");
       onDeleteOrder(order.id);
+    } else {
+      console.warn("onDeleteOrder prop is missing");
     }
     setShowDeleteConfirm(false);
   };
@@ -349,12 +354,14 @@ export default function OrderCard({
             <div className="flex gap-2 w-full">
               <button 
                 onClick={cancelDelete}
+                onPointerDown={(e) => e.stopPropagation()}
                 className="flex-1 py-2 bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button 
                 onClick={confirmDelete}
+                onPointerDown={(e) => e.stopPropagation()}
                 className="flex-1 py-2 bg-white text-red-600 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
               >
                 <Trash2 className="size-3" />
@@ -421,6 +428,7 @@ export default function OrderCard({
             )}
             <button 
               onClick={handleDelete}
+              onPointerDown={(e) => e.stopPropagation()}
               className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 rounded-lg transition-all"
               title="Excluir Pedido"
             >

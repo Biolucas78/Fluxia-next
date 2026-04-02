@@ -1,13 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import KanbanBoard from '@/components/KanbanBoard';
 import OrderForm from '@/components/OrderForm';
 import WhatsAppImportModal from '@/components/WhatsAppImportModal';
+import Login from '@/components/Login';
 import { useOrders } from '@/lib/hooks';
 import { OrderStatus, Order } from '@/lib/types';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { Loader2 } from 'lucide-react';
 
 const COLUMNS: { id: OrderStatus; title: string }[] = [
   { id: 'pedidos', title: 'Pedidos' },
@@ -23,11 +27,36 @@ export default function ProducaoPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
+        <Loader2 className="animate-spin size-8 text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   if (!isLoaded) return null;
 
-  const handleOrdersImported = (newOrders: Order[]) => {
-    setOrders(prev => [...newOrders, ...prev]);
+  const handleOrdersImported = async (newOrders: Order[]) => {
+    // Save each imported order to Firestore
+    for (const order of newOrders) {
+      await handleOrderCreated(order);
+    }
   };
 
   const handleMoveOrder = (order: any, direction: 'next' | 'prev') => {

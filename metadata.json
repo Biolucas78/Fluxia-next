@@ -1,5 +1,5 @@
 {
   "name": "FluxIA",
-  "description": "Sistema de gestão de fluxo de produção de café com parsing automático de pedidos do WhatsApp.",
+  "description": "Sistema de gestão de fluxo de produção de café com parsing automático de pedidos do WhatsApp e integração completa de clientes com o Bling.",
   "requestFramePermissions": []
 }

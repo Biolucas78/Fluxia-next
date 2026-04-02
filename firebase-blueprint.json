@@ -13,13 +13,45 @@
     },
     "ProductMapping": {
       "title": "ProductMapping",
-      "description": "Maps an App product name to a Bling SKU.",
+      "description": "Maps an App product (name, weight, grind) to a Bling SKU.",
       "type": "object",
       "properties": {
         "appName": { "type": "string", "description": "The name of the product in the App." },
-        "blingSku": { "type": "string", "description": "The SKU of the product in Bling." }
+        "appWeight": { "type": "string", "description": "The weight of the product in the App." },
+        "appGrind": { "type": "string", "description": "The grind type of the product in the App." },
+        "blingId": { "type": "number", "description": "The ID of the product in Bling." },
+        "blingSku": { "type": "string", "description": "The SKU of the product in Bling." },
+        "blingName": { "type": "string", "description": "The name of the product in Bling." }
       },
-      "required": ["appName", "blingSku"]
+      "required": ["appName", "appWeight", "appGrind", "blingSku"]
+    },
+    "BlingConfig": {
+      "title": "BlingConfig",
+      "description": "Stores Bling API tokens.",
+      "type": "object",
+      "properties": {
+        "access_token": { "type": "string" },
+        "refresh_token": { "type": "string" },
+        "expires_at": { "type": "number" },
+        "updated_at": { "type": "number" }
+      },
+      "required": ["access_token", "refresh_token", "expires_at"]
+    },
+    "BlingCustomer": {
+      "title": "BlingCustomer",
+      "description": "Cached customer data from Bling for deep searching.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "nome": { "type": "string" },
+        "fantasia": { "type": "string" },
+        "numeroDocumento": { "type": "string" },
+        "tipo": { "type": "string" },
+        "searchTerms": { "type": "array", "items": { "type": "string" } },
+        "dadosCompletos": { "type": "object", "description": "The full raw customer data from Bling API" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "nome"]
     }
   },
   "firestore": {
@@ -30,6 +62,14 @@
     "/product_mapping/{mappingId}": {
       "schema": { "$ref": "ProductMapping" },
       "description": "Product mappings."
+    },
+    "/bling_config/tokens": {
+      "schema": { "$ref": "BlingConfig" },
+      "description": "Bling API tokens."
+    },
+    "/bling_customers/{customerId}": {
+      "schema": { "$ref": "BlingCustomer" },
+      "description": "Cached Bling customers."
     }
   }
 }
