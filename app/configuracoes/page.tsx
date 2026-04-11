@@ -27,6 +27,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import ShippingTest from '@/components/ShippingTest';
 import { useOrders } from '@/lib/hooks';
+import firebaseConfig from '@/firebase-applet-config.json';
 
 function SettingsContent() {
   const router = useRouter();
@@ -741,6 +742,38 @@ function SettingsContent() {
                     Migrar Pedidos do Teste
                   </button>
                 </div>
+              </div>
+            </section>
+
+            {/* Firebase Config Debug Card */}
+            <section className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3 bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-2xl">
+                  <Package className="size-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Informações do Banco de Dados</h2>
+                  <p className="text-xs text-slate-500">Verifique se o projeto atual coincide com o antigo</p>
+                </div>
+              </div>
+              <div className="p-8 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Project ID</p>
+                    <p className="text-sm font-mono text-slate-700 dark:text-slate-300 break-all">
+                      {firebaseConfig.projectId}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Database ID</p>
+                    <p className="text-sm font-mono text-slate-700 dark:text-slate-300 break-all">
+                      {firebaseConfig.firestoreDatabaseId}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 italic">
+                  * Compare estes IDs com o arquivo <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">firebase-applet-config.json</code> do seu código antigo. Se forem diferentes, o sistema está olhando para um banco de dados novo e vazio.
+                </p>
               </div>
             </section>
 
