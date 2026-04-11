@@ -26,9 +26,11 @@ import { getValidBlingToken } from '@/lib/bling-client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import ShippingTest from '@/components/ShippingTest';
+import { useOrders } from '@/lib/hooks';
 
 function SettingsContent() {
   const router = useRouter();
+  const { syncFromDev, collectionName } = useOrders();
   const searchParams = useSearchParams();
   const [blingStatus, setBlingStatus] = useState<any>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
@@ -692,6 +694,55 @@ function SettingsContent() {
             </section>
 
             <ShippingTest />
+
+            {/* Data Recovery Card */}
+            <section className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3 bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-2xl">
+                  <RefreshCw className="size-6 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Recuperação de Dados</h2>
+                  <p className="text-xs text-slate-500">Recupere pedidos entre ambientes (Dev/Prod)</p>
+                </div>
+              </div>
+              <div className="p-8 space-y-6">
+                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="size-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Atenção!</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                        Se você criou pedidos no ambiente de teste (AI Studio) e eles não aparecem no site oficial (Vercel), 
+                        use este botão para migrar os dados.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Ambiente Atual:</p>
+                    <p className="text-sm font-mono font-bold text-primary">{collectionName === 'orders_dev' ? 'Desenvolvimento (Teste)' : 'Produção (Oficial)'}</p>
+                  </div>
+                  <button 
+                    onClick={async () => {
+                      const loadingToast = toast.loading('Verificando dados de teste...');
+                      const result = await syncFromDev();
+                      if (result.success) {
+                        toast.success(result.message, { id: loadingToast });
+                      } else {
+                        toast.error(result.message, { id: loadingToast });
+                      }
+                    }}
+                    className="w-full sm:w-auto px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="size-4" />
+                    Migrar Pedidos do Teste
+                  </button>
+                </div>
+              </div>
+            </section>
 
           </div>
         </div>

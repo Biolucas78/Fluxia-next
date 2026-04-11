@@ -206,6 +206,30 @@ export function useOrders() {
     return { totalKg, totalUnits, totalClients };
   }, [activeOrders]);
 
+  const syncFromDev = async () => {
+    try {
+      const { getDocs, collection } = await import('firebase/firestore');
+      const devSnapshot = await getDocs(collection(db, 'orders_dev'));
+      const devOrders = devSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Order));
+      
+      if (devOrders.length === 0) {
+        return { success: false, message: 'Nenhum pedido encontrado na coleção de desenvolvimento.' };
+      }
+
+      let migratedCount = 0;
+      for (const order of devOrders) {
+        const sanitizedOrder = sanitizeForFirestore(order);
+        await setDoc(doc(db, 'orders', order.id), sanitizedOrder);
+        migratedCount++;
+      }
+
+      return { success: true, message: `${migratedCount} pedidos migrados com sucesso!` };
+    } catch (e) {
+      console.error('Erro na migração:', e);
+      return { success: false, message: 'Erro ao migrar dados.' };
+    }
+  };
+
   return {
     orders: activeOrders,
     archivedOrders,
@@ -216,7 +240,9 @@ export function useOrders() {
     handleDeleteOrder,
     handleArchiveOrder,
     handleRestoreOrder,
+    syncFromDev,
     stats,
-    isLoaded
+    isLoaded,
+    collectionName: getCollectionName()
   };
 }
