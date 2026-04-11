@@ -17,7 +17,8 @@ import {
   AlertTriangle,
   Key,
   Trash2,
-  Save
+  Save,
+  Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/lib/firebase';
