@@ -7,6 +7,7 @@ import OrderDetailsModal from './OrderDetailsModal';
 import BulkCheckModal from './BulkCheckModal';
 import { LayoutDashboard, Trash2, CheckSquare, Square, X, RefreshCw, ArrowRight, ChevronDown, Layers, Calendar, Filter, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { toast } from 'react-hot-toast';
 
 import { 
   DndContext, 
