@@ -6,9 +6,10 @@ import Header from '@/components/Header';
 import OrderForm from '@/components/OrderForm';
 import Login from '@/components/Login';
 import { useOrders } from '@/lib/hooks';
-import { Truck, Package, MapPin, Search, Loader2 } from 'lucide-react';
+import { Truck, Package, MapPin, Search, Loader2, RefreshCw } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { toast } from 'react-hot-toast';
 
 export default function LogisticaPage() {
   const { orders, handleOrderCreated, handleUpdateOrder, isLoaded } = useOrders();
@@ -16,6 +17,68 @@ export default function LogisticaPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [testTracking, setTestTracking] = useState('');
+  const [isTesting, setIsTesting] = useState(false);
+  const [simulateTracking, setSimulateTracking] = useState('');
+  const [simulateStatus, setSimulateStatus] = useState('posted');
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  const handleTestTracking = async () => {
+    if (!testTracking) return;
+    setIsTesting(true);
+    try {
+      const response = await fetch('/api/shipping/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          trackingNumber: testTracking, 
+          shipmentId: testTracking, 
+          shippingProvider: 'melhorenvio' 
+        })
+      });
+      const data = await response.json();
+      if (response.ok && !data.error) {
+        toast.success(`Rastreio encontrado! Status: ${data.status}`);
+        if (data.trackingUrl) {
+          window.open(data.trackingUrl, '_blank');
+        }
+        console.log('Resultado do teste:', data);
+      } else {
+        toast.error(data.error || 'Não encontrado');
+      }
+    } catch (e) {
+      toast.error('Erro ao testar');
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const handleSimulateWebhook = async () => {
+    if (!simulateTracking) {
+      toast.error('Digite um código de rastreio para simular');
+      return;
+    }
+    
+    setIsSimulating(true);
+    try {
+      const response = await fetch('/api/shipping/webhook-simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tracking: simulateTracking, status: simulateStatus })
+      });
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        toast.success(`Webhook simulado com sucesso! Status alterado para ${simulateStatus}`);
+      } else {
+        toast.error(data.error || 'Erro ao simular webhook');
+      }
+    } catch (error) {
+      toast.error('Erro de conexão ao simular webhook');
+    } finally {
+      setIsSimulating(false);
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -54,18 +117,108 @@ export default function LogisticaPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
-      <Sidebar onNewOrder={() => setIsFormOpen(true)} />
+      <Sidebar />
       
       <main className="flex-1 flex flex-col overflow-hidden">
         <Header 
           title="Logística e Entregas" 
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onNewOrder={() => setIsFormOpen(true)} 
         />
         
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           <div className="max-w-6xl mx-auto space-y-6">
+            {/* Test Tool & Webhook Config */}
+            <div className="flex flex-col gap-4">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <RefreshCw className={`size-4 text-primary ${isTesting ? 'animate-spin' : ''}`} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Testar Rastreio</h4>
+                    <p className="text-[10px] text-slate-500">Valide UUIDs ou códigos sem emitir etiquetas</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <input 
+                    type="text" 
+                    placeholder="Cole o UUID ou Código aqui..." 
+                    value={testTracking}
+                    onChange={(e) => setTestTracking(e.target.value)}
+                    className="flex-1 md:w-64 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs outline-none focus:border-primary transition-all"
+                  />
+                  <button 
+                    onClick={handleTestTracking}
+                    disabled={isTesting || !testTracking}
+                    className="bg-primary text-white px-6 py-2 rounded-xl text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-50"
+                  >
+                    Testar
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-4 border-l-4 border-l-blue-500">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
+                      <Truck className="size-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Atualização Automática (Webhooks)</h4>
+                      <p className="text-[10px] text-slate-500">Para receber atualizações em tempo real, configure o Webhook no painel do Melhor Envio.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3 text-xs text-slate-600 dark:text-slate-400">
+                  <p><strong>Passo a passo:</strong></p>
+                  <ol className="list-decimal pl-4 space-y-1">
+                    <li>Acesse o painel do Melhor Envio (Integrações &gt; Área Dev &gt; Seus Aplicativos).</li>
+                    <li>Edite seu aplicativo e vá na aba <strong>Webhooks</strong>.</li>
+                    <li>Clique em <strong>Novo Webhook</strong>.</li>
+                    <li>Cole a URL abaixo e selecione os eventos de rastreamento:</li>
+                  </ol>
+                  <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-between">
+                    <code className="text-[10px] text-blue-600 dark:text-blue-400 select-all">
+                      {typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/melhor-envio` : 'https://seu-app.com/api/webhook/melhor-envio'}
+                    </code>
+                  </div>
+                </div>
+
+                <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+                  <h5 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
+                    <RefreshCw className="size-3" /> Simulador de Webhook (Testes)
+                  </h5>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      placeholder="Código de Rastreio (ex: LGI...)"
+                      value={simulateTracking}
+                      onChange={(e) => setSimulateTracking(e.target.value)}
+                      className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <select
+                      value={simulateStatus}
+                      onChange={(e) => setSimulateStatus(e.target.value)}
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="posted">Postado (Enviado)</option>
+                      <option value="delivered">Entregue</option>
+                      <option value="canceled">Cancelado</option>
+                    </select>
+                    <button
+                      onClick={handleSimulateWebhook}
+                      disabled={isSimulating || !simulateTracking}
+                      className="bg-slate-800 dark:bg-slate-700 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-700 dark:hover:bg-slate-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isSimulating ? <Loader2 className="size-3 animate-spin" /> : 'Simular Evento'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <div className="flex items-center gap-4 mb-4">
@@ -138,9 +291,19 @@ export default function LogisticaPage() {
                       </span>
                     )}
                     {order.trackingNumber && (
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {order.trackingNumber}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-[10px] font-mono text-slate-500">
+                          {order.trackingNumber}
+                        </span>
+                        <a 
+                          href={`https://www.melhorrastreio.com.br/rastreio/${order.trackingNumber}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[9px] text-blue-500 hover:underline font-bold"
+                        >
+                          Ver no Melhor Rastreio
+                        </a>
+                      </div>
                     )}
                   </div>
 
@@ -168,13 +331,6 @@ export default function LogisticaPage() {
           </div>
         </div>
       </main>
-
-      {isFormOpen && (
-        <OrderForm 
-          onOrderCreated={handleOrderCreated}
-          onClose={() => setIsFormOpen(false)}
-        />
-      )}
     </div>
   );
 }

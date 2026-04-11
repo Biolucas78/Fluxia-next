@@ -19,9 +19,10 @@
         "appName": { "type": "string", "description": "The name of the product in the App." },
         "appWeight": { "type": "string", "description": "The weight of the product in the App." },
         "appGrind": { "type": "string", "description": "The grind type of the product in the App." },
-        "blingId": { "type": "number", "description": "The ID of the product in Bling." },
+        "blingId": { "type": "string", "description": "The ID of the product in Bling." },
         "blingSku": { "type": "string", "description": "The SKU of the product in Bling." },
-        "blingName": { "type": "string", "description": "The name of the product in Bling." }
+        "blingName": { "type": "string", "description": "The name of the product in Bling." },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["appName", "appWeight", "appGrind", "blingSku"]
     },
@@ -52,6 +53,31 @@
         "updatedAt": { "type": "number" }
       },
       "required": ["id", "nome"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Represents a production order.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientName": { "type": "string" },
+        "tradeName": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "statusHistory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "archived": { "type": "boolean" },
+        "archivedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clientName", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -70,6 +96,14 @@
     "/bling_customers/{customerId}": {
       "schema": { "$ref": "BlingCustomer" },
       "description": "Cached Bling customers."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "Order" },
+      "description": "Production orders."
+    },
+    "/orders_dev/{orderId}": {
+      "schema": { "$ref": "Order" },
+      "description": "Development/test orders."
     }
   }
 }

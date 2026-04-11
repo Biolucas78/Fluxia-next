@@ -21,7 +21,7 @@ interface OrderCardProps {
   onToggleSelect?: (id: string) => void;
 }
 
-const CARRIERS = ['Correio', 'Total', 'Braspress', 'MelhorEnvio', 'Lalamove'];
+const CARRIERS = ['Correio', 'Braspress', 'MelhorEnvio', 'Lalamove'];
 
 export default function OrderCard({ 
   order, 
@@ -138,9 +138,9 @@ export default function OrderCard({
 
       // Use box weight if available, otherwise calculate from products
       const totalWeightG = targetOrder.boxWeight 
-        ? targetOrder.boxWeight * 1000 
+        ? targetOrder.boxWeight 
         : targetOrder.products.reduce((acc, p) => {
-            const w = parseFloat(p.weight);
+            const w = parseFloat(p.weight) || 0;
             if (p.weight.toLowerCase().includes('kg')) return acc + w * 1000 * p.quantity;
             return acc + w * p.quantity;
           }, 0);
@@ -376,7 +376,7 @@ export default function OrderCard({
       <div className="flex justify-between items-start gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 truncate pr-16">
-            <h4 className="font-bold text-slate-900 dark:text-white leading-tight truncate">{order.clientName}</h4>
+            <h4 className="font-bold text-slate-900 dark:text-white leading-tight truncate">{order.tradeName || order.clientName}</h4>
             {order.isSample && (
               <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter shrink-0">
                 Amostra

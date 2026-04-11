@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Order, OrderStatus } from '@/lib/types';
 import OrderCard from './OrderCard';
 import OrderDetailsModal from './OrderDetailsModal';
-import { LayoutDashboard, Trash2, CheckSquare, Square, X, RefreshCw } from 'lucide-react';
+import BulkCheckModal from './BulkCheckModal';
+import { LayoutDashboard, Trash2, CheckSquare, Square, X, RefreshCw, ArrowRight, ChevronDown, Layers, Calendar, Filter, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 import { 
@@ -92,6 +93,9 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -148,7 +152,15 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         updatedProducts = activeOrder.products.map((p: any) => ({ ...p, checked: false }));
       }
 
-      const updatedOrder = { ...activeOrder, status: overColumnId, products: updatedProducts };
+      const updatedOrder = { 
+        ...activeOrder, 
+        status: overColumnId, 
+        products: updatedProducts,
+        statusHistory: [
+          ...(activeOrder.statusHistory || []),
+          { status: overColumnId, timestamp: new Date().toISOString() }
+        ]
+      };
       onUpdateOrder(updatedOrder);
     }
   };
@@ -172,7 +184,12 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
           const response = await fetch('/api/shipping/track', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ trackingNumber: order.trackingNumber, carrier: order.carrier })
+            body: JSON.stringify({ 
+              trackingNumber: order.trackingNumber, 
+              shipmentId: order.shipmentId,
+              shippingProvider: order.shippingProvider,
+              carrier: order.carrier 
+            })
           });
           if (response.ok) {
             const data = await response.json();
@@ -208,7 +225,12 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         const response = await fetch('/api/shipping/track', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ trackingNumber: order.trackingNumber, carrier: order.carrier })
+          body: JSON.stringify({ 
+            trackingNumber: order.trackingNumber, 
+            shipmentId: order.shipmentId,
+            shippingProvider: order.shippingProvider,
+            carrier: order.carrier 
+          })
         });
         if (response.ok) {
           const data = await response.json();
@@ -230,13 +252,43 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
     }
     setIsSyncingAll(false);
   };
-  const filteredOrders = orders.filter(o => 
-    o.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    o.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredOrders = useMemo(() => {
+    return orders
+      .filter(o => {
+        // Only show non-archived orders on the Kanban board
+        if (o.archived) return false;
+
+        const matchesSearch = o.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             o.id.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        if (!matchesSearch) return false;
+
+        if (startDate) {
+          const orderDate = new Date(o.createdAt);
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          if (orderDate < start) return false;
+        }
+
+        if (endDate) {
+          const orderDate = new Date(o.createdAt);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (orderDate > end) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => a.clientName.localeCompare(b.clientName, 'pt-BR', { sensitivity: 'base' }));
+  }, [orders, searchQuery, startDate, endDate]);
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [bulkCheckModal, setBulkCheckModal] = useState<{ open: boolean; type: 'separation' | 'production' }>({ open: false, type: 'separation' });
+
+  const selectedOrders = orders.filter(o => selectedOrderIds.has(o.id));
+  const allSelectedInPedidos = selectedOrders.length > 0 && selectedOrders.every(o => o.status === 'pedidos');
+  const allSelectedInSeparadas = selectedOrders.length > 0 && selectedOrders.every(o => o.status === 'embalagens_separadas');
 
   const handleToggleSelect = (id: string) => {
     setSelectedOrderIds(prev => {
@@ -275,6 +327,37 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
     });
     setSelectedOrderIds(new Set());
     setIsConfirmingDelete(false);
+  };
+
+  const handleMoveSelected = (targetStatus: OrderStatus) => {
+    selectedOrderIds.forEach(id => {
+      const order = orders.find(o => o.id === id);
+      if (order && order.status !== targetStatus) {
+        const currentIndex = COLUMNS.findIndex(c => c.id === order.status);
+        const newIndex = COLUMNS.findIndex(c => c.id === targetStatus);
+        const isMovingForward = newIndex > currentIndex;
+        
+        let updatedProducts = order.products;
+        if (isMovingForward) {
+          if (targetStatus === 'embalagens_separadas' || targetStatus === 'embalagens_prontas') {
+            updatedProducts = order.products.map((p: any) => ({ ...p, checked: false }));
+          }
+        } else {
+          updatedProducts = order.products.map((p: any) => ({ ...p, checked: false }));
+        }
+
+        onUpdateOrder({
+          ...order,
+          status: targetStatus,
+          products: updatedProducts,
+          statusHistory: [
+            ...(order.statusHistory || []),
+            { status: targetStatus, timestamp: new Date().toISOString() }
+          ]
+        });
+      }
+    });
+    setSelectedOrderIds(new Set());
   };
 
   const handleUpdateFromModal = (updatedOrder: Order) => {
@@ -342,6 +425,28 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
     scrollLeft.current = scrollRef.current.scrollLeft;
   };
 
+  const handleArchiveOldOrders = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const ordersToArchive = orders.filter(o => {
+      if (o.status !== 'entregue' || o.archived) return false;
+      const orderDate = new Date(o.createdAt);
+      return orderDate.getMonth() !== currentMonth || orderDate.getFullYear() !== currentYear;
+    });
+
+    if (ordersToArchive.length === 0) {
+      toast.error('Nenhum pedido de meses anteriores encontrado para arquivar.');
+      return;
+    }
+
+    if (window.confirm(`Deseja arquivar ${ordersToArchive.length} pedidos de meses anteriores?`)) {
+      ordersToArchive.forEach(o => onArchiveOrder(o.id));
+      toast.success(`${ordersToArchive.length} pedidos arquivados com sucesso!`);
+    }
+  };
+
   return (
     <DndContext
       sensors={sensors}
@@ -350,11 +455,84 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div 
-        ref={scrollRef}
-        onMouseDown={onMouseDown}
-        className={`h-full w-full overflow-x-auto custom-scrollbar p-6 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-      >
+      <div className="flex flex-col h-full w-full overflow-hidden">
+        {/* Filter Bar */}
+        <div className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${showFilters ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+            >
+              <Filter className="size-4" />
+              {showFilters ? 'Ocultar Filtros' : 'Filtrar por Data'}
+            </button>
+
+            {showFilters && (
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                    <input 
+                      type="date" 
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                    <input 
+                      type="date" 
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all"
+                    />
+                  </div>
+                </div>
+                {(startDate || endDate) && (
+                  <button 
+                    onClick={() => { setStartDate(''); setEndDate(''); }}
+                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                    title="Limpar Filtros"
+                  >
+                    <RotateCcw className="size-4" />
+                  </button>
+                )}
+              </motion.div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total:</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                {filteredOrders.length}
+              </span>
+            </div>
+            {selectedOrderIds.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Selecionados:</span>
+                <span className="text-sm font-bold text-white bg-primary px-2 py-0.5 rounded-md shadow-sm">
+                  {selectedOrderIds.size}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div 
+          ref={scrollRef}
+          onMouseDown={onMouseDown}
+          className={`flex-1 w-full overflow-x-auto custom-scrollbar p-6 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        >
         <div className="flex gap-4 h-full min-w-max pb-4">
           {COLUMNS.map(column => (
             <KanbanColumn 
@@ -370,6 +548,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
               onToggleSelect={handleToggleSelect}
               onSelectAll={() => handleSelectAllInColumn(column.id)}
               onManualSync={handleManualSyncAll}
+              onArchiveOldOrders={column.id === 'entregue' ? handleArchiveOldOrders : undefined}
               isSyncingAll={isSyncingAll}
             />
           ))}
@@ -385,6 +564,18 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
               onArchiveOrder={onArchiveOrder}
               hasNextOrder={hasNextOrder}
               onAdvanceAndNext={handleAdvanceAndNext}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {bulkCheckModal.open && (
+            <BulkCheckModal 
+              selectedOrders={selectedOrders}
+              onClose={() => setBulkCheckModal({ ...bulkCheckModal, open: false })}
+              onUpdateOrder={onUpdateOrder}
+              title={bulkCheckModal.type === 'separation' ? 'Separar Embalagens' : 'Marcar Produção'}
+              subtitle={bulkCheckModal.type === 'separation' ? 'Separação em Lote' : 'Produção em Lote'}
             />
           )}
         </AnimatePresence>
@@ -408,6 +599,44 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
               </div>
 
               <div className="flex items-center gap-3">
+                {allSelectedInPedidos && (
+                  <button 
+                    onClick={() => setBulkCheckModal({ open: true, type: 'separation' })}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 rounded-xl text-xs font-bold transition-all shadow-lg shadow-primary/20"
+                  >
+                    <Layers className="size-4" /> Separar Embalagens
+                  </button>
+                )}
+
+                {allSelectedInSeparadas && (
+                  <button 
+                    onClick={() => setBulkCheckModal({ open: true, type: 'production' })}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 rounded-xl text-xs font-bold transition-all shadow-lg shadow-primary/20"
+                  >
+                    <CheckSquare className="size-4" /> Marcar Produção
+                  </button>
+                )}
+
+                <div className="relative group/move">
+                  <button 
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-xs font-bold transition-all"
+                  >
+                    <ArrowRight className="size-4" /> Mover para... <ChevronDown className="size-3" />
+                  </button>
+                  <div className="absolute bottom-full mb-2 left-0 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-2 w-48 hidden group-hover/move:block animate-in fade-in slide-in-from-bottom-2 duration-200">
+                    {COLUMNS.map(col => (
+                      <button
+                        key={col.id}
+                        onClick={() => handleMoveSelected(col.id)}
+                        className="w-full text-left px-4 py-2 text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-colors flex items-center gap-2"
+                      >
+                        <div className={`size-2 rounded-full ${col.color}`} />
+                        {col.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {!isConfirmingDelete ? (
                   <button 
                     onClick={() => setIsConfirmingDelete(true)}
@@ -447,8 +676,9 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
           )}
         </AnimatePresence>
       </div>
+    </div>
 
-      <DragOverlay adjustScale={false}>
+    <DragOverlay adjustScale={false}>
         {activeOrder ? (
           <div className="w-72 opacity-80 rotate-3 cursor-grabbing">
             <OrderCard 
@@ -480,6 +710,7 @@ interface KanbanColumnProps {
   onToggleSelect: (id: string) => void;
   onSelectAll: () => void;
   onManualSync: () => void;
+  onArchiveOldOrders?: () => void;
   isSyncingAll: boolean;
 }
 
@@ -495,6 +726,7 @@ function KanbanColumn({
   onToggleSelect,
   onSelectAll,
   onManualSync,
+  onArchiveOldOrders,
   isSyncingAll
 }: KanbanColumnProps) {
   const { setNodeRef } = useDroppable({
@@ -526,10 +758,19 @@ function KanbanColumn({
               <RefreshCw className={`size-4 ${isSyncingAll ? 'animate-spin' : ''}`} />
             </button>
           )}
+          {column.id === 'entregue' && orders.length > 0 && onArchiveOldOrders && (
+            <button 
+              onClick={onArchiveOldOrders}
+              className="p-1.5 hover:bg-white/20 rounded-lg transition-all flex items-center gap-1 text-white"
+              title="Arquivar Meses Anteriores"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
           {orders.length > 0 && (
             <button 
               onClick={onSelectAll}
-              className={`p-1 hover:bg-white/20 rounded-lg transition-all flex items-center gap-1 ${column.textColor}`}
+              className={`flex items-center gap-1.5 px-2 py-1 hover:bg-white/20 rounded-lg transition-all ${column.textColor}`}
               title="Selecionar Todos"
             >
               {orders.every(o => selectedOrderIds.has(o.id)) ? (
@@ -537,6 +778,7 @@ function KanbanColumn({
               ) : (
                 <Square className="size-4" />
               )}
+              <span className="text-[9px] font-black uppercase tracking-wider">Tudo</span>
             </button>
           )}
         </div>

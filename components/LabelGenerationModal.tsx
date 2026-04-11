@@ -29,8 +29,9 @@ export default function LabelGenerationModal({ isOpen, onClose, quote, onGenerat
     phone: (order as any)?.phone || '',
     cnpj: (order as any)?.cnpj || '',
     observations: (order as any)?.observations || '',
-    insuranceValue: (order as any)?.insuranceValue || '',
+    insuranceValue: (order as any)?.insuranceValue || ((order as any)?.invoiceValue ? String((order as any)?.invoiceValue) : ''),
     invoiceKey: (order as any)?.invoiceKey || '',
+    invoiceNumber: (order as any)?.invoiceNumber || '',
     productDescription: (order as any)?.productDescription || '',
   });
 
@@ -113,6 +114,7 @@ export default function LabelGenerationModal({ isOpen, onClose, quote, onGenerat
       observations: newData.observations,
       insuranceValue: newData.insuranceValue,
       invoiceKey: newData.invoiceKey,
+      invoiceNumber: newData.invoiceNumber,
       productDescription: newData.productDescription,
       addressDetails: {
         street: newData.street,
@@ -169,14 +171,18 @@ export default function LabelGenerationModal({ isOpen, onClose, quote, onGenerat
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <p className="text-xs text-slate-500 uppercase font-bold">Valor Assegurado (R$)</p>
-                <input type="number" step="0.01" value={shippingData.insuranceValue} onChange={(e) => handleUpdate('insuranceValue', e.target.value)} className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20" />
-              </div>
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <p className="text-xs text-slate-500 uppercase font-bold">Chave da Nota Fiscal</p>
                 <input type="text" value={shippingData.invoiceKey} onChange={(e) => handleUpdate('invoiceKey', e.target.value)} className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500 uppercase font-bold">Número da NF</p>
+                <input type="text" value={shippingData.invoiceNumber} onChange={(e) => handleUpdate('invoiceNumber', e.target.value)} className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500 uppercase font-bold">Valor Assegurado (R$)</p>
+                <input type="number" step="0.01" value={shippingData.insuranceValue} onChange={(e) => handleUpdate('insuranceValue', e.target.value)} className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20" />
               </div>
             </div>
 

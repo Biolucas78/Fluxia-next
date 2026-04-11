@@ -13,7 +13,8 @@ import {
   Loader2,
   AlertCircle,
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -24,7 +25,8 @@ import {
   updateDoc, 
   deleteDoc, 
   doc,
-  getDocs
+  getDocs,
+  writeBatch
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -34,6 +36,7 @@ import { toast } from 'react-hot-toast';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import { getValidBlingToken } from '@/lib/bling-client';
+import { KNOWN_SKUS } from '@/lib/skus';
 
 interface ProductMapping {
   id: string;
@@ -248,6 +251,124 @@ export default function ProdutosPage() {
     }
   };
 
+  const handleInitialLoad = async () => {
+    toast((t) => (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm font-medium">Isso irá apagar todos os mapeamentos atuais e recarregar os 38 SKUs oficiais. Continuar?</p>
+        <div className="flex gap-2 justify-end">
+          <button 
+            onClick={() => toast.dismiss(t.id)}
+            className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200"
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={async () => {
+              toast.dismiss(t.id);
+              setBlingLoading(true);
+              const loadingToast = toast.loading('Limpando catálogo e buscando produtos no Bling...');
+              try {
+                const token = await getValidBlingToken();
+                if (!token) throw new Error('Não foi possível obter um token válido do Bling.');
+
+                // 1. Clear existing mappings
+                const mappingRef = collection(db, 'product_mapping');
+                const snapshot = await getDocs(mappingRef);
+                
+                if (!snapshot.empty) {
+                  const deleteBatch = writeBatch(db);
+                  snapshot.docs.forEach((doc) => {
+                    deleteBatch.delete(doc.ref);
+                  });
+                  await deleteBatch.commit();
+                  console.log('Existing mappings cleared.');
+                }
+
+                // 2. Fetch products from Bling (paginated)
+                let allBlingProducts: any[] = [];
+                let page = 1;
+                let hasMore = true;
+
+                while (hasMore && page <= 10) {
+                  toast.loading(`Buscando produtos no Bling (página ${page})...`, { id: loadingToast });
+                  const response = await fetch(`/api/bling/products?pagina=${page}&limite=100`, {
+                    headers: {
+                      'Authorization': `Bearer ${token}`
+                    }
+                  });
+
+                  if (!response.ok) break;
+                  const data = await response.json();
+                  const products = data.data || [];
+                  if (products.length === 0) {
+                    hasMore = false;
+                  } else {
+                    allBlingProducts = [...allBlingProducts, ...products];
+                    page++;
+                  }
+                }
+
+                // 3. Map and save
+                const saveBatch = writeBatch(db);
+                let mappedCount = 0;
+
+                for (const sku of KNOWN_SKUS) {
+                  const product = allBlingProducts.find(p => p.codigo === sku);
+                  if (!product) continue;
+
+                  const name = product.nome || '';
+                  let appName = 'Especial';
+                  let appWeight = '250g';
+                  let appGrind = 'moído';
+
+                  const lowerName = name.toLowerCase();
+
+                  if (lowerName.includes('catuaí') || lowerName.includes('catuai')) appName = 'Catuaí';
+                  else if (lowerName.includes('bourbon')) appName = 'Bourbon';
+                  else if (lowerName.includes('yellow')) appName = 'Yellow';
+                  else if (lowerName.includes('gourmet')) appName = 'Gourmet';
+                  else if (lowerName.includes('drip')) appName = 'DripCoffee';
+                  else if (lowerName.includes('caneca')) appName = 'Caneca';
+
+                  // Weight detection
+                  const weightMatch = name.match(/(\d+g|\d+kg|\d+,\d+kg|\d+\.\d+kg)/i);
+                  if (weightMatch) appWeight = weightMatch[1].toLowerCase().replace(',', '.');
+
+                  // Grind detection
+                  if (lowerName.includes('grão') || lowerName.includes('grao')) appGrind = 'grãos';
+                  else if (lowerName.includes('moído') || lowerName.includes('moido')) appGrind = 'moído';
+
+                  const newDocRef = doc(mappingRef);
+                  saveBatch.set(newDocRef, {
+                    appName,
+                    appWeight,
+                    appGrind,
+                    blingSku: sku,
+                    blingId: product.id.toString(),
+                    blingName: name,
+                    createdAt: new Date().toISOString()
+                  });
+                  mappedCount++;
+                }
+
+                await saveBatch.commit();
+                toast.success(`Catálogo resetado: ${mappedCount} produtos carregados.`, { id: loadingToast });
+              } catch (error: any) {
+                console.error("Error during initial load:", error);
+                toast.error(`Erro ao resetar catálogo: ${error.message}`, { id: loadingToast });
+              } finally {
+                setBlingLoading(false);
+              }
+            }}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90"
+          >
+            Confirmar Reset
+          </button>
+        </div>
+      </div>
+    ), { duration: Infinity });
+  };
+
   const filteredMappings = mappings.filter(m => 
     m.appName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.blingSku.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -321,6 +442,15 @@ export default function ProdutosPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={handleInitialLoad}
+                  disabled={blingLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
+                  title="Carregar produtos do Bling baseados na lista de SKUs conhecidos"
+                >
+                  <Database className={`size-4 ${blingLoading ? 'animate-pulse' : ''}`} />
+                  Resetar e Carregar Catálogo
+                </button>
                 <button
                   onClick={handleAutoAssociate}
                   disabled={blingLoading}

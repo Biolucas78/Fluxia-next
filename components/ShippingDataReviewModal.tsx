@@ -22,12 +22,41 @@ export default function ShippingDataReviewModal({
     if (order.boxWeight) return order.boxWeight;
     
     const totalWeightG = order.products.reduce((acc, p) => {
-      const w = parseFloat(p.weight);
+      const w = parseFloat(p.weight) || 0;
       if (p.weight.toLowerCase().includes('kg')) return acc + w * 1000 * p.quantity;
       return acc + w * p.quantity;
     }, 0);
     
-    return totalWeightG / 1000; // Convert to kg for the form
+    return totalWeightG; // Return grams for the form
+  };
+
+  const getSuggestedBox = () => {
+    const totalUnits = order.products.reduce((acc, p) => {
+      const name = p.name.toLowerCase();
+      const weight = p.weight.toLowerCase();
+      
+      let units = 1; // Default 250g
+      if (weight.includes('120g')) units = 0.5;
+      else if (weight.includes('500g')) units = 1.5;
+      else if (weight.includes('1kg') || weight.includes('1000g')) units = 3.5;
+      else if (name.includes('drip')) units = 0.6;
+      
+      return acc + (units * p.quantity);
+    }, 0);
+
+    const boxes = [
+      { h: 11, w: 16, l: 25, cap: 3 },
+      { h: 12, w: 21, l: 28, cap: 8 },
+      { h: 13, w: 22, l: 28, cap: 10 },
+      { h: 16, w: 26, l: 30, cap: 12 },
+      { h: 23, w: 28, l: 35, cap: 20 },
+      { h: 21, w: 26, l: 40, cap: 24 },
+      { h: 23, w: 23, l: 50, cap: 35 },
+      { h: 31, w: 31, l: 42, cap: 40 },
+      { h: 30, w: 40, l: 50, cap: 55 },
+    ].sort((a, b) => a.cap - b.cap);
+
+    return boxes.find(b => b.cap >= totalUnits) || boxes[boxes.length - 1];
   };
 
   const [formData, setFormData] = useState({
@@ -43,11 +72,12 @@ export default function ShippingDataReviewModal({
     city: order.addressDetails?.city || '',
     state: order.addressDetails?.state || '',
     weight: calculateDefaultWeight(),
-    width: order.boxDimensions?.width || 15,
-    height: order.boxDimensions?.height || 15,
-    length: order.boxDimensions?.length || 15,
-    insuranceValue: order.insuranceValue || '',
+    width: order.boxDimensions?.width || getSuggestedBox().w,
+    height: order.boxDimensions?.height || getSuggestedBox().h,
+    length: order.boxDimensions?.length || getSuggestedBox().l,
+    insuranceValue: order.insuranceValue || (order.invoiceValue ? String(order.invoiceValue) : ''),
     invoiceKey: order.invoiceKey || '',
+    invoiceNumber: order.invoiceNumber || '',
     productDescription: order.productDescription || '',
   });
 
@@ -154,6 +184,7 @@ export default function ShippingDataReviewModal({
       },
       insuranceValue: formData.insuranceValue,
       invoiceKey: formData.invoiceKey,
+      invoiceNumber: formData.invoiceNumber,
       productDescription: formData.productDescription,
     };
     onConfirm(updatedOrder);
@@ -299,10 +330,9 @@ export default function ShippingDataReviewModal({
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Peso (kg)</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Peso (g)</label>
                   <input 
                     type="number"
-                    step="0.1"
                     name="weight"
                     value={formData.weight}
                     onChange={handleNumberChange}
@@ -348,14 +378,24 @@ export default function ShippingDataReviewModal({
                 <FileText className="size-4 text-slate-400" />
                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Documentação e Seguro</h4>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Chave da NF-e</label>
                   <input 
                     name="invoiceKey"
                     value={formData.invoiceKey}
                     onChange={handleChange}
-                    placeholder="44 dígitos da chave da nota fiscal"
+                    placeholder="44 dígitos"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Número da NF-e</label>
+                  <input 
+                    name="invoiceNumber"
+                    value={formData.invoiceNumber}
+                    onChange={handleChange}
+                    placeholder="Ex: 1234"
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                   />
                 </div>
@@ -369,16 +409,16 @@ export default function ShippingDataReviewModal({
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                   />
                 </div>
-                <div className="md:col-span-2 space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Descrição do Conteúdo</label>
-                  <textarea 
-                    name="productDescription"
-                    value={formData.productDescription}
-                    onChange={handleChange}
-                    rows={2}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none"
-                  />
-                </div>
+              </div>
+              <div className="mt-4 space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Descrição do Conteúdo</label>
+                <textarea 
+                  name="productDescription"
+                  value={formData.productDescription}
+                  onChange={handleChange}
+                  rows={2}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none"
+                />
               </div>
             </section>
           </div>

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { adminDb, adminDbDefault } from '@/lib/firebase-admin';
 
 export async function POST(request: Request) {
   try {
@@ -40,6 +41,25 @@ export async function POST(request: Request) {
     }
 
     if (!response.ok) {
+      if (typeof data === 'object' && JSON.stringify(data).includes('invalid_grant')) {
+        console.error('[Bling API] Fatal: Refresh token is invalid (invalid_grant). Clearing tokens.');
+        try {
+          // Attempt to clear tokens from both possible databases
+          await Promise.allSettled([
+            adminDb.collection('bling_config').doc('tokens').delete(),
+            adminDbDefault.collection('bling_config').doc('tokens').delete()
+          ]);
+          console.log('[Bling API] Invalid tokens cleared from Firestore.');
+        } catch (deleteError) {
+          console.error('[Bling API] Failed to clear invalid tokens from Firestore:', deleteError);
+        }
+        
+        return NextResponse.json({ 
+          error: 'Refresh token expired or invalid', 
+          details: 'O token de atualização do Bling expirou ou foi revogado. Você precisa re-autenticar o Bling nas configurações.',
+          reauth_url: '/api/bling/auth'
+        }, { status: 401 });
+      }
       return NextResponse.json({ error: 'Failed to refresh token', details: data }, { status: response.status });
     }
 

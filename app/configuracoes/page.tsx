@@ -16,7 +16,8 @@ import {
   Loader2,
   AlertTriangle,
   Key,
-  Trash2
+  Trash2,
+  Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/lib/firebase';
@@ -24,6 +25,7 @@ import { doc, setDoc, deleteDoc, getDoc, collection, query, getDocs, writeBatch 
 import { getValidBlingToken } from '@/lib/bling-client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
+import ShippingTest from '@/components/ShippingTest';
 
 function SettingsContent() {
   const router = useRouter();
@@ -37,9 +39,20 @@ function SettingsContent() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const [appUrlConfig, setAppUrlConfig] = useState<string>('');
+  const [lojaId, setLojaId] = useState('');
+  const [isSavingLojaId, setIsSavingLojaId] = useState(false);
+
   const checkBlingStatus = async () => {
     setIsLoadingStatus(true);
     try {
+      // Buscar a URL configurada no servidor para mostrar ao usuário
+      const configRes = await fetch('/api/bling/status');
+      const configData = await configRes.json();
+      if (configData.appUrl) {
+        setAppUrlConfig(configData.appUrl);
+      }
+
       const token = await getValidBlingToken();
       
       if (!token) {
@@ -85,6 +98,12 @@ function SettingsContent() {
       }
       
       setBlingStatus(data);
+
+      // Load lojaId from config
+      const configSnap = await getDoc(doc(db, 'bling_config', 'main'));
+      if (configSnap.exists()) {
+        setLojaId(configSnap.data().lojaId || '');
+      }
     } catch (error) {
       console.error('Error checking Bling status:', error);
       setBlingStatus({ status: 'error', message: 'Erro ao conectar com o servidor' });
@@ -227,9 +246,24 @@ function SettingsContent() {
     ), { duration: Infinity });
   };
 
-  const redirectUri = typeof window !== 'undefined' 
-    ? `${window.location.origin}/api/bling/callback` 
-    : 'https://.../api/bling/callback';
+  const handleSaveLojaId = async () => {
+    setIsSavingLojaId(true);
+    try {
+      await setDoc(doc(db, 'bling_config', 'main'), { lojaId }, { merge: true });
+      toast.success('ID da Loja salvo com sucesso!');
+    } catch (error) {
+      console.error('Error saving lojaId:', error);
+      toast.error('Erro ao salvar ID da Loja.');
+    } finally {
+      setIsSavingLojaId(false);
+    }
+  };
+
+  const displayRedirectUri = appUrlConfig 
+    ? `${appUrlConfig}/api/bling/callback`
+    : typeof window !== 'undefined' 
+      ? `${window.location.origin}/api/bling/callback` 
+      : 'https://.../api/bling/callback';
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
@@ -288,12 +322,12 @@ function SettingsContent() {
                       
                       <div className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
                         <code className="text-[10px] font-mono text-primary break-all flex-1">
-                          {redirectUri}
+                          {displayRedirectUri}
                         </code>
                         <button 
                           onClick={() => {
-                            navigator.clipboard.writeText(redirectUri);
-                            alert('URL copiada!');
+                            navigator.clipboard.writeText(displayRedirectUri);
+                            toast.success('URL copiada!');
                           }}
                           className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
                         >
@@ -325,6 +359,35 @@ function SettingsContent() {
                       </div>
                       <p className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg border border-blue-100 dark:border-blue-900/30">
                         Dica: Certifique-se de que não há espaços em branco no início ou fim das chaves.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <span className="flex items-center justify-center size-5 rounded-full bg-primary text-white text-[10px]">3</span>
+                      ID da Loja (Bling API)
+                    </h3>
+                    <div className="text-xs text-slate-600 dark:text-slate-400 space-y-3">
+                      <p>Insira o ID da Loja gerado na Central de Extensões do Bling para vincular seus pedidos.</p>
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          value={lojaId}
+                          onChange={(e) => setLojaId(e.target.value)}
+                          placeholder="Ex: 12345678"
+                          className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-primary/20 outline-none"
+                        />
+                        <button 
+                          onClick={handleSaveLojaId}
+                          disabled={isSavingLojaId}
+                          className="px-4 py-2 bg-primary text-white rounded-lg text-[10px] font-bold hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2"
+                        >
+                          {isSavingLojaId ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
+                          Salvar
+                        </button>
+                      </div>
+                      <p className="text-[9px] text-slate-400 italic">
+                        Dica: Central de Extensões &gt; Vendas Presenciais &gt; Filial e Loja Física.
                       </p>
                     </div>
                   </div>
@@ -627,6 +690,8 @@ function SettingsContent() {
                 </div>
               </div>
             </section>
+
+            <ShippingTest />
 
           </div>
         </div>

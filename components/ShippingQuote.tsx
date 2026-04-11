@@ -52,7 +52,9 @@ export default function ShippingQuote({ order, onSelectOption, onClose }: Shippi
         body: JSON.stringify({
           destinationCep,
           weight: totalWeight,
-          boxDimensions: order.boxDimensions || { width: 20, height: 15, length: 25 }
+          boxDimensions: order.boxDimensions || { width: 20, height: 15, length: 25 },
+          originType: order.originType,
+          insuranceValue: order.insuranceValue || order.invoiceValue
         })
       });
 
@@ -68,7 +70,7 @@ export default function ShippingQuote({ order, onSelectOption, onClose }: Shippi
     } finally {
       setLoading(false);
     }
-  }, [order.address, order.products, order.boxDimensions]);
+  }, [order.address, order.products, order.boxDimensions, order.insuranceValue, order.invoiceValue, order.originType]);
 
   useEffect(() => {
     fetchQuotes();

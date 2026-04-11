@@ -24,11 +24,29 @@ const COLUMNS: { id: OrderStatus; title: string }[] = [
 
 export default function ProducaoPage() {
   const { orders, setOrders, handleOrderCreated, handleUpdateOrder, handleDeleteOrder, handleArchiveOrder, isLoaded } = useOrders();
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Legacy data migration: Ensure all orders have a statusHistory
+  useEffect(() => {
+    if (isLoaded && orders.length > 0) {
+      const ordersToUpdate = orders.filter(o => !o.statusHistory || o.statusHistory.length === 0);
+      if (ordersToUpdate.length > 0) {
+        console.log(`Migrating ${ordersToUpdate.length} orders to include statusHistory`);
+        ordersToUpdate.forEach(order => {
+          handleUpdateOrder({
+            ...order,
+            statusHistory: [{
+              status: order.status,
+              timestamp: order.createdAt || new Date().toISOString()
+            }]
+          });
+        });
+      }
+    }
+  }, [isLoaded, orders, handleUpdateOrder]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -93,14 +111,13 @@ export default function ProducaoPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
-      <Sidebar onNewOrder={() => setIsFormOpen(true)} />
+      <Sidebar />
       
       <main className="flex-1 flex flex-col overflow-hidden">
         <Header 
           title="Fluxo de Produção" 
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onNewOrder={() => setIsFormOpen(true)} 
           onImportWhatsApp={() => setIsImportOpen(true)}
         />
         
@@ -116,17 +133,11 @@ export default function ProducaoPage() {
         </div>
       </main>
 
-      {isFormOpen && (
-        <OrderForm 
-          onOrderCreated={handleOrderCreated}
-          onClose={() => setIsFormOpen(false)}
-        />
-      )}
-
       {isImportOpen && (
         <WhatsAppImportModal 
           onOrdersImported={handleOrdersImported}
           onClose={() => setIsImportOpen(false)}
+          existingOrders={orders}
         />
       )}
     </div>

@@ -124,6 +124,8 @@ export default function OrderForm({ onOrderCreated, onClose }: OrderFormProps) {
             zip: rawOrderData.cep || ''
           },
           isSample: rawOrderData.isSample || false,
+          paymentCondition: rawOrderData.paymentCondition || 'A vista',
+          observations: rawOrderData.observations || '',
           products: rawOrderData.products.map((p: any) => ({
             ...p,
             id: p.id || Math.random().toString(36).substring(2, 9),

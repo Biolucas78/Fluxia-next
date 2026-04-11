@@ -67,13 +67,16 @@ service cloud.firestore {
     }
 
     match /product_mapping/{mappingId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       
       function isValidMapping(data) {
-        return data.appName is string && data.appName.size() > 0 &&
-               data.appWeight is string && data.appWeight.size() > 0 &&
-               data.appGrind is string && data.appGrind.size() > 0 &&
-               data.blingSku is string && data.blingSku.size() > 0;
+        return data.appName is string && data.appName.size() > 0 && data.appName.size() < 100 &&
+               data.appWeight is string && data.appWeight.size() > 0 && data.appWeight.size() < 50 &&
+               data.appGrind is string && data.appGrind.size() > 0 && data.appGrind.size() < 50 &&
+               data.blingSku is string && data.blingSku.size() > 0 && data.blingSku.size() < 50 &&
+               (!('blingId' in data) || data.blingId is string) &&
+               (!('blingName' in data) || data.blingName is string) &&
+               (!('createdAt' in data) || data.createdAt is string);
       }
 
       allow create, update: if isAuthenticated() && (isValidMapping(request.resource.data) || isAdmin());
@@ -81,11 +84,13 @@ service cloud.firestore {
     }
 
     match /bling_config/{configId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /bling_customers/{customerId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
   }
 }

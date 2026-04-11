@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const pagina = searchParams.get('pagina') || '1';
+  const limite = searchParams.get('limite') || '100';
+
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Missing or invalid Authorization header' }, { status: 401 });
@@ -10,7 +14,7 @@ export async function GET(request: Request) {
   const token = authHeader.split(' ')[1];
 
   try {
-    const response = await fetch('https://api.bling.com.br/Api/v3/produtos', {
+    const response = await fetch(`https://api.bling.com.br/Api/v3/produtos?pagina=${pagina}&limite=${limite}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json'

@@ -14,9 +14,10 @@ import CustomerSearchForm from './CustomerSearchForm';
 interface WhatsAppImportModalProps {
   onOrdersImported: (orders: Order[]) => void;
   onClose: () => void;
+  existingOrders?: Order[];
 }
 
-export default function WhatsAppImportModal({ onOrdersImported, onClose }: WhatsAppImportModalProps) {
+export default function WhatsAppImportModal({ onOrdersImported, onClose, existingOrders = [] }: WhatsAppImportModalProps) {
   const [text, setText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [parsedOrders, setParsedOrders] = useState<any[] | null>(null);
@@ -58,8 +59,10 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
       const token = await getValidBlingToken();
       
       // Save new customers to DB if requested
-      for (let i = 0; i < parsedOrders.length; i++) {
-        const po = parsedOrders[i];
+      const updatedParsedOrders = [...parsedOrders];
+      
+      for (let i = 0; i < updatedParsedOrders.length; i++) {
+        const po = updatedParsedOrders[i];
         const cd = po.customerData;
         
         // Se o usuário confirmou um cliente (seja novo ou da base)
@@ -111,7 +114,13 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
                   updatedAt: Date.now()
                 }, { merge: true });
                 // Update po.customerData with the new ID
-                po.customerData.id = String(result.data.id);
+                updatedParsedOrders[i] = {
+                  ...po,
+                  customerData: {
+                    ...cd,
+                    id: String(result.data.id)
+                  }
+                };
               }
             } catch (err) {
               console.error(`Erro ao salvar cliente ${cd.nome}:`, err);
@@ -120,11 +129,12 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
         }
       }
 
-      const newOrders: Order[] = parsedOrders.map(po => {
+      const newOrders: Order[] = updatedParsedOrders.map(po => {
         const cd = po.customerData;
         return {
           id: Math.random().toString(36).substr(2, 9),
           clientName: cd?.nome || po.clientName,
+          tradeName: cd?.fantasia || '',
           cnpj: cd?.tipo === 'J' ? cd.numeroDocumento : '',
           cpf: cd?.tipo === 'F' ? cd.numeroDocumento : '',
           phone: cd?.celular || po.phone,
@@ -148,6 +158,10 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
           hasBoleto: false,
           hasOrderDocument: false,
           createdAt: new Date().toISOString(),
+          statusHistory: [{
+            status: 'pedidos' as OrderStatus,
+            timestamp: new Date().toISOString()
+          }],
           products: po.products.map((p: any) => ({
             id: Math.random().toString(36).substr(2, 9),
             quantity: p.quantity,
@@ -191,6 +205,25 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose }: Whats
             <X className="size-5 text-slate-400" />
           </button>
         </div>
+
+        {existingOrders.length > 0 && (
+          <div className="px-6 py-3 bg-primary/5 border-b border-primary/10 flex items-center gap-3">
+            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="size-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black text-primary uppercase tracking-widest leading-none mb-1">Último Pedido Importado</p>
+              <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">
+                {(() => {
+                  const lastOrder = [...existingOrders].sort((a, b) => 
+                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                  )[0];
+                  return `${lastOrder.tradeName || lastOrder.clientName} • ${new Date(lastOrder.createdAt).toLocaleString('pt-BR')}`;
+                })()}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
           {!parsedOrders ? (
@@ -261,9 +294,12 @@ Maria Oliveira: 5 pacotes Catuaí em grãos 500g"
                       <CustomerSearchForm 
                         initialData={order}
                         onConfirm={(customerData) => {
-                          const updated = [...parsedOrders];
-                          updated[idx] = { ...updated[idx], customerData };
-                          setParsedOrders(updated);
+                          setParsedOrders(prev => {
+                            if (!prev) return prev;
+                            const updated = [...prev];
+                            updated[idx] = { ...updated[idx], customerData };
+                            return updated;
+                          });
                         }}
                       />
                     </div>

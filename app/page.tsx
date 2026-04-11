@@ -14,7 +14,6 @@ import { Loader2 } from 'lucide-react';
 
 export default function Home() {
   const { orders, stats, handleOrderCreated, handleUpdateOrder, isLoaded } = useOrders();
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -61,12 +60,11 @@ export default function Home() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
-      <Sidebar onNewOrder={() => setIsFormOpen(true)} />
+      <Sidebar />
       
       <main className="flex-1 flex flex-col overflow-hidden">
         <Header 
           title="Dashboard de Produção" 
-          onNewOrder={() => setIsFormOpen(true)} 
           onSeedOrder={handleSeedOrder}
         />
         
@@ -79,13 +77,6 @@ export default function Home() {
           />
         </div>
       </main>
-
-      {isFormOpen && (
-        <OrderForm 
-          onOrderCreated={handleOrderCreated}
-          onClose={() => setIsFormOpen(false)}
-        />
-      )}
     </div>
   );
 }

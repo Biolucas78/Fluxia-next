@@ -7,12 +7,11 @@ interface HeaderProps {
   title: string;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
-  onNewOrder?: () => void;
   onImportWhatsApp?: () => void;
   onSeedOrder?: () => void;
 }
 
-export default function Header({ title, searchQuery, onSearchChange, onNewOrder, onImportWhatsApp, onSeedOrder }: HeaderProps) {
+export default function Header({ title, searchQuery, onSearchChange, onImportWhatsApp, onSeedOrder }: HeaderProps) {
   return (
     <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 shrink-0">
       <div className="flex items-center gap-4">
@@ -56,14 +55,6 @@ export default function Header({ title, searchQuery, onSearchChange, onNewOrder,
               className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
             >
               <Plus className="size-4" /> Testar Frete
-            </button>
-          )}
-          {onNewOrder && (
-            <button 
-              onClick={onNewOrder}
-              className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-primary/20"
-            >
-              <Plus className="size-4" /> Novo Pedido
             </button>
           )}
         </div>

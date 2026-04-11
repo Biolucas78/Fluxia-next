@@ -1,4 +1,5 @@
 import { Order, ProductItem, OrderStatus } from './types';
+import { KNOWN_SKUS } from './skus';
 
 function parseAddress(addressString: string) {
   // Simple regex-based parser
@@ -38,13 +39,23 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
   const qtyDecorators = ['pacotes', 'pacote', 'unidades', 'unidade', 'un', 'cx', 'caixas', 'caixa'];
   const genericKeywords = ['Café', 'Cafe', 'de'];
   const addressKeywords = ['rua', 'av', 'avenida', 'cep', 'bairro', 'nº', 'número', 'apto', 'bloco', 'casa'];
+  const paymentKeywords = ['A vista', '15 dias', '21 dias', '30 dias', '2x'];
   
   let phone = '';
   let email = '';
+  let paymentCondition: 'A vista' | '15 dias' | '21 dias' | '30 dias' | '2x' = 'A vista';
 
   for (let i = 1; i < lines.length; i++) {
     let line = lines[i].replace(/^-/, '').trim(); // Remove leading dash
     
+    // Check for payment condition
+    for (const condition of paymentKeywords) {
+      if (line.toLowerCase().includes(condition.toLowerCase())) {
+        paymentCondition = condition as any;
+        break;
+      }
+    }
+
     // Check if it's a CNPJ/CPF (11 or 14 digits)
     const cleanDigits = line.replace(/\D/g, '');
     if ((cleanDigits.length === 11 || cleanDigits.length === 14) && /^\d+$/.test(cleanDigits)) {
@@ -68,6 +79,15 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
       continue;
     }
 
+    // Check for known SKUs
+    let foundSku: string | undefined;
+    for (const sku of KNOWN_SKUS) {
+      if (line.includes(sku)) {
+        foundSku = sku;
+        break;
+      }
+    }
+
     // Identify if a line is likely a product
     const qtyMatch = line.match(/^(\d+)/) || line.match(/(\d+)\s*(?:pacotes?|unidades?|un|cx|caixas?)/i);
     const hasQty = !!qtyMatch;
@@ -75,15 +95,18 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
     const hasKeyword = new RegExp(`\\b(${productKeywords.concat(genericKeywords).join('|')})\\b`, 'i').test(line);
     const hasGrind = new RegExp(`\\b(${grindKeywords.join('|')})\\b`, 'i').test(line);
 
-    const isProduct = (hasQty && (hasWeight || hasKeyword || hasGrind)) || (hasKeyword && (hasWeight || hasGrind));
+    const isProduct = foundSku || (hasQty && (hasWeight || hasKeyword || hasGrind)) || (hasKeyword && (hasWeight || hasGrind));
 
     if (isProduct) {
-      // ... (rest of product parsing remains the same)
       const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
       
       let remaining = line;
       if (qtyMatch) {
         remaining = line.replace(qtyMatch[0], '').trim();
+      }
+      
+      if (foundSku) {
+        remaining = remaining.replace(foundSku, '').trim();
       }
 
       for (const dec of qtyDecorators) {
@@ -120,7 +143,7 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
             name = firstWordMatch[1];
             remaining = remaining.replace(firstWordMatch[0], '').trim();
           } else {
-            name = 'Especial';
+            name = foundSku ? `Produto ${foundSku}` : 'Especial';
           }
         }
       }
@@ -133,7 +156,7 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
       }
 
       name = name.replace(/Café|Cafe/gi, '').trim();
-      if (!name) name = 'Especial';
+      if (!name) name = foundSku ? `Produto ${foundSku}` : 'Especial';
 
       if (name.toLowerCase() === 'dripcoffee') {
         weight = '100g';
@@ -150,6 +173,7 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
         grindType: grind,
         productionNotes: notes,
         checked: false,
+        blingSku: foundSku
       });
       continue;
     }
@@ -172,12 +196,39 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
     address: address,
     addressDetails: parseAddress(address),
     observations: observationsParts.join('\n'),
+    paymentCondition,
     products,
     status: 'pedidos' as OrderStatus,
     hasInvoice: false,
     hasBoleto: false,
     createdAt: new Date().toISOString(),
   };
+}
+
+export function extractCityState(address: string) {
+  if (!address) return { city: 'N/A', state: 'N/A' };
+  
+  // Try to match "City - UF" or "City, UF" or "City - State"
+  // Common format: "Rua ..., Bairro, Cidade - UF, CEP"
+  const parts = address.split(',').map(p => p.trim());
+  
+  // Look for the part that contains the state (usually 2 uppercase letters after a dash or space)
+  const stateMatch = address.match(/,\s*([^,]+)\s*-\s*([A-Z]{2})/);
+  if (stateMatch) {
+    return { city: stateMatch[1].trim(), state: stateMatch[2].trim() };
+  }
+
+  // Fallback: try to find the last part before CEP
+  const cepIndex = parts.findIndex(p => /\d{5}-\d{3}/.test(p));
+  if (cepIndex > 0) {
+    const cityStatePart = parts[cepIndex - 1];
+    const cityStateMatch = cityStatePart.match(/(.+)\s*-\s*([A-Z]{2})/);
+    if (cityStateMatch) {
+      return { city: cityStateMatch[1].trim(), state: cityStateMatch[2].trim() };
+    }
+  }
+
+  return { city: 'N/A', state: 'N/A' };
 }
 
 export function calculateWeightInKg(weightStr: string, quantity: number): number {

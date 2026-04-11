@@ -173,7 +173,7 @@ function DeclarationContent() {
     address: "AV. PREFEITO DILERMANDO OLIVEIRA, 876, LOJA, CENTRO, CONCEICAO DO RIO VERDE - MG, 37430-000"
   };
 
-  const insuranceValue = parseFloat(order.insuranceValue || '50.00');
+  const insuranceValue = parseFloat(order.insuranceValue || (order.invoiceValue ? String(order.invoiceValue) : '50.00'));
   const totalValue = insuranceValue;
 
   const isThermal = format === '10x15';
@@ -183,7 +183,7 @@ function DeclarationContent() {
     ? `${order.addressDetails.street}, ${order.addressDetails.number}${order.addressDetails.complement ? ', ' + order.addressDetails.complement : ''}, ${order.addressDetails.district}, ${order.addressDetails.city} - ${order.addressDetails.state}, ${order.addressDetails.zip}`
     : order.address;
 
-  const totalWeight = order.boxWeight || order.products.reduce((acc, p) => {
+  const totalWeight = (order.boxWeight ? order.boxWeight / 1000 : 0) || order.products.reduce((acc, p) => {
     const w = p.weight.toLowerCase();
     const val = parseFloat(w.replace(/[^\d.]/g, '')) || 0;
     const factor = w.includes('kg') ? 1 : 0.001;

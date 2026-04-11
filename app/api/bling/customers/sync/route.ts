@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const page = parseInt(searchParams.get('page') || '1', 10);
 
     console.log(`[Bling Sync API] Buscando página ${page}...`);
-    const url = `https://api.bling.com.br/Api/v3/contatos?limite=100&pagina=${page}`;
+    const url = `https://api.bling.com.br/v3/contatos?limite=100&pagina=${page}`;
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
     });

@@ -8,11 +8,14 @@ export interface ProductItem {
   grindType: 'moído' | 'grãos' | 'N/A';
   productionNotes?: string;
   checked: boolean;
+  blingSku?: string;
+  blingId?: number;
 }
 
 export interface Order {
   id: string;
   clientName: string;
+  tradeName?: string;
   cnpj?: string;
   cpf?: string;
   phone?: string;
@@ -33,7 +36,10 @@ export interface Order {
   products: ProductItem[];
   status: OrderStatus;
   carrier?: string;
+  shippingProvider?: 'melhorenvio' | 'correios' | 'superfrete';
+  shipmentId?: string; // UUID do Melhor Envio
   trackingNumber?: string;
+  blingOrderId?: number;
   hasInvoice: boolean;
   hasBoleto: boolean;
   hasOrderDocument: boolean;
@@ -51,8 +57,11 @@ export interface Order {
   };
   boxWeight?: number;
   observations?: string;
+  paymentCondition?: 'A vista' | '15 dias' | '21 dias' | '30 dias' | '2x';
   insuranceValue?: string;
   invoiceKey?: string;
+  invoiceNumber?: string;
+  invoiceValue?: number;
   productDescription?: string;
   trackingStatus?: string;
   trackingHistory?: {
@@ -63,6 +72,10 @@ export interface Order {
   }[];
   deliveryDate?: string;
   lastTrackingUpdate?: string;
+  statusHistory?: {
+    status: OrderStatus;
+    timestamp: string;
+  }[];
 }
 
 export interface ShippingOption {

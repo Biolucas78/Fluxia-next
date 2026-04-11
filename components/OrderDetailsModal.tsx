@@ -13,6 +13,7 @@ import {
   Package, 
   FileText, 
   Receipt,
+  History,
   ChevronRight,
   ChevronLeft,
   ChevronDown,
@@ -31,7 +32,8 @@ import {
   Printer,
   ExternalLink,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProductItem, ShippingOption } from '@/lib/types';
@@ -57,7 +59,16 @@ const COLUMNS: { id: OrderStatus; title: string; color: string; textColor: strin
   { id: 'entregue', title: 'Entregue', color: 'bg-emerald-500', textColor: 'text-white' },
 ];
 
-const CARRIERS = ['Correio', 'Total', 'Braspress', 'MelhorEnvio', 'Lalamove'];
+const CARRIERS = ['Correio', 'Braspress', 'MelhorEnvio', 'Lalamove'];
+
+const STATUS_INSTRUCTIONS: Record<OrderStatus, string> = {
+  pedidos: 'Separar as embalagens para produção',
+  embalagens_separadas: 'Produzir as embalagens separadas',
+  embalagens_prontas: 'Montar as caixas com produtos, nota fiscal, boleto e etiqueta de envio',
+  caixa_montada: 'Enviar ou entregar ao cliente',
+  enviado: 'Monitorar a entrega',
+  entregue: 'Fluxo finalizado',
+};
 
 export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArchiveOrder, hasNextOrder, onAdvanceAndNext }: OrderDetailsModalProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -78,13 +89,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [editedCustomer, setEditedCustomer] = useState({
     clientName: order.clientName,
+    tradeName: order.tradeName || '',
     cnpj: order.cnpj || '',
     cpf: order.cpf || '',
     phone: order.phone || ''
   });
   const [isEditingObservations, setIsEditingObservations] = useState(false);
   const [editedObservations, setEditedObservations] = useState(order.observations || '');
-  const [originType, setOriginType] = useState(order.originType || 'BH');
+  const [paymentCondition, setPaymentCondition] = useState(order.paymentCondition || 'A vista');
+  const [originType, setOriginType] = useState(order.originType || 'CRV');
   const [isSyncingTracking, setIsSyncingTracking] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
@@ -95,6 +108,11 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [selectedQuote, setSelectedQuote] = useState<ShippingOption | null>(order.selectedShippingOption || null);
   const [isSearchingBling, setIsSearchingBling] = useState(false);
   const [isCreatingBlingOrder, setIsCreatingBlingOrder] = useState(false);
+  const [isCheckingInvoice, setIsCheckingInvoice] = useState(false);
+  const [isEditingInvoiceManually, setIsEditingInvoiceManually] = useState(false);
+  const [manualInvoiceKey, setManualInvoiceKey] = useState(order.invoiceKey || '');
+  const [manualInvoiceNumber, setManualInvoiceNumber] = useState(order.invoiceNumber || '');
+  const [manualInvoiceValue, setManualInvoiceValue] = useState<number | ''>(order.invoiceValue || '');
   const [blingSearchResults, setBlingSearchResults] = useState<any[]>([]);
   const [showBlingResults, setShowBlingResults] = useState(false);
 
@@ -129,6 +147,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
 
     setEditedCustomer({
       clientName,
+      tradeName: blingCustomer.fantasia || '',
       cnpj: blingCustomer.tipo === 'J' ? blingCustomer.numeroDocumento : '',
       cpf: blingCustomer.tipo === 'F' ? blingCustomer.numeroDocumento : '',
       phone: blingCustomer.celular || blingCustomer.telefone || ''
@@ -155,35 +174,93 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     setIsCreatingBlingOrder(true);
     
     try {
-      const { getValidBlingToken } = await import('@/lib/bling-client');
-      const token = await getValidBlingToken();
-      
+      console.log('[Bling] Iniciando criação de pedido para:', order.clientName);
+      console.log('[Bling] Dados do pedido:', JSON.stringify(order, null, 2));
+
       const response = await fetch('/api/bling/create-order', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(order)
       });
       
+      const data = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao criar pedido no Bling');
+        console.error('[Bling] Erro retornado pela API:', data);
+        const errorMessage = data.error || 'Erro ao criar pedido no Bling';
+        const details = data.details ? `\nDetalhes: ${JSON.stringify(data.details)}` : '';
+        throw new Error(`${errorMessage}${details}`);
       }
       
       toast.success('Pedido criado no Bling com sucesso!');
-      onUpdateOrder({ ...order, hasOrderDocument: true }); // Mark as having order doc
+      
+      // Update order with blingOrderId if returned
+      const updatedOrder = { 
+        ...order, 
+        hasOrderDocument: true 
+      };
+      if (data.blingOrderId) {
+        updatedOrder.blingOrderId = data.blingOrderId;
+      }
+      onUpdateOrder(updatedOrder);
     } catch (error: any) {
       console.error('[Bling] Erro ao criar pedido:', error);
-      toast.error(`Erro ao criar pedido no Bling: ${error.message}`);
+      toast.error(`Erro ao criar pedido no Bling: ${error.message}`, {
+        duration: 8000 // Show for longer to allow reading details
+      });
     } finally {
       setIsCreatingBlingOrder(false);
     }
   };
 
+  const handleCheckInvoice = async () => {
+    if (isCheckingInvoice) return;
+
+    setIsCheckingInvoice(true);
+    try {
+      const response = await fetch('/api/bling/get-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          blingOrderId: order.blingOrderId,
+          clientName: order.clientName,
+          document: order.cnpj || order.cpf
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erro ao buscar nota fiscal.');
+      }
+
+      const data = await response.json();
+      if (data.found) {
+        onUpdateOrder({ 
+          ...order, 
+          hasInvoice: true, 
+          invoiceKey: data.invoiceKey,
+          invoiceNumber: data.invoiceNumber,
+          invoiceValue: data.invoiceValue
+        });
+        setManualInvoiceKey(data.invoiceKey || '');
+        setManualInvoiceNumber(data.invoiceNumber || '');
+        setManualInvoiceValue(data.invoiceValue || '');
+        toast.success('Nota fiscal encontrada e vinculada!');
+      } else {
+        toast(data.message || 'Nenhuma nota fiscal encontrada para este pedido no Bling.');
+      }
+    } catch (error: any) {
+      console.error('Erro ao buscar nota fiscal:', error);
+      toast.error(error.message || 'Erro ao buscar nota fiscal');
+    } finally {
+      setIsCheckingInvoice(false);
+    }
+  };
+
   const handleSyncTracking = async () => {
-    if (!order.trackingNumber) return;
+    if (!order.trackingNumber && !order.shipmentId) return;
     setIsSyncingTracking(true);
     try {
       const response = await fetch('/api/shipping/track', {
@@ -191,12 +268,37 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           trackingNumber: order.trackingNumber,
+          shipmentId: order.shipmentId,
+          shippingProvider: order.shippingProvider,
           carrier: order.carrier
         })
       });
 
       if (response.ok) {
         const data = await response.json();
+        
+        if (data.error) {
+          if (data.directLink) {
+            toast.error(
+              <div className="flex flex-col gap-2">
+                <p>{data.error}</p>
+                <a 
+                  href={data.directLink} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-white underline font-bold"
+                >
+                  Clique aqui para rastrear no LinkCorreios
+                </a>
+              </div>,
+              { duration: 6000 }
+            );
+          } else {
+            toast.error(data.error);
+          }
+          return;
+        }
+
         const updatedOrder = {
           ...order,
           trackingStatus: data.status,
@@ -211,9 +313,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         }
 
         onUpdateOrder(updatedOrder);
+        toast.success('Rastreio sincronizado com sucesso!');
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Rastreio não encontrado ou indisponível no momento.');
       }
     } catch (error) {
       console.error('Error syncing tracking:', error);
+      toast.error('Erro de conexão ao sincronizar rastreio.');
     } finally {
       setIsSyncingTracking(false);
     }
@@ -222,14 +329,52 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   React.useEffect(() => {
     setEditedAddress(order.address || '');
     setEditedObservations(order.observations || '');
-  }, [order.address, order.observations]);
+    setManualInvoiceKey(order.invoiceKey || '');
+    setManualInvoiceNumber(order.invoiceNumber || '');
+    
+    // Auto-check invoice when entering "embalagens_prontas"
+    if (order.status === 'embalagens_prontas' && order.blingOrderId && !order.hasInvoice && !order.hasOrderDocument) {
+      handleCheckInvoice();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.address, order.observations, order.status]);
 
   const totalWeightG = useMemo(() => {
     return order.products.reduce((acc, p) => {
-      const w = parseFloat(p.weight);
+      const w = parseFloat(p.weight) || 0;
       if (p.weight.toLowerCase().includes('kg')) return acc + w * 1000 * p.quantity;
       return acc + w * p.quantity;
     }, 0);
+  }, [order.products]);
+
+  const suggestedBox = useMemo(() => {
+    const totalUnits = order.products.reduce((acc, p) => {
+      const name = p.name.toLowerCase();
+      const weight = p.weight.toLowerCase();
+      
+      let units = 1; // Default 250g
+      if (weight.includes('120g')) units = 0.5;
+      else if (weight.includes('500g')) units = 1.5;
+      else if (weight.includes('1kg') || weight.includes('1000g')) units = 3.5;
+      else if (name.includes('drip')) units = 0.6;
+      
+      return acc + (units * p.quantity);
+    }, 0);
+
+    // Boxes provided by user (H x W x L)
+    const boxes = [
+      { h: 11, w: 16, l: 25, cap: 3 },
+      { h: 12, w: 21, l: 28, cap: 8 },
+      { h: 13, w: 22, l: 28, cap: 10 },
+      { h: 16, w: 26, l: 30, cap: 12 },
+      { h: 23, w: 28, l: 35, cap: 20 },
+      { h: 21, w: 26, l: 40, cap: 24 },
+      { h: 23, w: 23, l: 50, cap: 35 },
+      { h: 31, w: 31, l: 42, cap: 40 },
+      { h: 30, w: 40, l: 50, cap: 55 },
+    ].sort((a, b) => a.cap - b.cap);
+
+    return boxes.find(b => b.cap >= totalUnits) || boxes[boxes.length - 1];
   }, [order.products]);
 
   const getCarrierColor = (carrier: string) => {
@@ -336,7 +481,11 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     const updatedOrder = {
       ...order,
       status: newStatus,
-      products: updatedProducts
+      products: updatedProducts,
+      statusHistory: [
+        ...(order.statusHistory || []),
+        { status: newStatus, timestamp: new Date().toISOString() }
+      ]
     };
 
     if (callback) {
@@ -391,9 +540,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       }
 
       const totalWeightG = targetOrder.boxWeight 
-        ? targetOrder.boxWeight * 1000 
+        ? targetOrder.boxWeight 
         : targetOrder.products.reduce((acc, p) => {
-            const w = parseFloat(p.weight);
+            const w = parseFloat(p.weight) || 0;
             if (p.weight.toLowerCase().includes('kg')) return acc + w * 1000 * p.quantity;
             return acc + w * p.quantity;
           }, 0);
@@ -406,7 +555,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           weight: totalWeightG,
           products: targetOrder.products,
           boxDimensions: targetOrder.boxDimensions,
-          originType: originType // Use local state
+          originType: originType, // Use local state
+          insuranceValue: targetOrder.insuranceValue || targetOrder.invoiceValue
         })
       });
 
@@ -456,6 +606,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         onUpdateOrder({ 
           ...order, 
           trackingNumber: data.trackingNumber,
+          shipmentId: data.shipmentId,
+          shippingProvider: data.shippingProvider,
           carrier: data.provider === 'Manual' ? order.carrier : data.provider
         });
         
@@ -514,7 +666,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
             <div className="flex-1">
               <div className="flex items-center gap-4 mb-1">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  {order.clientName}
+                  {order.tradeName || order.clientName}
                   {order.isSample && (
                     <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-tighter border border-amber-200 dark:border-amber-800/50">
                       Amostra
@@ -526,9 +678,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                   {COLUMNS.find(c => c.id === order.status)?.title}
                 </div>
               </div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                Pedido #{order.id.toUpperCase()}
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+                  Pedido #{order.id.toUpperCase()}
+                </p>
+                <div className="h-3 w-px bg-slate-200 dark:bg-slate-700" />
+                <p className="text-[10px] font-bold text-primary uppercase tracking-wider">
+                  {STATUS_INSTRUCTIONS[order.status]}
+                </p>
+              </div>
             </div>
           </div>
           <button 
@@ -577,6 +735,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           onUpdateOrder({ 
                             ...order, 
                             clientName: editedCustomer.clientName,
+                            tradeName: editedCustomer.tradeName,
                             cnpj: editedCustomer.cnpj,
                             cpf: editedCustomer.cpf,
                             phone: editedCustomer.phone,
@@ -596,7 +755,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     <div className="space-y-3">
                       <div>
                         <div className="flex justify-between items-center mb-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block">Nome</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block">
+                            Nome <span className="text-red-500">*</span>
+                          </label>
                           <button 
                             onClick={handleSearchBling}
                             disabled={isSearchingBling || !editedCustomer.clientName}
@@ -613,9 +774,22 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
                         />
                       </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                          Nome Fantasia
+                        </label>
+                        <input 
+                          type="text" 
+                          value={editedCustomer.tradeName} 
+                          onChange={e => setEditedCustomer({...editedCustomer, tradeName: e.target.value})}
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">CNPJ</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            CNPJ <span className="text-red-500">*</span>
+                          </label>
                           <input 
                             type="text" 
                             value={editedCustomer.cnpj} 
@@ -624,7 +798,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">CPF</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            CPF <span className="text-red-500">*</span>
+                          </label>
                           <input 
                             type="text" 
                             value={editedCustomer.cpf} 
@@ -634,7 +810,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Telefone</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                          Telefone <span className="text-red-500">*</span>
+                        </label>
                         <input 
                           type="text" 
                           value={editedCustomer.phone} 
@@ -649,6 +827,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         <span className="text-slate-500 font-medium">Nome:</span>
                         <span className="text-slate-900 dark:text-white font-bold">{order.clientName}</span>
                       </div>
+                      {order.tradeName && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-500 font-medium">Fantasia:</span>
+                          <span className="text-slate-900 dark:text-white font-bold">{order.tradeName}</span>
+                        </div>
+                      )}
                       {(order.cnpj || order.cpf) && (
                         <div className="flex justify-between text-sm">
                           <span className="text-slate-500 font-medium">{order.cnpj ? 'CNPJ' : 'CPF'}:</span>
@@ -721,7 +905,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       </div>
                       <div className="pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3">
                         <div className="col-span-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Logradouro</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            Logradouro <span className="text-red-500">*</span>
+                          </label>
                           <input 
                             type="text" 
                             value={editedAddressDetails.street} 
@@ -730,7 +916,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Número</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            Número <span className="text-red-500">*</span>
+                          </label>
                           <input 
                             type="text" 
                             value={editedAddressDetails.number} 
@@ -748,7 +936,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Bairro</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            Bairro <span className="text-red-500">*</span>
+                          </label>
                           <input 
                             type="text" 
                             value={editedAddressDetails.district} 
@@ -757,7 +947,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">CEP</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            CEP <span className="text-red-500">*</span>
+                          </label>
                           <input 
                             type="text" 
                             value={editedAddressDetails.zip} 
@@ -789,7 +981,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Cidade</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            Cidade <span className="text-red-500">*</span>
+                          </label>
                           <input 
                             type="text" 
                             value={editedAddressDetails.city} 
@@ -798,7 +992,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Estado</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            Estado <span className="text-red-500">*</span>
+                          </label>
                           <input 
                             type="text" 
                             value={editedAddressDetails.state} 
@@ -891,22 +1087,178 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </div>
               </section>
 
+              <section>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Receipt className="size-4" /> Condições de Pagamento
+                  </h3>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {(['A vista', '15 dias', '21 dias', '30 dias', '2x'] as const).map((condition) => (
+                    <button
+                      key={condition}
+                      onClick={() => {
+                        setPaymentCondition(condition);
+                        onUpdateOrder({ ...order, paymentCondition: condition });
+                      }}
+                      className={`px-2 py-2 rounded-xl text-[10px] font-bold border transition-all ${
+                        paymentCondition === condition
+                          ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-primary/50'
+                      }`}
+                    >
+                      {condition}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
               {order.status === 'embalagens_prontas' && (
                 <section className="space-y-6">
                   <div>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                       <FileText className="size-4" /> Documentação
                     </h3>
-                    <div className="grid grid-cols-3 gap-3">
-                      <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasInvoice ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
-                        <input 
-                          type="checkbox"
-                          checked={order.hasInvoice}
-                          onChange={() => onUpdateOrder({ ...order, hasInvoice: !order.hasInvoice })}
-                          className="rounded border-slate-300 text-primary focus:ring-primary size-4"
-                        />
-                        <span className={`text-sm font-medium ${order.hasInvoice ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Nota Fiscal</span>
-                      </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-2">
+                        <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasInvoice ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
+                          <input 
+                            type="checkbox"
+                            checked={order.hasInvoice}
+                            onChange={() => onUpdateOrder({ ...order, hasInvoice: !order.hasInvoice })}
+                            className="rounded border-slate-300 text-primary focus:ring-primary size-4"
+                          />
+                          <span className={`text-sm font-medium ${order.hasInvoice ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Nota Fiscal</span>
+                        </label>
+                        {!order.hasInvoice && (
+                          <button
+                            onClick={handleCheckInvoice}
+                            disabled={isCheckingInvoice}
+                            className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1 px-3"
+                          >
+                            {isCheckingInvoice ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+                            Buscar Nota Fiscal no Bling
+                          </button>
+                        )}
+                        {order.hasInvoice && (
+                          <div className="px-3 space-y-2">
+                            <div className="flex justify-between items-center">
+                              <p className="text-[9px] text-slate-400 font-bold uppercase">Dados da NF-e</p>
+                              <button 
+                                onClick={() => {
+                                  if (isEditingInvoiceManually) {
+                                    onUpdateOrder({
+                                      ...order,
+                                      invoiceKey: manualInvoiceKey,
+                                      invoiceNumber: manualInvoiceNumber,
+                                      invoiceValue: manualInvoiceValue === '' ? undefined : Number(manualInvoiceValue)
+                                    });
+                                  }
+                                  setIsEditingInvoiceManually(!isEditingInvoiceManually);
+                                }}
+                                className="text-[9px] font-bold text-primary hover:underline"
+                              >
+                                {isEditingInvoiceManually ? 'Salvar' : 'Editar Manual'}
+                              </button>
+                            </div>
+                            
+                            {isEditingInvoiceManually ? (
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="text-[8px] text-slate-400 uppercase">Chave de Acesso</label>
+                                  <input 
+                                    type="text"
+                                    value={manualInvoiceKey}
+                                    onChange={(e) => setManualInvoiceKey(e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[10px] outline-none focus:border-primary"
+                                    placeholder="44 dígitos"
+                                  />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-[8px] text-slate-400 uppercase">Número da Nota</label>
+                                    <input 
+                                      type="text"
+                                      value={manualInvoiceNumber}
+                                      onChange={(e) => setManualInvoiceNumber(e.target.value)}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[10px] outline-none focus:border-primary"
+                                      placeholder="Ex: 1234"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[8px] text-slate-400 uppercase">Valor da Nota (R$)</label>
+                                    <input 
+                                      type="number"
+                                      step="0.01"
+                                      value={manualInvoiceValue}
+                                      onChange={(e) => setManualInvoiceValue(e.target.value ? Number(e.target.value) : '')}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[10px] outline-none focus:border-primary"
+                                      placeholder="Ex: 150.00"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div>
+                                  <p className="text-[9px] text-slate-400 font-bold uppercase">Chave NF-e</p>
+                                  <p className="text-[10px] text-slate-600 dark:text-slate-400 font-mono break-all">{order.invoiceKey || 'Não informada'}</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {order.invoiceNumber && (
+                                    <div>
+                                      <p className="text-[9px] text-slate-400 font-bold uppercase">Número</p>
+                                      <p className="text-[10px] text-slate-600 dark:text-slate-400 font-mono">{order.invoiceNumber}</p>
+                                    </div>
+                                  )}
+                                  {order.invoiceValue && (
+                                    <div>
+                                      <p className="text-[9px] text-slate-400 font-bold uppercase">Valor</p>
+                                      <p className="text-[10px] text-slate-600 dark:text-slate-400 font-mono">
+                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.invoiceValue)}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {!order.hasInvoice && order.status === 'embalagens_prontas' && (
+                          <p className="text-[9px] text-amber-600 dark:text-amber-400 px-3 italic flex items-center gap-1">
+                            <AlertCircle className="size-3" /> NF-e não detectada.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasOrderDocument ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
+                          <input 
+                            type="checkbox"
+                            checked={order.hasOrderDocument}
+                            onChange={() => onUpdateOrder({ ...order, hasOrderDocument: !order.hasOrderDocument })}
+                            className="rounded border-slate-300 text-primary focus:ring-primary size-4"
+                          />
+                          <span className={`text-sm font-medium ${order.hasOrderDocument ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Declaração de Conteúdo</span>
+                        </label>
+                        {!order.hasInvoice && !order.hasOrderDocument && (
+                          <button
+                            onClick={() => {
+                              onUpdateOrder({ ...order, hasOrderDocument: true });
+                              toast.success('DC-e selecionada para este envio.');
+                            }}
+                            className="text-[10px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 px-3"
+                          >
+                            <FileText className="size-3" /> Emitir DC-e (Melhor Envio)
+                          </button>
+                        )}
+                        {order.hasOrderDocument && (
+                          <p className="text-[9px] text-emerald-600 dark:text-emerald-400 px-3 italic">
+                            Será gerada DC-e automática pelo Melhor Envio.
+                          </p>
+                        )}
+                      </div>
+
                       <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasBoleto ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
                         <input 
                           type="checkbox"
@@ -915,15 +1267,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           className="rounded border-slate-300 text-primary focus:ring-primary size-4"
                         />
                         <span className={`text-sm font-medium ${order.hasBoleto ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Boleto</span>
-                      </label>
-                      <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasOrderDocument ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
-                        <input 
-                          type="checkbox"
-                          checked={order.hasOrderDocument}
-                          onChange={() => onUpdateOrder({ ...order, hasOrderDocument: !order.hasOrderDocument })}
-                          className="rounded border-slate-300 text-primary focus:ring-primary size-4"
-                        />
-                        <span className={`text-sm font-medium ${order.hasOrderDocument ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Pedido</span>
                       </label>
                     </div>
                   </div>
@@ -937,8 +1280,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         <p className="text-[10px] text-slate-400 uppercase font-bold">Largura</p>
                         <input 
                           type="number"
-                          value={order.boxDimensions?.width || 15}
-                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: 15, height: 15, length: 15 }), width: parseInt(e.target.value) } })}
+                          value={order.boxDimensions?.width || suggestedBox.w}
+                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), width: parseInt(e.target.value) || 0 } })}
                           className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
                         />
                       </div>
@@ -946,8 +1289,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         <p className="text-[10px] text-slate-400 uppercase font-bold">Altura</p>
                         <input 
                           type="number"
-                          value={order.boxDimensions?.height || 15}
-                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: 15, height: 15, length: 15 }), height: parseInt(e.target.value) } })}
+                          value={order.boxDimensions?.height || suggestedBox.h}
+                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), height: parseInt(e.target.value) || 0 } })}
                           className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
                         />
                       </div>
@@ -955,8 +1298,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         <p className="text-[10px] text-slate-400 uppercase font-bold">Comprimento</p>
                         <input 
                           type="number"
-                          value={order.boxDimensions?.length || 15}
-                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: 15, height: 15, length: 15 }), length: parseInt(e.target.value) } })}
+                          value={order.boxDimensions?.length || suggestedBox.l}
+                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), length: parseInt(e.target.value) || 0 } })}
                           className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
                         />
                       </div>
@@ -965,7 +1308,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         <input 
                           type="number"
                           value={order.boxWeight || totalWeightG}
-                          onChange={(e) => onUpdateOrder({ ...order, boxWeight: parseInt(e.target.value) })}
+                          onChange={(e) => onUpdateOrder({ ...order, boxWeight: parseInt(e.target.value) || 0 })}
                           className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
                         />
                       </div>
@@ -1027,7 +1370,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               <p className="text-sm font-mono font-bold text-slate-900 dark:text-white">{order.trackingNumber}</p>
                               <a 
                                 href={order.carrier?.toLowerCase().includes('correios') 
-                                  ? `https://rastreamento.correios.com.br/app/index.php?objeto=${order.trackingNumber}`
+                                  ? `https://linkcorreios.com.br/${order.trackingNumber}`
                                   : `https://www.linkcorreios.com.br/?id=${order.trackingNumber}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
@@ -1106,8 +1449,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               onChange={(e) => setOriginType(e.target.value as 'BH' | 'CRV')}
                               className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
                             >
-                              <option value="BH">Remetente BH</option>
                               <option value="CRV">Remetente CRV</option>
+                              <option value="BH">Remetente BH</option>
                             </select>
                           </div>
                           <div className="space-y-2">
@@ -1265,6 +1608,29 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       </p>
                     </div>
                   )}
+                </section>
+              )}
+
+              {order.statusHistory && order.statusHistory.length > 0 && (
+                <section className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <History className="size-4" /> Histórico de Status
+                  </h3>
+                  <div className="space-y-3">
+                    {order.statusHistory.map((entry, idx) => (
+                      <div key={idx} className="flex items-start gap-3">
+                        <div className="mt-1.5 size-1.5 rounded-full bg-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                            {COLUMNS.find(c => c.id === entry.status)?.title || entry.status}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            {new Date(entry.timestamp).toLocaleString('pt-BR')}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </section>
               )}
             </div>

@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   console.log('--- STATUS ROUTE HIT ---');
+  const appUrl = process.env.APP_URL?.replace(/\/$/, '');
   
   try {
     const authHeader = request.headers.get('Authorization');
@@ -11,7 +12,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ 
         status: 'error', 
         message: 'Token não fornecido no cabeçalho de autorização.',
-        authenticated: false
+        authenticated: false,
+        appUrl
       });
     }
 
@@ -33,7 +35,8 @@ export async function GET(request: Request) {
       tokenStatus: testResponse.ok ? 'valid' : 'invalid',
       blingApiStatus: testResponse.status,
       blingApiResponse: testData,
-      message: testResponse.ok ? 'Conexão com Bling estabelecida com sucesso!' : 'Erro na resposta da API do Bling.'
+      message: testResponse.ok ? 'Conexão com Bling estabelecida com sucesso!' : 'Erro na resposta da API do Bling.',
+      appUrl
     });
 
   } catch (error: any) {
