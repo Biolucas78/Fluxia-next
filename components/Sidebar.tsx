@@ -6,7 +6,11 @@ import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package } from '
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-export default function Sidebar() {
+interface SidebarProps {
+  onNewOrder?: () => void;
+}
+
+export default function Sidebar({ onNewOrder }: SidebarProps) {
   const pathname = usePathname();
 
   const navItems = [
