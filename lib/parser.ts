@@ -205,7 +205,7 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
   };
 }
 
-export function extractCityState(address: string) {
+export function extractCityState(address: string | undefined | null) {
   if (!address) return { city: 'N/A', state: 'N/A' };
   
   // Try to match "City - UF" or "City, UF" or "City - State"

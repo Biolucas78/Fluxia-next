@@ -181,7 +181,7 @@ export default function Dashboard({ stats, orders, onSeedOrder, onUpdateOrder }:
     const cities: Record<string, number> = {};
 
     orders.forEach(order => {
-      const { city, state } = extractCityState(order.address);
+      const { city, state } = extractCityState(order.address || '');
       if (state !== 'N/A') states[state] = (states[state] || 0) + 1;
       if (city !== 'N/A') cities[`${city} (${state})`] = (cities[`${city} (${state})`] || 0) + 1;
     });
