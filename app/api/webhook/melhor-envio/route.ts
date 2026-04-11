@@ -2,13 +2,22 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 
+export async function GET() {
+  return NextResponse.json({ 
+    status: 'ok', 
+    message: 'Melhor Envio Webhook Endpoint is active',
+    environment: process.env.NODE_ENV,
+    vercel_env: process.env.NEXT_PUBLIC_VERCEL_ENV || 'local'
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const rawBody = await req.text();
     
     // Verificação de segurança oficial do Melhor Envio
     const signatureHeader = req.headers.get('x-me-signature');
-    const appSecret = process.env.MELHOR_ENVIO_WEBHOOK_SECRET; // O "Secret" do aplicativo no painel do Melhor Envio
+    const appSecret = process.env.MELHOR_ENVIO_WEBHOOK_SECRET?.trim(); // O "Secret" do aplicativo no painel do Melhor Envio
 
     if (appSecret && signatureHeader) {
       const expectedSignature = crypto
@@ -18,8 +27,19 @@ export async function POST(req: Request) {
 
       if (signatureHeader !== expectedSignature) {
         console.warn('Webhook do Melhor Envio: Falha na autenticação (Assinatura inválida)');
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        console.log('Signature received:', signatureHeader);
+        console.log('Secret configured (first 4 chars):', appSecret.substring(0, 4) + '...');
+        console.log('Raw body length:', rawBody.length);
+        
+        return NextResponse.json({ 
+          error: 'Unauthorized', 
+          message: 'Invalid signature. Check MELHOR_ENVIO_WEBHOOK_SECRET in Vercel.',
+          received_signature: signatureHeader.substring(0, 8) + '...',
+          expected_signature_preview: expectedSignature.substring(0, 8) + '...'
+        }, { status: 401 });
       }
+    } else if (appSecret && !signatureHeader) {
+      console.log('Webhook do Melhor Envio: Secret configurado mas x-me-signature ausente. Ignorando verificação para compatibilidade com testes iniciais.');
     }
 
     const body = JSON.parse(rawBody);

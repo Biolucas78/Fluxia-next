@@ -1,19 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getValidBlingTokenServer } from '@/lib/bling-server';
-
-async function fetchWithRetry(url: string, options: any, retries = 3, backoff = 1000) {
-  for (let i = 0; i < retries; i++) {
-    const response = await fetch(url, options);
-    if (response.status === 429) {
-      const wait = backoff * Math.pow(2, i);
-      console.warn(`[Bling API] Rate limit (429) hit. Retrying in ${wait}ms...`);
-      await new Promise(resolve => setTimeout(resolve, wait));
-      continue;
-    }
-    return response;
-  }
-  return fetch(url, options); // Final attempt
-}
+import { fetchWithRetry } from '@/lib/bling-utils';
 
 export async function POST(request: Request) {
   try {

@@ -84,12 +84,12 @@ service cloud.firestore {
     }
 
     match /bling_config/{configId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isAuthenticated();
     }
 
     match /bling_customers/{customerId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isAuthenticated();
     }
   }

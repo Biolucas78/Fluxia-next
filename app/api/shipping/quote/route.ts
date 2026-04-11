@@ -398,8 +398,18 @@ export async function POST(req: Request) {
 
     // If no real providers returned quotes
     if (allOptions.length === 0) {
-      if (process.env.NODE_ENV === 'production' && (MELHOR_ENVIO_TOKEN || SUPERFRETE_TOKEN || CORREIOS_USER)) {
-        return NextResponse.json({ error: 'Nenhuma transportadora retornou cotação. Verifique suas credenciais e os dados do pedido (CEP, peso, dimensões).' }, { status: 400 });
+      const isProd = process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_VERCEL_ENV === 'production';
+      if (isProd) {
+        const missing = [];
+        if (!MELHOR_ENVIO_TOKEN) missing.push('MELHOR_ENVIO_TOKEN');
+        if (!SUPERFRETE_TOKEN) missing.push('SUPERFRETE_TOKEN');
+        if (!CORREIOS_USER) missing.push('CORREIOS_USER');
+        
+        console.error('Nenhuma transportadora retornou cotação em PRODUÇÃO. Faltando:', missing.join(', '));
+        return NextResponse.json({ 
+          error: 'Nenhuma transportadora retornou cotação.',
+          details: missing.length > 0 ? `Variáveis ausentes no Vercel: ${missing.join(', ')}` : 'Verifique se o MELHOR_ENVIO_URL está como https://www.melhorenvio.com.br para produção.'
+        }, { status: 400 });
       }
       
       console.warn('Nenhuma cotação real encontrada. Retornando mock data.');

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { adminDb, adminDbDefault } from '@/lib/firebase-admin';
+import { adminDb, adminDbDefault, projectId, databaseId } from '@/lib/firebase-admin';
 import { getValidBlingTokenServer } from '@/lib/bling-server';
+import { fetchWithRetry } from '@/lib/bling-utils';
 
 export async function POST(request: Request) {
   try {
@@ -13,6 +14,8 @@ export async function POST(request: Request) {
       console.log('[Bling API] Token not in header, attempting server-side fetch...');
       token = await getValidBlingTokenServer();
     }
+
+    console.log(`[Bling API] Using Firebase Project: ${projectId}, DB: ${databaseId}`);
 
     if (!token) {
       return NextResponse.json({ 
@@ -58,9 +61,9 @@ export async function POST(request: Request) {
       }
     } catch (adminError: any) {
       if (adminError.message.includes('PERMISSION_DENIED')) {
-        console.log('[Bling API] Admin SDK permission denied for config, will use Client SDK fallback.');
+        console.log('[Bling API] Admin SDK access restricted. Using fallbacks...');
       } else {
-        console.warn('[Bling API] Admin SDK failed to fetch config:', adminError.message);
+        console.log(`[Bling API] Admin SDK fetch info: ${adminError.message}`);
       }
     }
 
@@ -68,10 +71,19 @@ export async function POST(request: Request) {
       try {
         const { getDoc, doc } = await import('firebase/firestore');
         const { db: clientDb } = await import('@/lib/firebase');
+        // @ts-ignore - accessing internal options for debugging
+        const clientProj = clientDb.app?.options?.projectId;
+        // @ts-ignore
+        const clientDbId = clientDb.databaseId || '(default)';
+        
+        console.log(`[Bling API] Attempting Client SDK fallback. Project: ${clientProj}, DB: ${clientDbId}`);
+        
         const clientConfigSnap = await getDoc(doc(clientDb, 'bling_config', 'main'));
         if (clientConfigSnap.exists()) {
           config = clientConfigSnap.data() || {};
           console.log('[Bling API] Config fetched via Client SDK (Public Read)');
+        } else {
+          console.log('[Bling API] Config NOT FOUND via Client SDK');
         }
       } catch (clientError: any) {
         console.error('[Bling API] Client SDK also failed to fetch config:', clientError.message);
@@ -252,53 +264,32 @@ export async function POST(request: Request) {
   }
 }
 
-/**
- * Helper to fetch with retry for 429 errors
- */
-async function fetchWithRetry(url: string, options: any, retries = 5, backoff = 2000): Promise<Response> {
-  try {
-    const response = await fetch(url, options);
-    if (response.status === 429 && retries > 0) {
-      console.warn(`[Bling API] 429 Too Many Requests. Retrying in ${backoff}ms... (${retries} retries left)`);
-      await new Promise(resolve => setTimeout(resolve, backoff));
-      // Exponential backoff: 2s, 4s, 8s, 16s, 32s
-      return fetchWithRetry(url, options, retries - 1, backoff * 2);
-    }
-    return response;
-  } catch (error) {
-    if (retries > 0) {
-      console.warn(`[Bling API] Fetch error. Retrying in ${backoff}ms... (${retries} retries left)`, error);
-      await new Promise(resolve => setTimeout(resolve, backoff));
-      return fetchWithRetry(url, options, retries - 1, backoff * 2);
-    }
-    throw error;
-  }
-}
-
 async function findClient(token: string, order: any) {
   const document = (order.cnpj || order.cpf || '').replace(/\D/g, '');
-  const { db: clientDb } = await import('@/lib/firebase');
-  const { collection, query, where, getDocs, doc, setDoc } = await import('firebase/firestore');
 
   // 1. Tentar buscar no Firestore primeiro (Cache Local)
   try {
     console.log(`[Bling API] Checking local cache for client: ${order.clientName}`);
-    const customersRef = collection(clientDb, 'bling_customers');
-    let q;
-    if (document) {
-      q = query(customersRef, where('numeroDocumento', '==', document));
-    } else {
-      q = query(customersRef, where('nome', '==', order.clientName));
-    }
+    let snapshot;
     
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      const cachedClient = querySnapshot.docs[0].data();
-      console.log(`[Bling API] Client found in local cache: ${cachedClient.id}`);
-      return cachedClient.id;
+    // Try Admin DB first
+    try {
+      if (document) {
+        snapshot = await adminDb.collection('bling_customers').where('numeroDocumento', '==', document).get();
+      } else {
+        snapshot = await adminDb.collection('bling_customers').where('nome', '==', order.clientName).get();
+      }
+      
+      if (snapshot && !snapshot.empty) {
+        const cachedClient = snapshot.docs[0].data();
+        console.log(`[Bling API] Client found in local cache (Admin): ${cachedClient.id}`);
+        return cachedClient.id;
+      }
+    } catch (adminErr: any) {
+      console.log(`[Bling API] Admin cache check info: ${adminErr.message}`);
     }
-  } catch (e) {
-    console.warn('[Bling API] Error checking local cache:', e);
+  } catch (e: any) {
+    console.log(`[Bling API] Cache lookup info: ${e.message}`);
   }
 
   // 2. Se não estiver no cache, buscar no Bling
@@ -354,18 +345,34 @@ async function findClient(token: string, order: any) {
  * Helper to save client to Firestore cache
  */
 async function saveClientToCache(id: number, name: string, document: string) {
+  const data = {
+    id: id,
+    nome: name,
+    numeroDocumento: document,
+    updatedAt: Date.now()
+  };
+
   try {
-    const { db: clientDb } = await import('@/lib/firebase');
-    const { doc, setDoc } = await import('firebase/firestore');
-    await setDoc(doc(clientDb, 'bling_customers', String(id)), {
-      id: id,
-      nome: name,
-      numeroDocumento: document,
-      updatedAt: Date.now()
-    }, { merge: true });
-    console.log(`[Bling API] Client ${id} saved to local cache.`);
+    // Try named DB
+    try {
+      await adminDb.collection('bling_customers').doc(String(id)).set(data, { merge: true });
+      console.log(`[Bling API] Client ${id} saved to cache (Named DB).`);
+    } catch (e: any) {
+      console.log(`[Bling API] Named DB cache save info: ${e.message}`);
+    }
+
+    // Also try default DB as backup
+    try {
+      await adminDbDefault.collection('bling_customers').doc(String(id)).set(data, { merge: true });
+      console.log(`[Bling API] Client ${id} saved to cache (Default DB).`);
+    } catch (e: any) {
+      // Only log if it's not a permission error we expect
+      if (!e.message.includes('PERMISSION_DENIED')) {
+        console.log(`[Bling API] Default DB cache save info: ${e.message}`);
+      }
+    }
   } catch (e) {
-    console.warn('[Bling API] Failed to save client to cache:', e);
+    // General catch for unexpected errors
   }
 }
 
@@ -416,83 +423,85 @@ async function createClient(token: string, order: any) {
 
 async function mapProductsToBling(token: string, products: any[]) {
   const items = [];
-  const { db: clientDb } = await import('@/lib/firebase');
-  const { collection, getDocs } = await import('firebase/firestore');
-
+  
   console.log(`[Bling API] Mapping ${products.length} products...`);
 
   // 1. Fetch all mappings from Firestore
   let allMappings: any[] = [];
   try {
-    const mappingRef = adminDb.collection('product_mapping');
-    const snapshot = await mappingRef.get();
-    if (!snapshot.empty) {
-      allMappings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log(`[Bling API] Fetched ${allMappings.length} mappings via Admin SDK (Named DB)`);
-    } else {
-      const defaultSnapshot = await adminDbDefault.collection('product_mapping').get();
-      if (!defaultSnapshot.empty) {
-        allMappings = defaultSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        console.log(`[Bling API] Fetched ${allMappings.length} mappings via Admin SDK (Default DB)`);
+    // Try named database first
+    try {
+      const snapshot = await adminDb.collection('product_mapping').get();
+      if (!snapshot.empty) {
+        allMappings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        console.log(`[Bling API] Fetched ${allMappings.length} mappings from Named DB`);
+      }
+    } catch (e: any) {
+      if (e.message.includes('PERMISSION_DENIED')) {
+        console.log('[Bling API] Named DB access restricted, trying fallbacks...');
+      } else {
+        console.log(`[Bling API] Named DB fetch info: ${e.message}`);
       }
     }
-  } catch (adminError: any) {
-    if (adminError.message.includes('PERMISSION_DENIED')) {
-      console.log('[Bling API] Admin SDK permission denied for mappings, will use Client SDK fallback.');
-    } else {
-      console.warn('[Bling API] Admin SDK failed to fetch mappings, trying Client SDK:', adminError.message);
+
+    if (allMappings.length === 0) {
+      // Fallback to default database
+      try {
+        const defaultSnapshot = await adminDbDefault.collection('product_mapping').get();
+        if (!defaultSnapshot.empty) {
+          allMappings = defaultSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          console.log(`[Bling API] Fetched ${allMappings.length} mappings from Default DB`);
+        }
+      } catch (e: any) {
+        console.log(`[Bling API] Default DB fetch info: ${e.message}`);
+      }
     }
-    try {
-      const clientMappingRef = collection(clientDb, 'product_mapping');
-      const snapshot = await getDocs(clientMappingRef);
-      allMappings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log(`[Bling API] Fetched ${allMappings.length} mappings via Client SDK`);
-    } catch (clientError: any) {
-      console.error('[Bling API] Client SDK also failed to fetch mappings:', clientError.message);
+    
+    if (allMappings.length === 0) {
+      console.warn('[Bling API] NO MAPPINGS FOUND in Firestore! Using hardcoded fallback.');
+      // 1.1 Hardcoded Fallback (Last Resort)
+      allMappings = [
+        { appName: 'Catuaí', appWeight: '250g', appGrind: 'moído', blingSku: '112501', blingName: 'Café Catuaí 250g Moído' },
+        { appName: 'Catuaí', appWeight: '250g', appGrind: 'grãos', blingSku: '112502', blingName: 'Café Catuaí 250g Grãos' },
+        { appName: 'Catuaí', appWeight: '500g', appGrind: 'moído', blingSku: '115001', blingName: 'Café Catuaí 500g Moído' },
+        { appName: 'Catuaí', appWeight: '500g', appGrind: 'grãos', blingSku: '115002', blingName: 'Café Catuaí 500g Grãos' },
+        { appName: 'Catuaí', appWeight: '1kg', appGrind: 'moído', blingSku: '111001', blingName: 'Café Catuaí 1kg Moído' },
+        { appName: 'Catuaí', appWeight: '1kg', appGrind: 'grãos', blingSku: '111002', blingName: 'Café Catuaí 1kg Grãos' },
+        { appName: 'Bourbon', appWeight: '250g', appGrind: 'moído', blingSku: '102501', blingName: 'Café Bourbon 250g Moído' },
+        { appName: 'Bourbon', appWeight: '250g', appGrind: 'grãos', blingSku: '102502', blingName: 'Café Bourbon 250g Grãos' },
+        { appName: 'Gourmet', appWeight: '250g', appGrind: 'moído', blingSku: '132501', blingName: 'Café Gourmet 250g Moído' },
+        { appName: 'Gourmet', appWeight: '250g', appGrind: 'grãos', blingSku: '132502', blingName: 'Café Gourmet 250g Grãos' },
+        { appName: 'Gourmet', appWeight: '1kg', appGrind: 'moído', blingSku: '141002', blingName: 'Café Gourmet 1kg Moído' },
+        { appName: 'Gourmet', appWeight: '1kg', appGrind: 'grãos', blingSku: '141000', blingName: 'Café Gourmet 1kg Grãos' },
+        { appName: 'DripCoffee', appWeight: '100g', appGrind: 'moído', blingSku: 'CGP040', blingName: 'Drip Coffee' },
+      ];
     }
+  } catch (error: any) {
+    console.log(`[Bling API] Mapping fetch info: ${error.message}`);
   }
 
-  // 2. Fetch all products from Bling Catalog once (to get prices and IDs)
+  // 2. Fetch Bling Catalog for prices
   let blingCatalog: Map<string, any> = new Map();
   try {
-    console.log('[Bling API] Fetching Bling catalog for price synchronization...');
     const response = await fetchWithRetry('https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=100', {
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    
-    if (response.status === 401) {
-      throw new Error('Bling token expired (401) during catalog sync. Please re-authenticate in Settings.');
-    }
-    
     if (response.ok) {
       const data = await response.json();
       if (data.data) {
         data.data.forEach((p: any) => {
           if (p.codigo) blingCatalog.set(p.codigo, p);
         });
-        console.log(`[Bling API] Synced ${blingCatalog.size} products from Bling catalog`);
       }
     }
   } catch (e) {
-    console.error('[Bling API] Error syncing Bling catalog:', e);
+    console.error('[Bling API] Error syncing catalog:', e);
   }
 
   const normalize = (str: string) => {
     if (!str) return '';
-    // Remove accents, lowercase, trim, remove "cafe" prefix, and REMOVE ALL SPACES
-    return str.normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/cafe/g, '')
-      .replace(/\s+/g, '')
-      .trim();
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
   };
-
-  if (allMappings.length === 0) {
-    console.warn('[Bling API] No mappings found in Firestore. Product mapping will likely fail.');
-  } else {
-    console.log(`[Bling API] First 3 mappings for debug:`, JSON.stringify(allMappings.slice(0, 3)));
-  }
 
   for (const product of products) {
     let mapping: any = null;
@@ -500,96 +509,110 @@ async function mapProductsToBling(token: string, products: any[]) {
     const normWeight = normalize(product.weight);
     const normGrind = normalize(product.grindType);
 
-    console.log(`[Bling API] Mapping product: "${product.name}" | "${product.weight}" | "${product.grindType}"`);
+    console.log(`[Bling API] Mapping product: "${product.name}" (${product.weight}, ${product.grindType})`);
     console.log(`[Bling API] Normalized: "${normName}" | "${normWeight}" | "${normGrind}"`);
 
-    // 1. Try to find mapping in memory
+    // Try SKU first
     if (product.blingSku) {
       mapping = allMappings.find(m => m.blingSku === product.blingSku);
-      if (mapping) console.log(`[Bling API] Mapping found by SKU (${product.blingSku})`);
+      if (mapping) console.log(`[Bling API] Found mapping by SKU: ${product.blingSku}`);
     }
 
+    // 1. Try exact match (Name + Weight + Grind)
     if (!mapping) {
-      // Try exact match first
       mapping = allMappings.find(m => 
         normalize(m.appName) === normName && 
         normalize(m.appWeight) === normWeight && 
         normalize(m.appGrind) === normGrind
       );
-
-      if (mapping) {
-        console.log(`[Bling API] Mapping found by exact normalized match: ${mapping.blingSku}`);
-      } else {
-        // Try name and weight match
-        mapping = allMappings.find(m => 
-          normalize(m.appName) === normName && 
-          normalize(m.appWeight) === normWeight
-        );
-        if (mapping) {
-          console.log(`[Bling API] Mapping found by name and weight match: ${mapping.blingSku}`);
-        } else {
-          // Try name match only
-          mapping = allMappings.find(m => normalize(m.appName) === normName);
-          if (mapping) console.log(`[Bling API] Mapping found by name match only: ${mapping.blingSku}`);
-        }
-      }
+      if (mapping) console.log(`[Bling API] Found exact mapping: ${mapping.blingSku}`);
     }
 
-    // 1.5 Special fallback for DripCoffee if no mapping found
-    if (!mapping && normalize(product.name).includes('dripcoffee')) {
-      console.log(`[Bling API] Applying special fallback for DripCoffee -> SKU 100105`);
-      mapping = { blingSku: '100105' };
+    // 2. Try Name + Weight
+    if (!mapping) {
+      mapping = allMappings.find(m => 
+        normalize(m.appName) === normName && 
+        normalize(m.appWeight) === normWeight
+      );
+      if (mapping) console.log(`[Bling API] Found name+weight mapping: ${mapping.blingSku}`);
     }
 
-    // 2. Resolve Bling Data from Catalog using SKU
+    // 3. Try Name only (Fuzzy/Contains)
+    if (!mapping) {
+      mapping = allMappings.find(m => {
+        const mName = normalize(m.appName);
+        return mName === normName || mName.includes(normName) || normName.includes(mName);
+      });
+      if (mapping) console.log(`[Bling API] Found name-based mapping: ${mapping.blingSku}`);
+    }
+
+    // 4. Last resort: If the mapping in DB has the full string in appName
+    if (!mapping) {
+      const fullSearch = `${normName} ${normWeight} ${normGrind}`.trim();
+      mapping = allMappings.find(m => {
+        const mName = normalize(m.appName);
+        return mName === fullSearch || fullSearch.includes(mName) || mName.includes(fullSearch);
+      });
+      if (mapping) console.log(`[Bling API] Found full-string mapping: ${mapping.blingSku}`);
+    }
+
     const sku = mapping?.blingSku || product.blingSku;
     let catalogProduct = sku ? blingCatalog.get(sku) : null;
 
-    // If not in catalog, try to fetch it directly by SKU to get price and ID
+    console.log(`[Bling API] Product "${product.name}" -> SKU: ${sku || 'NOT FOUND'} (Source: ${mapping ? 'Firestore/Fallback Mapping' : 'Direct SKU from Order'})`);
+
+    // Fallback direct SKU fetch
     if (sku && !catalogProduct) {
       try {
-        // Delay before direct SKU fetch to avoid 429
-        await new Promise(resolve => setTimeout(resolve, 400));
-        console.log(`[Bling API] SKU ${sku} not in initial catalog, fetching directly...`);
-        const skuResponse = await fetchWithRetry(`https://api.bling.com.br/Api/v3/produtos?codigo=${sku}`, {
+        console.log(`[Bling API] SKU ${sku} not in initial catalog sync, fetching directly...`);
+        await new Promise(r => setTimeout(r, 400));
+        const res = await fetchWithRetry(`https://api.bling.com.br/Api/v3/produtos?codigo=${sku}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (skuResponse.ok) {
-          const skuData = await skuResponse.json();
-          if (skuData.data && skuData.data.length > 0) {
-            catalogProduct = skuData.data[0];
-            console.log(`[Bling API] SKU ${sku} found via direct fetch`);
+        if (res.ok) {
+          const d = await res.json();
+          if (d.data && d.data.length > 0) {
+            catalogProduct = d.data[0];
+            console.log(`[Bling API] Successfully fetched product details for SKU ${sku} from Bling API`);
+          } else {
+            console.log(`[Bling API] SKU ${sku} not found in Bling API catalog.`);
           }
         }
-      } catch (e) {
-        console.error(`[Bling API] Error fetching SKU ${sku} directly:`, e);
+      } catch (e: any) {
+        console.error(`[Bling API] Error fetching SKU ${sku} directly:`, e.message);
       }
     }
+
+    const blingId = catalogProduct?.id || mapping?.blingId;
+    const preco = catalogProduct?.preco || 0;
     
-    let blingId = catalogProduct?.id || mapping?.blingId;
-    let preco = catalogProduct?.preco || 0;
-    let unidade = catalogProduct?.unidade || 'un';
+    // Use the official Bling name if available, otherwise use the mapping name or app description
+    // We NO LONGER concatenate SKU and Name as it interferes with Bling's search
+    const descricao = catalogProduct?.nome || mapping?.blingName || `${product.name} ${product.weight} ${product.grindType}`;
 
     if (blingId) {
-      console.log(`[Bling API] Using catalog product: ID ${blingId}, SKU ${sku}, Price ${preco}`);
+      console.log(`[Bling API] Item linked to Bling ID: ${blingId} (SKU: ${sku})`);
       items.push({
         produto: { id: Number(blingId) },
+        codigo: sku,
+        descricao: descricao,
         quantidade: Number(product.quantity) || 1,
         valor: Number(preco),
-        unidade: unidade
+        unidade: catalogProduct?.unidade || 'un'
       });
     } else if (sku) {
-      console.log(`[Bling API] No product ID found in catalog, falling back to SKU: ${sku}`);
+      console.log(`[Bling API] Item linked by SKU only: ${sku}`);
       items.push({
         codigo: sku,
+        descricao: descricao,
         quantidade: Number(product.quantity) || 1,
         valor: 0,
         unidade: 'un'
       });
     } else {
-      console.warn(`[Bling API] No mapping or SKU found for product: ${product.name}. Using generic description.`);
+      console.log(`[Bling API] Item not linked, sending as generic description: ${descricao}`);
       items.push({
-        descricao: `${product.name} ${product.weight} ${product.grindType}`,
+        descricao: descricao,
         quantidade: Number(product.quantity) || 1,
         valor: 0,
         unidade: 'un'
