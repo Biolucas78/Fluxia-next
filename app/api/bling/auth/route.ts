@@ -16,8 +16,20 @@ export async function GET(request: Request) {
 
   const redirectUri = `${appUrl}/api/bling/callback`;
 
+  // Scopes required for Bling v3
+  const scopes = [
+    'vendas.read',
+    'vendas.write',
+    'produtos.read',
+    'produtos.write',
+    'contatos.read',
+    'contatos.write',
+    'notas-fiscais.read',
+    'notas-fiscais.write'
+  ].join(' ');
+
   const state = randomBytes(16).toString('hex');
-  const authUrl = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+  const authUrl = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${encodeURIComponent(scopes)}`;
 
   const response = NextResponse.redirect(authUrl);
   response.cookies.set('bling_oauth_state', state, { httpOnly: true, secure: true, sameSite: 'none' });

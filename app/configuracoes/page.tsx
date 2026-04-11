@@ -18,7 +18,8 @@ import {
   Key,
   Trash2,
   Save,
-  Package
+  Package,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/lib/firebase';
@@ -444,20 +445,47 @@ function SettingsContent() {
               </div>
 
                 {/* Diagnostic Info */}
-                {!isLoadingStatus && blingStatus?.authenticated && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Expiração do Token</p>
-                      <p className="text-sm font-mono text-slate-700 dark:text-slate-300">
-                        {new Date(blingStatus.expiresAt).toLocaleString('pt-BR')}
+                {!isLoadingStatus && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">URL de Redirecionamento (Callback)</p>
+                        <button 
+                          onClick={() => {
+                            if (blingStatus?.expectedRedirectUri) {
+                              navigator.clipboard.writeText(blingStatus.expectedRedirectUri);
+                              toast.success('URL copiada!');
+                            }
+                          }}
+                          className="text-[10px] text-primary hover:underline font-bold flex items-center gap-1"
+                        >
+                          <Copy className="size-3" /> Copiar Link
+                        </button>
+                      </div>
+                      <p className="text-xs font-mono text-slate-600 dark:text-slate-400 break-all bg-white dark:bg-slate-800 p-2 rounded border border-slate-100 dark:border-slate-700">
+                        {blingStatus?.expectedRedirectUri || 'Carregando...'}
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-2 italic">
+                        * Este é o link que deve estar no campo &quot;Link de redirecionamento&quot; no Bling.
                       </p>
                     </div>
-                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Status do Token</p>
-                      <p className={`text-sm font-bold uppercase ${blingStatus.isExpired ? 'text-rose-500' : 'text-emerald-500'}`}>
-                        {blingStatus.isExpired ? 'Expirado' : 'Válido'}
-                      </p>
-                    </div>
+
+                    {blingStatus?.authenticated && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Expiração do Token</p>
+                          <p className="text-sm font-mono text-slate-700 dark:text-slate-300">
+                            {blingStatus.expiresAt ? new Date(blingStatus.expiresAt).toLocaleString('pt-BR') : 'N/A'}
+                          </p>
+                        </div>
+                        <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Status do Token</p>
+                          <p className={`text-sm font-bold uppercase ${blingStatus.isExpired ? 'text-rose-500' : 'text-emerald-500'}`}>
+                            {blingStatus.isExpired ? 'Expirado' : 'Válido'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

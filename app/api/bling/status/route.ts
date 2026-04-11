@@ -37,7 +37,8 @@ export async function GET(request: Request) {
       blingApiStatus: testResponse.status,
       blingApiResponse: testData,
       message: testResponse.ok ? 'Conexão com Bling estabelecida com sucesso!' : 'Erro na resposta da API do Bling.',
-      appUrl
+      appUrl,
+      expectedRedirectUri: `${appUrl}/api/bling/callback`
     });
 
   } catch (error: any) {
