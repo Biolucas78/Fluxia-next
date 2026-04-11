@@ -1,8 +1,10 @@
-import { adminDb, adminDbDefault } from './firebase-admin';
+import { adminDb, adminDbDefault, projectId, databaseId } from './firebase-admin';
 import { db as clientDb } from './firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
 export async function getValidBlingTokenServer() {
+  console.log(`[Bling Server] Starting token fetch for Project: ${projectId}, DB: ${databaseId}`);
+
   let tokens: any = null;
   let docSnap: any = null;
   let usedDb = adminDb;
@@ -46,7 +48,7 @@ export async function getValidBlingTokenServer() {
   }
 
   if (!tokens) {
-    console.error('Bling tokens not found in Firestore (bling_config/tokens)');
+    console.error('[Bling Server] Bling tokens not found in Firestore (bling_config/tokens). Database ID used:', databaseId);
     return null;
   }
 
@@ -60,7 +62,7 @@ export async function getValidBlingTokenServer() {
     const clientSecret = process.env.BLING_CLIENT_SECRET?.trim();
 
     if (!clientId || !clientSecret) {
-      console.error('Bling credentials not configured in environment variables');
+      console.error('[Bling Server] Bling credentials (ID/Secret) not configured in environment variables');
       return tokens.access_token; // Return existing even if expired as last resort
     }
 

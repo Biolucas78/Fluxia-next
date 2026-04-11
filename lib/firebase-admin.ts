@@ -25,3 +25,5 @@ export const adminDb = getFirestore(app, databaseId);
 export const adminDbDefault = getFirestore(app);
 export const adminAuth = getAuth(app);
 export const auth = adminAuth;
+
+export { projectId, databaseId };

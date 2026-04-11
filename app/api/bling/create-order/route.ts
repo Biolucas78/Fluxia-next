@@ -4,10 +4,21 @@ import { getValidBlingTokenServer } from '@/lib/bling-server';
 
 export async function POST(request: Request) {
   try {
-    // Fetch token on server to avoid permission issues in frontend
-    const token = await getValidBlingTokenServer();
+    // 1. Try to get token from Authorization header first
+    const authHeader = request.headers.get('Authorization');
+    let token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+    // 2. Fallback to server-side fetch if not provided in header
     if (!token) {
-      return NextResponse.json({ error: 'Bling token not found or expired. Please re-authenticate in Settings.' }, { status: 401 });
+      console.log('[Bling API] Token not in header, attempting server-side fetch...');
+      token = await getValidBlingTokenServer();
+    }
+
+    if (!token) {
+      return NextResponse.json({ 
+        error: 'Bling token not found or expired. Please re-authenticate in Settings.',
+        details: 'O servidor não conseguiu recuperar o token do Bling. Tente reautenticar na página de Configurações.'
+      }, { status: 401 });
     }
 
     const order = await request.json();

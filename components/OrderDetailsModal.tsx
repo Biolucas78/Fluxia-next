@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProductItem, ShippingOption } from '@/lib/types';
+import { getValidBlingToken } from '@/lib/bling-client';
 import ShippingQuoteModal from './ShippingQuoteModal';
 import LabelGenerationModal from './LabelGenerationModal';
 import ShippingDataReviewModal from './ShippingDataReviewModal';
@@ -175,12 +176,18 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     
     try {
       console.log('[Bling] Iniciando criação de pedido para:', order.clientName);
-      console.log('[Bling] Dados do pedido:', JSON.stringify(order, null, 2));
+      
+      // Get valid token from client side (which has Firebase Auth context)
+      const token = await getValidBlingToken();
+      if (!token) {
+        throw new Error('Bling não autenticado. Por favor, conecte o Bling nas Configurações.');
+      }
 
       const response = await fetch('/api/bling/create-order', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(order)
       });
