@@ -29,8 +29,13 @@ export async function POST(req: Request) {
         console.warn('Webhook do Melhor Envio: Falha na autenticação (Assinatura inválida)');
         console.log('Signature received:', signatureHeader);
         console.log('Secret configured (first 4 chars):', appSecret.substring(0, 4) + '...');
-        console.log('Raw body length:', rawBody.length);
         
+        // Se o corpo estiver vazio, é provável que seja apenas um teste de validação de URL
+        if (!rawBody || rawBody.trim() === '') {
+          console.log('Corpo vazio detectado em falha de assinatura. Retornando 200 para validação de URL.');
+          return NextResponse.json({ message: 'URL validated' }, { status: 200 });
+        }
+
         return NextResponse.json({ 
           error: 'Unauthorized', 
           message: 'Invalid signature. Check MELHOR_ENVIO_WEBHOOK_SECRET in Vercel.',
@@ -38,8 +43,12 @@ export async function POST(req: Request) {
           expected_signature_preview: expectedSignature.substring(0, 8) + '...'
         }, { status: 401 });
       }
-    } else if (appSecret && !signatureHeader) {
-      console.log('Webhook do Melhor Envio: Secret configurado mas x-me-signature ausente. Ignorando verificação para compatibilidade com testes iniciais.');
+    } else if (!signatureHeader) {
+      // Se não houver assinatura, mas for um teste de validação (corpo vazio), permitimos
+      if (!rawBody || rawBody.trim() === '') {
+        console.log('Requisição sem assinatura e sem corpo. Retornando 200 para validação de URL.');
+        return NextResponse.json({ message: 'URL validated' }, { status: 200 });
+      }
     }
 
     const body = JSON.parse(rawBody);
