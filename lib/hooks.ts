@@ -56,11 +56,16 @@ export function useOrders() {
       }, 0);
       return () => clearTimeout(timer);
     }
+    
+    const isDevelopment = () => {
+      if (typeof window === 'undefined') return false;
+      return process.env.NODE_ENV === 'development' || 
+             window.location.hostname.includes('ais-dev') || 
+             window.location.hostname.includes('localhost');
+    };
 
     // Determine collection name based on environment
-    // In AI Studio/Development, we use 'orders_dev' to avoid affecting production data
-    const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
-    const collectionName = isDev ? 'orders_dev' : 'orders';
+    const collectionName = isDevelopment() ? 'orders_dev' : 'orders';
 
     // Migration logic: check localStorage and move to Firestore
     const migrateData = async () => {
@@ -117,6 +122,7 @@ export function useOrders() {
   }, [userId]);
 
   const getCollectionName = () => {
+    if (typeof window === 'undefined') return 'orders';
     const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
     return isDev ? 'orders_dev' : 'orders';
   };
