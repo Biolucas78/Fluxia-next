@@ -712,6 +712,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       onClick={() => {
                         setEditedCustomer({
                           clientName: order.clientName,
+                          tradeName: order.tradeName || '',
                           cnpj: order.cnpj || '',
                           cpf: order.cpf || '',
                           phone: order.phone || ''
