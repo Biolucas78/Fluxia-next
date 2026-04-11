@@ -4,7 +4,15 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   console.log('--- STATUS ROUTE HIT ---');
-  const appUrl = process.env.APP_URL?.replace(/\/$/, '');
+  
+  // Try to get the base URL from environment or request headers
+  let appUrl = process.env.APP_URL?.replace(/\/$/, '');
+  
+  if (!appUrl) {
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
+    appUrl = `${proto}://${host}`;
+  }
   
   try {
     const authHeader = request.headers.get('Authorization');

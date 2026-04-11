@@ -19,8 +19,9 @@ export async function GET(request: Request) {
   let appUrl = process.env.APP_URL?.replace(/\/$/, '');
   
   if (!appUrl) {
-    const url = new URL(request.url);
-    appUrl = `${url.protocol}//${url.host}`;
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
+    appUrl = `${proto}://${host}`;
   }
   
   if (!clientId || !clientSecret) {
