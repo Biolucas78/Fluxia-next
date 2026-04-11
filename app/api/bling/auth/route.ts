@@ -1,15 +1,22 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 
-export async function GET() {
+export async function GET(request: Request) {
   const clientId = process.env.BLING_CLIENT_ID?.trim();
-  const appUrl = process.env.APP_URL?.replace(/\/$/, '');
+  
+  // Try to get the base URL from environment or request headers
+  let appUrl = process.env.APP_URL?.replace(/\/$/, '');
+  
+  if (!appUrl) {
+    const url = new URL(request.url);
+    appUrl = `${url.protocol}//${url.host}`;
+  }
 
-  if (!clientId || !appUrl) {
-    console.error('BLING_CLIENT_ID or APP_URL not configured in environment variables');
+  if (!clientId) {
+    console.error('BLING_CLIENT_ID not configured in environment variables');
     return NextResponse.json({ 
       error: 'Environment variables not configured', 
-      details: 'BLING_CLIENT_ID or APP_URL is missing. Please check your AI Studio settings.' 
+      details: 'BLING_CLIENT_ID is missing. Please check your AI Studio settings.' 
     }, { status: 500 });
   }
 

@@ -14,13 +14,20 @@ export async function GET(request: Request) {
 
   const clientId = process.env.BLING_CLIENT_ID?.trim();
   const clientSecret = process.env.BLING_CLIENT_SECRET?.trim();
-  const appUrl = process.env.APP_URL?.replace(/\/$/, '');
   
-  if (!clientId || !clientSecret || !appUrl) {
-    console.error('BLING_CLIENT_ID, BLING_CLIENT_SECRET or APP_URL not configured');
+  // Try to get the base URL from environment or request headers
+  let appUrl = process.env.APP_URL?.replace(/\/$/, '');
+  
+  if (!appUrl) {
+    const url = new URL(request.url);
+    appUrl = `${url.protocol}//${url.host}`;
+  }
+  
+  if (!clientId || !clientSecret) {
+    console.error('BLING_CLIENT_ID or BLING_CLIENT_SECRET not configured');
     return NextResponse.json({ 
       error: 'Environment variables not configured', 
-      details: 'BLING_CLIENT_ID, BLING_CLIENT_SECRET or APP_URL is missing. Please check your AI Studio settings.' 
+      details: 'BLING_CLIENT_ID or BLING_CLIENT_SECRET is missing. Please check your AI Studio settings.' 
     }, { status: 500 });
   }
 
