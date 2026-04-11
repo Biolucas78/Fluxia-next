@@ -479,12 +479,29 @@ async function mapProductsToBling(token: string, products: any[]) {
 
   const normalize = (str: string) => {
     if (!str) return '';
-    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    // Remove accents, lowercase, trim, remove "cafe" prefix, and REMOVE ALL SPACES
+    return str.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/cafe/g, '')
+      .replace(/\s+/g, '')
+      .trim();
   };
+
+  if (allMappings.length === 0) {
+    console.warn('[Bling API] No mappings found in Firestore. Product mapping will likely fail.');
+  } else {
+    console.log(`[Bling API] First 3 mappings for debug:`, JSON.stringify(allMappings.slice(0, 3)));
+  }
 
   for (const product of products) {
     let mapping: any = null;
-    console.log(`[Bling API] Mapping product: ${product.name} (${product.weight}, ${product.grindType}) - SKU: ${product.blingSku || 'N/A'}`);
+    const normName = normalize(product.name);
+    const normWeight = normalize(product.weight);
+    const normGrind = normalize(product.grindType);
+
+    console.log(`[Bling API] Mapping product: "${product.name}" | "${product.weight}" | "${product.grindType}"`);
+    console.log(`[Bling API] Normalized: "${normName}" | "${normWeight}" | "${normGrind}"`);
 
     // 1. Try to find mapping in memory
     if (product.blingSku) {
@@ -493,10 +510,6 @@ async function mapProductsToBling(token: string, products: any[]) {
     }
 
     if (!mapping) {
-      const normName = normalize(product.name);
-      const normWeight = normalize(product.weight);
-      const normGrind = normalize(product.grindType);
-
       // Try exact match first
       mapping = allMappings.find(m => 
         normalize(m.appName) === normName && 
@@ -505,7 +518,7 @@ async function mapProductsToBling(token: string, products: any[]) {
       );
 
       if (mapping) {
-        console.log(`[Bling API] Mapping found by exact normalized match`);
+        console.log(`[Bling API] Mapping found by exact normalized match: ${mapping.blingSku}`);
       } else {
         // Try name and weight match
         mapping = allMappings.find(m => 
@@ -513,11 +526,11 @@ async function mapProductsToBling(token: string, products: any[]) {
           normalize(m.appWeight) === normWeight
         );
         if (mapping) {
-          console.log(`[Bling API] Mapping found by name and weight match`);
+          console.log(`[Bling API] Mapping found by name and weight match: ${mapping.blingSku}`);
         } else {
           // Try name match only
           mapping = allMappings.find(m => normalize(m.appName) === normName);
-          if (mapping) console.log(`[Bling API] Mapping found by name match only`);
+          if (mapping) console.log(`[Bling API] Mapping found by name match only: ${mapping.blingSku}`);
         }
       }
     }
