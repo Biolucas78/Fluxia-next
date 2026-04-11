@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { getBaseUrl } from '@/lib/url-utils';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -14,15 +15,7 @@ export async function GET(request: Request) {
 
   const clientId = process.env.BLING_CLIENT_ID?.trim();
   const clientSecret = process.env.BLING_CLIENT_SECRET?.trim();
-  
-  // Try to get the base URL from environment or request headers
-  let appUrl = process.env.APP_URL?.replace(/\/$/, '');
-  
-  if (!appUrl) {
-    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
-    const proto = request.headers.get('x-forwarded-proto') || 'https';
-    appUrl = `${proto}://${host}`;
-  }
+  const appUrl = getBaseUrl(request);
   
   if (!clientId || !clientSecret) {
     console.error('BLING_CLIENT_ID or BLING_CLIENT_SECRET not configured');

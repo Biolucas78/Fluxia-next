@@ -398,8 +398,23 @@ function SettingsContent() {
                 </div>
 
                 {/* Status Indicator */}
-                <div className="flex flex-col sm:flex-row items-center gap-6 p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
-                  <div className="flex-1 w-full">
+                <div className="flex flex-col gap-4">
+                  {typeof window !== 'undefined' && blingStatus?.appUrl && !window.location.origin.includes(new URL(blingStatus.appUrl).host) && (
+                    <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-800 flex items-start gap-3">
+                      <AlertTriangle className="size-5 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-rose-800 dark:text-rose-300">Divergência de URL Detectada!</p>
+                        <p className="text-xs text-rose-700 dark:text-rose-400 leading-relaxed">
+                          O servidor está detectando o endereço <code className="bg-rose-100 dark:bg-rose-900/40 px-1 rounded">{blingStatus.appUrl}</code>, 
+                          mas você está acessando por <code className="bg-rose-100 dark:bg-rose-900/40 px-1 rounded">{window.location.origin}</code>. 
+                          Isso causará erro no Bling. Verifique se a variável <code className="bg-rose-100 dark:bg-rose-900/40 px-1 rounded">APP_URL</code> no Vercel está correta ou remova-a para detecção automática.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row items-center gap-6 p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
+                    <div className="flex-1 w-full">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status da Conexão:</span>
                       {isLoadingStatus ? (
@@ -426,6 +441,7 @@ function SettingsContent() {
                     {blingStatus?.status === 'success' ? 'Reautenticar Bling' : 'CONECTAR AGORA'}
                   </button>
                 </div>
+              </div>
 
                 {/* Diagnostic Info */}
                 {!isLoadingStatus && blingStatus?.authenticated && (
