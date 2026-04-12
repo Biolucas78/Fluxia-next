@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import ToasterProvider from '@/components/ToasterProvider';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { UserProvider } from '@/components/UserProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -14,8 +16,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
-        <ToasterProvider />
-        {children}
+        <ErrorBoundary>
+          <UserProvider>
+            <ToasterProvider />
+            {children}
+          </UserProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

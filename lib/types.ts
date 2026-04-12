@@ -1,3 +1,79 @@
+export type UserRole = 'admin' | 'user' | 'gestor_trafego' | 'gestor_vendas';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  role: UserRole;
+}
+
+export type LeadOrigin = 'landing_page' | 'munddi' | 'manual';
+export type LeadTemperature = 'gelado' | 'morno' | 'quente';
+
+export interface LeadHistory {
+  status: string;
+  timestamp: string;
+  note?: string;
+}
+
+export interface Lead {
+  id: string;
+  nome: string;
+  companyName?: string;
+  responsibleName?: string;
+  cnpj?: string;
+  address?: string;
+  whatsapp?: string;
+  email?: string;
+  finalidade?: 'consumo' | 'revenda';
+  origem: LeadOrigin;
+  status: string;
+  temperature?: LeadTemperature;
+  notas?: string;
+  createdAt: string;
+  updatedAt: string;
+  lastContactAt?: string;
+  history: LeadHistory[];
+}
+
+export interface CRMStats {
+  totalLeads: number;
+  leadsByStatus: Record<string, number>;
+  leadsByOrigin: Record<string, number>;
+  conversionRate: number;
+  // New metrics
+  totalSalesValue: number;
+  totalOrdersCount: number;
+  formSubmissions: number;
+  comparison?: {
+    leadsChange: number;
+    salesValueChange: number;
+    ordersCountChange: number;
+  };
+}
+
+export interface AnalyticsStats {
+  sessions: number;
+  sessionsChange: number;
+  newVisitors: number;
+  returningVisitors: number;
+  newVisitorsPercent: number;
+  returningVisitorsPercent: number;
+  sessionsByDevice: {
+    mobile: number;
+    desktop: number;
+    tablet: number;
+  };
+  sessionsByChannel: {
+    organic: number;
+    direct: number;
+    other: number;
+  };
+  dailySessions: {
+    date: string;
+    sessions: number;
+  }[];
+}
+
 export type OrderStatus = 'pedidos' | 'embalagens_separadas' | 'embalagens_prontas' | 'caixa_montada' | 'enviado' | 'entregue';
 
 export interface ProductItem {
@@ -91,6 +167,13 @@ export interface ShippingOption {
     picture: string;
   };
   error?: string;
+}
+
+export interface AuthorizedEmail {
+  id: string;
+  email: string;
+  role: UserRole;
+  createdAt: string;
 }
 
 export interface DashboardStats {

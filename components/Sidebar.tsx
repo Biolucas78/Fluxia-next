@@ -2,9 +2,10 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package } from 'lucide-react';
+import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useUser } from '@/lib/hooks';
 
 interface SidebarProps {
   onNewOrder?: () => void;
@@ -12,16 +13,27 @@ interface SidebarProps {
 
 export default function Sidebar({ onNewOrder }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { userProfile, loading, viewMode, changeViewMode, effectiveRole } = useUser();
 
   const navItems = [
-    { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, href: '/' },
-    { id: 'producao', title: 'Produção', icon: Factory, href: '/producao' },
-    { id: 'logistica', title: 'Logística', icon: Truck, href: '/logistica' },
-    { id: 'clientes', title: 'Clientes', icon: User, href: '/clientes' },
-    { id: 'produtos', title: 'Produtos', icon: Package, href: '/produtos' },
-    { id: 'arquivados', title: 'Arquivados', icon: Settings, href: '/arquivados' },
-    { id: 'configuracoes', title: 'Configurações', icon: Settings, href: '/configuracoes' },
+    { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'user'] },
+    { id: 'crm', title: 'CRM Leads', icon: Kanban, href: '/crm', roles: ['admin', 'gestor_vendas', 'gestor_trafego'] },
+    { id: 'recorrencia', title: 'Recorrência', icon: RefreshCcw, href: '/recorrencia', roles: ['admin', 'gestor_vendas'] },
+    { id: 'producao', title: 'Produção', icon: Factory, href: '/producao', roles: ['admin', 'user'] },
+    { id: 'logistica', title: 'Logística', icon: Truck, href: '/logistica', roles: ['admin', 'user'] },
+    { id: 'clientes', title: 'Clientes', icon: User, href: '/clientes', roles: ['admin', 'user'] },
+    { id: 'produtos', title: 'Produtos', icon: Package, href: '/produtos', roles: ['admin', 'user'] },
+    { id: 'arquivados', title: 'Arquivados', icon: Settings, href: '/arquivados', roles: ['admin', 'user'] },
+    { id: 'configuracoes', title: 'Configurações', icon: Settings, href: '/configuracoes', roles: ['admin', 'user'] },
   ];
+
+  if (loading) return null;
+  if (!userProfile) return null;
+
+  const currentRole = effectiveRole || userProfile.role;
+
+  const filteredItems = navItems.filter(item => item.roles.includes(currentRole));
 
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 h-screen shrink-0">
@@ -35,8 +47,34 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
         </div>
       </div>
 
+      {userProfile.role === 'admin' && (
+        <div className="px-4 mb-4">
+          <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Modo de Visualização</p>
+            <select 
+              value={viewMode || 'admin'} 
+              onChange={(e) => {
+                const newRole = e.target.value === 'admin' ? null : e.target.value as any;
+                changeViewMode(newRole);
+                
+                if (newRole === 'gestor_trafego' || newRole === 'gestor_vendas') {
+                  router.push('/crm');
+                } else {
+                  router.push('/');
+                }
+              }}
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs p-1.5 outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="admin">Administrador (Eu)</option>
+              <option value="gestor_trafego">Gestor de Tráfego</option>
+              <option value="gestor_vendas">Gestora de Vendas</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       <nav className="flex-1 px-4 space-y-1 mt-4">
-        {navItems.map((item) => {
+        {filteredItems.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link 

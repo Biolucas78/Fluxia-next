@@ -2,95 +2,78 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Document ID: userId
-    // Fields:
-    //   - uid: string (required)
-    //   - email: string (required, email format)
-    //   - role: string (required, 'admin' or 'user')
-    //
-    // Collection: product_mapping
-    // Document ID: auto-generated
-    // Fields:
-    //   - appName: string (required, 1-100 chars)
-    //   - appWeight: string (required, 1-20 chars)
-    //   - appGrind: string (required, 1-20 chars)
-    //   - blingId: number (optional)
-    //   - blingSku: string (required, 1-50 chars)
-    //   - blingName: string (optional)
-    //
-    // ===============================================================
-
+    
     // ===============================================================
     // Helper Functions
     // ===============================================================
     function isAuthenticated() {
       return request.auth != null;
     }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        getUserData().role == 'admin' || 
+        (request.auth.token.email == 'biolucas@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+    
+    function isGestorVendas() {
+      return isAuthenticated() && getUserData().role == 'gestor_vendas';
+    }
+    
+    function isGestorTrafego() {
+      return isAuthenticated() && getUserData().role == 'gestor_trafego';
+    }
 
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isAuthenticated() && 
-             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-              (request.auth.token.email == "biolucas@gmail.com" && request.auth.token.email_verified == true));
     }
 
     // ===============================================================
     // Rules
     // ===============================================================
 
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isOwner(userId);
+    }
+
+    // Leads collection
+    match /leads/{leadId} {
+      allow read: if isAdmin() || isGestorVendas() || isGestorTrafego();
+      allow create: if isAdmin() || isGestorVendas();
+      allow update: if isAdmin() || isGestorVendas();
+      allow delete: if isAdmin() || isGestorVendas();
+    }
+    
+    match /leads_dev/{leadId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Orders collection
     match /orders/{orderId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow write: if isAdmin() || isGestorVendas();
     }
-
+    
     match /orders_dev/{orderId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Authorized Emails
+    match /authorized_emails/{emailId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isOwner(userId) || isAdmin();
-    }
-
-    match /product_mapping/{mappingId} {
-      allow read: if true;
-      
-      function isValidMapping(data) {
-        return data.appName is string && data.appName.size() > 0 && data.appName.size() < 100 &&
-               data.appWeight is string && data.appWeight.size() > 0 && data.appWeight.size() < 50 &&
-               data.appGrind is string && data.appGrind.size() > 0 && data.appGrind.size() < 50 &&
-               data.blingSku is string && data.blingSku.size() > 0 && data.blingSku.size() < 50 &&
-               (!('blingId' in data) || data.blingId is string) &&
-               (!('blingName' in data) || data.blingName is string) &&
-               (!('createdAt' in data) || data.createdAt is string);
-      }
-
-      allow create, update: if isAuthenticated() && (isValidMapping(request.resource.data) || isAdmin());
-      allow delete: if isAuthenticated();
-    }
-
-    match /bling_config/{configId} {
-      allow get, list: if true;
-      allow write: if isAuthenticated();
-    }
-
-    match /bling_customers/{customerId} {
-      allow get, list: if true;
-      allow write: if isAuthenticated();
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if isAdmin();
     }
   }
 }

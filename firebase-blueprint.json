@@ -7,9 +7,44 @@
       "properties": {
         "uid": { "type": "string", "description": "The Firebase Auth UID." },
         "email": { "type": "string", "format": "email", "description": "The user's email address." },
-        "role": { "type": "string", "enum": ["admin", "user"], "description": "The user's role." }
+        "role": { "type": "string", "enum": ["admin", "user", "gestor_trafego", "gestor_vendas"], "description": "The user's role." }
       },
       "required": ["uid", "email", "role"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Represents a CRM lead.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "companyName": { "type": "string" },
+        "responsibleName": { "type": "string" },
+        "cnpj": { "type": "string" },
+        "address": { "type": "string" },
+        "temperature": { "type": "string", "enum": ["quente", "morno", "gelado"] },
+        "whatsapp": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "finalidade": { "type": "string", "enum": ["consumo", "revenda", "brinde", "outro"] },
+        "origem": { "type": "string", "enum": ["landing_page", "munddi", "manual"] },
+        "status": { "type": "string" },
+        "notas": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastContactAt": { "type": "string", "format": "date-time" },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["nome", "origem", "status", "createdAt"]
     },
     "ProductMapping": {
       "title": "ProductMapping",
@@ -104,6 +139,14 @@
     "/orders_dev/{orderId}": {
       "schema": { "$ref": "Order" },
       "description": "Development/test orders."
+    },
+    "/leads/{leadId}": {
+      "schema": { "$ref": "Lead" },
+      "description": "CRM leads."
+    },
+    "/leads_dev/{leadId}": {
+      "schema": { "$ref": "Lead" },
+      "description": "Development/test CRM leads."
     }
   }
 }

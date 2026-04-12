@@ -19,7 +19,8 @@ import {
   Trash2,
   Save,
   Package,
-  Copy
+  Copy,
+  Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/lib/firebase';
@@ -28,7 +29,8 @@ import { getValidBlingToken } from '@/lib/bling-client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import ShippingTest from '@/components/ShippingTest';
-import { useOrders } from '@/lib/hooks';
+import { useOrders, useUser, useAuthorizedEmails } from '@/lib/hooks';
+import { UserRole } from '@/lib/types';
 import firebaseConfig from '@/firebase-applet-config.json';
 
 function SettingsContent() {
@@ -47,6 +49,27 @@ function SettingsContent() {
   const [appUrlConfig, setAppUrlConfig] = useState<string>('');
   const [lojaId, setLojaId] = useState('');
   const [isSavingLojaId, setIsSavingLojaId] = useState(false);
+
+  const { userProfile, loading: userLoading } = useUser();
+  const { emails, addAuthorizedEmail, removeAuthorizedEmail, updateAuthorizedRole } = useAuthorizedEmails();
+  const [newEmail, setNewEmail] = useState('');
+  const [newRole, setNewRole] = useState<UserRole>('gestor_trafego');
+  const [isAddingEmail, setIsAddingEmail] = useState(false);
+
+  const handleAddEmail = async () => {
+    if (!newEmail) return;
+    setIsAddingEmail(true);
+    try {
+      await addAuthorizedEmail(newEmail, newRole);
+      setNewEmail('');
+      toast.success('E-mail autorizado com sucesso!');
+    } catch (error) {
+      console.error('Error adding email:', error);
+      toast.error('Erro ao autorizar e-mail.');
+    } finally {
+      setIsAddingEmail(false);
+    }
+  };
 
   const checkBlingStatus = async () => {
     setIsLoadingStatus(true);
@@ -198,6 +221,20 @@ function SettingsContent() {
 
     saveTokensFromUrl();
   }, [searchParams, router]);
+
+  if (userLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="size-8 animate-spin text-primary" /></div>;
+  if (userProfile?.role !== 'admin') {
+    return (
+      <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <Sidebar />
+        <main className="flex-1 flex flex-col items-center justify-center p-8">
+          <AlertTriangle className="size-12 text-amber-500 mb-4" />
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Acesso Restrito</h1>
+          <p className="text-slate-500 text-center max-w-md">Esta página é exclusiva para administradores. Se você acredita que deveria ter acesso, entre em contato com o suporte.</p>
+        </main>
+      </div>
+    );
+  }
 
   const handleAuthBling = () => {
     const width = 600;
@@ -819,6 +856,107 @@ function SettingsContent() {
                 <p className="text-[11px] text-slate-500 italic">
                   * Compare estes IDs com o arquivo <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">firebase-applet-config.json</code> do seu código antigo. Se forem diferentes, o sistema está olhando para um banco de dados novo e vazio.
                 </p>
+              </div>
+            </section>
+
+            {/* User Management Card */}
+            <section className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3 bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-2xl">
+                  <User className="size-6 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Gestão de Usuários e Permissões</h2>
+                  <p className="text-xs text-slate-500">Autorize e-mails e gerencie funções da equipe</p>
+                </div>
+              </div>
+              <div className="p-8 space-y-8">
+                {/* Add New Email */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
+                  <div className="md:col-span-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">E-mail do Gestor</label>
+                    <input 
+                      type="email" 
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="exemplo@gmail.com"
+                      className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Função / Nível de Acesso</label>
+                    <select 
+                      value={newRole}
+                      onChange={(e) => setNewRole(e.target.value as UserRole)}
+                      className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    >
+                      <option value="gestor_trafego">Gestor de Tráfego (CRM Leads - Somente Leitura)</option>
+                      <option value="gestor_vendas">Gestora de Vendas (CRM + Recorrência - Edição Total)</option>
+                      <option value="admin">Administrador (Acesso Total)</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-1 flex items-end">
+                    <button 
+                      onClick={handleAddEmail}
+                      disabled={isAddingEmail || !newEmail}
+                      className="w-full py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isAddingEmail ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                      Autorizar Acesso
+                    </button>
+                  </div>
+                </div>
+
+                {/* Authorized Emails List */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white px-1">Usuários Autorizados</h3>
+                  <div className="border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        <tr>
+                          <th className="px-6 py-4">E-mail</th>
+                          <th className="px-6 py-4">Função</th>
+                          <th className="px-6 py-4">Data</th>
+                          <th className="px-6 py-4 text-right">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {emails.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">Nenhum usuário autorizado ainda.</td>
+                          </tr>
+                        ) : (
+                          emails.map((email) => (
+                            <tr key={email.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                              <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-300">{email.email}</td>
+                              <td className="px-6 py-4">
+                                <select 
+                                  value={email.role}
+                                  onChange={(e) => updateAuthorizedRole(email.id, e.target.value as UserRole)}
+                                  className="bg-transparent border-none text-xs font-bold text-primary outline-none cursor-pointer"
+                                >
+                                  <option value="gestor_trafego">Gestor de Tráfego</option>
+                                  <option value="gestor_vendas">Gestora de Vendas</option>
+                                  <option value="admin">Administrador</option>
+                                </select>
+                              </td>
+                              <td className="px-6 py-4 text-xs text-slate-500">{new Date(email.createdAt).toLocaleDateString('pt-BR')}</td>
+                              <td className="px-6 py-4 text-right">
+                                <button 
+                                  onClick={() => removeAuthorizedEmail(email.id)}
+                                  className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                                  title="Remover Autorização"
+                                >
+                                  <Trash2 className="size-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </section>
 

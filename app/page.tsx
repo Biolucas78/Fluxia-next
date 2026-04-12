@@ -1,29 +1,25 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import Dashboard from '@/components/Dashboard';
-import OrderForm from '@/components/OrderForm';
 import Login from '@/components/Login';
-import { useOrders } from '@/lib/hooks';
+import { useOrders, useUser } from '@/lib/hooks';
 import { Order } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const { orders, stats, handleOrderCreated, handleUpdateOrder, isLoaded } = useOrders();
-  const [user, setUser] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const { userProfile, loading: userLoading, effectiveRole } = useUser();
+  const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    if (effectiveRole === 'gestor_trafego' || effectiveRole === 'gestor_vendas') {
+      router.push('/crm');
+    }
+  }, [effectiveRole, router]);
 
   const handleSeedOrder = () => {
     const testOrder: Order = {
@@ -44,7 +40,7 @@ export default function Home() {
     handleOrderCreated(testOrder);
   };
 
-  if (authLoading) {
+  if (userLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
         <Loader2 className="animate-spin size-8 text-primary" />
@@ -52,8 +48,17 @@ export default function Home() {
     );
   }
 
-  if (!user) {
+  if (!userProfile) {
     return <Login />;
+  }
+
+  // If user is restricted, don't render the production dashboard while redirecting
+  if (effectiveRole === 'gestor_trafego' || effectiveRole === 'gestor_vendas') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
+        <Loader2 className="animate-spin size-8 text-primary" />
+      </div>
+    );
   }
 
   if (!isLoaded) return null;
