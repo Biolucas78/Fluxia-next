@@ -234,14 +234,12 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
                   <User className="size-3" /> Dados do Cliente
                 </h4>
                 {!isEditingCustomer ? (
-                  !isTraffic && (
-                    <button 
-                      onClick={() => setIsEditingCustomer(true)}
-                      className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1"
-                    >
-                      <Edit2 className="size-3" /> Editar
-                    </button>
-                  )
+                  <button 
+                    onClick={() => setIsEditingCustomer(true)}
+                    className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1"
+                  >
+                    <Edit2 className="size-3" /> Editar
+                  </button>
                 ) : (
                   <div className="flex items-center gap-2">
                     <button 
@@ -352,14 +350,12 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
                   <MapPin className="size-3" /> Endereço
                 </h4>
                 {!isEditingAddress ? (
-                  !isTraffic && (
-                    <button 
-                      onClick={() => setIsEditingAddress(true)}
-                      className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1"
-                    >
-                      <Edit2 className="size-3" /> Editar
-                    </button>
-                  )
+                  <button 
+                    onClick={() => setIsEditingAddress(true)}
+                    className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1"
+                  >
+                    <Edit2 className="size-3" /> Editar
+                  </button>
                 ) : (
                   <div className="flex items-center gap-2">
                     <button 
@@ -407,8 +403,7 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
                   <select 
                     value={temperature}
                     onChange={(e) => handleUpdateInfo('temperature', e.target.value)}
-                    disabled={isTraffic}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                   >
                     <option value="quente">Quente</option>
                     <option value="morno">Morno</option>
@@ -420,8 +415,7 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
                   <select 
                     value={finalidade}
                     onChange={(e) => handleUpdateInfo('finalidade', e.target.value)}
-                    disabled={isTraffic}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                   >
                     <option value="">Selecione...</option>
                     <option value="revenda">Revenda</option>
@@ -440,14 +434,12 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
                   <MessageSquare className="size-3" /> Observações
                 </h4>
                 {!isEditingObservations ? (
-                  !isTraffic && (
-                    <button 
-                      onClick={() => setIsEditingObservations(true)}
-                      className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1"
-                    >
-                      <Edit2 className="size-3" /> Editar
-                    </button>
-                  )
+                  <button 
+                    onClick={() => setIsEditingObservations(true)}
+                    className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1"
+                  >
+                    <Edit2 className="size-3" /> Editar
+                  </button>
                 ) : (
                   <div className="flex items-center gap-2">
                     <button 
@@ -483,33 +475,32 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
                 )}
               </div>
             </section>
+
           </div>
 
           {/* Right Side: History */}
           <div className="w-[400px] flex flex-col bg-slate-50/50 dark:bg-slate-900/50">
             {/* Action Buttons */}
-            {!isTraffic && (
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleMoveStatus('prev')}
-                    disabled={!prevColumn}
-                    className="flex-1 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    <ChevronLeft className="size-4" />
-                    Voltar Fase
-                  </button>
-                  <button 
-                    onClick={() => handleMoveStatus('next')}
-                    disabled={!nextColumn}
-                    className="flex-[2] py-3 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    Avançar Fase
-                    <ChevronRight className="size-4" />
-                  </button>
-                </div>
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleMoveStatus('prev')}
+                  disabled={!prevColumn}
+                  className="flex-1 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <ChevronLeft className="size-4" />
+                  Voltar Fase
+                </button>
+                <button 
+                  onClick={() => handleMoveStatus('next')}
+                  disabled={!nextColumn}
+                  className="flex-[2] py-3 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  Avançar Fase
+                  <ChevronRight className="size-4" />
+                </button>
               </div>
-            )}
+            </div>
 
             {/* History Timeline */}
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
@@ -519,31 +510,29 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
               
               <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 dark:before:via-slate-800 before:to-transparent">
                 {/* Add new interaction */}
-                {!isTraffic && (
-                  <div className="relative flex items-start justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                    <div className="flex items-center justify-center size-10 rounded-full border-4 border-white dark:border-slate-900 bg-primary text-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
-                      <Plus className="size-4" />
-                    </div>
-                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
-                      <textarea
-                        value={newInteraction}
-                        onChange={(e) => setNewInteraction(e.target.value)}
-                        placeholder="Registrar nova interação..."
-                        className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm resize-none outline-none text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
-                        rows={2}
-                      />
-                      <div className="flex justify-end mt-2">
-                        <button
-                          onClick={handleAddInteraction}
-                          disabled={!newInteraction.trim() || isSaving}
-                          className="p-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-                        >
-                          <Send className="size-3" />
-                        </button>
-                      </div>
+                <div className="relative flex items-start justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                  <div className="flex items-center justify-center size-10 rounded-full border-4 border-white dark:border-slate-900 bg-primary text-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
+                    <Plus className="size-4" />
+                  </div>
+                  <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <textarea
+                      value={newInteraction}
+                      onChange={(e) => setNewInteraction(e.target.value)}
+                      placeholder="Registrar nova interação..."
+                      className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm resize-none outline-none text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+                      rows={2}
+                    />
+                    <div className="flex justify-end mt-2">
+                      <button
+                        onClick={handleAddInteraction}
+                        disabled={!newInteraction.trim() || isSaving}
+                        className="p-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                      >
+                        <Send className="size-3" />
+                      </button>
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* History Items */}
                 {lead.history?.slice().reverse().map((item, index) => (

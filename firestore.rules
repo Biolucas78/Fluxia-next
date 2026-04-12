@@ -46,9 +46,9 @@ service cloud.firestore {
     // Leads collection
     match /leads/{leadId} {
       allow read: if isAdmin() || isGestorVendas() || isGestorTrafego();
-      allow create: if isAdmin() || isGestorVendas();
-      allow update: if isAdmin() || isGestorVendas();
-      allow delete: if isAdmin() || isGestorVendas();
+      allow create: if isAdmin() || isGestorVendas() || isGestorTrafego();
+      allow update: if isAdmin() || isGestorVendas() || isGestorTrafego();
+      allow delete: if isAdmin();
     }
     
     match /leads_dev/{leadId} {

@@ -245,33 +245,31 @@ export default function LeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDe
           )}
         </div>
 
-        {!isTraffic && (
-          <div className="mt-4 flex gap-2">
-            {onMoveLead && lead.status !== 'lead' && (
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMoveLead(lead, 'prev');
-                }}
-                className="flex-1 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-              >
-                Voltar
-              </button>
-            )}
-            {onMoveLead && (
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMoveLead(lead, 'next');
-                }}
-                className="flex-[2] py-1.5 rounded-lg text-[10px] font-bold text-white transition-all flex items-center justify-center gap-1 bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20"
-              >
-                Avançar
-                <CheckCircle2 className="size-3" />
-              </button>
-            )}
-          </div>
-        )}
+        <div className="mt-4 flex gap-2">
+          {onMoveLead && lead.status !== 'lead' && (
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveLead(lead, 'prev');
+              }}
+              className="flex-1 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              Voltar
+            </button>
+          )}
+          {onMoveLead && (
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveLead(lead, 'next');
+              }}
+              className="flex-[2] py-1.5 rounded-lg text-[10px] font-bold text-white transition-all flex items-center justify-center gap-1 bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20"
+            >
+              Avançar
+              <CheckCircle2 className="size-3" />
+            </button>
+          )}
+        </div>
       </div>
     </motion.div>
   );
