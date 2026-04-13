@@ -26,11 +26,16 @@ const app = (() => {
     const appName = existingApps.length > 0 ? `app-${projectId}-${Date.now()}` : undefined;
     
     if (serviceAccount) {
-      console.log(`[Firebase Admin] Initializing ${appName || 'default'} app with Service Account Key`);
-      return initializeApp({
-        credential: credential.cert(JSON.parse(serviceAccount)),
-        projectId: projectId,
-      }, appName);
+      try {
+        console.log(`[Firebase Admin] Initializing ${appName || 'default'} app with Service Account Key`);
+        const cert = JSON.parse(serviceAccount);
+        return initializeApp({
+          credential: credential.cert(cert),
+          projectId: projectId,
+        }, appName);
+      } catch (parseError) {
+        console.error('[Firebase Admin] Failed to parse service account key, falling back to default credentials');
+      }
     }
     
     console.log(`[Firebase Admin] Initializing ${appName || 'default'} app with Project ID: ${projectId}`);
@@ -45,7 +50,24 @@ const app = (() => {
 
 console.log(`[Firebase Admin] Using Database ID: ${databaseId}`);
 
-export const adminDb = databaseId === '(default)' ? getFirestore(app) : getFirestore(app, databaseId);
+let _adminDb: any = null;
+
+export const getAdminDb = () => {
+  if (_adminDb) return _adminDb;
+  
+  const dbId = databaseId === '(default)' ? undefined : databaseId;
+  try {
+    _adminDb = dbId ? getFirestore(app, dbId) : getFirestore(app);
+    return _adminDb;
+  } catch (error) {
+    console.error('[Firebase Admin] Failed to initialize Firestore:', error);
+    // Fallback to default database if named one fails
+    _adminDb = getFirestore(app);
+    return _adminDb;
+  }
+};
+
+export const adminDb = getAdminDb();
 export const adminDbDefault = getFirestore(app);
 export const adminAuth = getAuth(app);
 export const auth = adminAuth;

@@ -407,29 +407,36 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
     let q;
     if (effectiveRole === 'gestor_trafego') {
       // Gestor de tráfego só pode ver leads da landing page
-      // Nota: Isso pode exigir um índice composto no Firestore (origem ASC, createdAt DESC)
       q = query(
         collection(db, collectionName), 
-        where('origem', '==', 'landing_page'),
-        orderBy('createdAt', 'desc')
+        where('origem', '==', 'landing_page')
       );
     } else {
-      q = query(collection(db, collectionName), orderBy('createdAt', 'desc'));
+      q = query(collection(db, collectionName));
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log(`[useLeads] Received ${snapshot.docs.length} leads from ${collectionName}`);
       const loadedLeads = snapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
-      } as Lead));
+      } as Lead)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
       setLeads(loadedLeads);
       setIsLoaded(true);
     }, (error) => {
+      console.error(`[useLeads Error] Collection: ${collectionName}`, error);
       handleFirestoreError(error, OperationType.GET, collectionName);
     });
 
     return () => unsubscribe();
   }, [userProfile, userLoading, effectiveRole]);
+
+  useEffect(() => {
+    if (leads.length > 0) {
+      console.log(`[useLeads] State updated: ${leads.length} leads in memory`);
+    }
+  }, [leads]);
 
   const getCollectionName = () => {
     if (typeof window === 'undefined') return 'leads';

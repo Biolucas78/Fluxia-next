@@ -1,66 +1,94 @@
 import { NextResponse } from 'next/server';
-import { initializeApp, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import admin from 'firebase-admin';
+import { getAdminDb } from '@/lib/firebase-admin';
 
-// Initialize Firebase Admin
-if (!getApps().length) {
-  try {
-    const serviceAccount = JSON.parse(process.env.GA4_SERVICE_ACCOUNT_KEY || '{}');
-    initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-  } catch (error) {
-    console.error('Firebase Admin initialization error:', error);
-  }
-}
-
-const db = getFirestore();
+// This forces Next.js to not cache this route and handle it dynamically
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+  const requestId = Math.random().toString(36).substring(7);
+  console.log(`[Webhook ${requestId}] Request received`);
+
   try {
-    const body = await req.json();
-    
-    // Basic validation
-    const { nome, email, whatsapp, origem, mensagem } = body;
-    
-    if (!nome || (!email && !whatsapp)) {
-      return NextResponse.json({ error: 'Nome e Email/WhatsApp são obrigatórios' }, { status: 400 });
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      console.error(`[Webhook ${requestId}] Failed to parse JSON body`);
+      return NextResponse.json({ error: 'Corpo da requisição inválido (JSON esperado)' }, { status: 400 });
     }
 
+    console.log(`[Webhook ${requestId}] Body:`, JSON.stringify(body));
+    
+    // Basic validation
+    if (!body.nome) {
+      console.error(`[Webhook ${requestId}] Missing "nome" field`);
+      return NextResponse.json({ error: 'O campo "nome" é obrigatório' }, { status: 400 });
+    }
+
+    const now = new Date().toISOString();
+    
+    // Determine environment for collection
+    const host = req.headers.get('host') || '';
+    const forwardedHost = req.headers.get('x-forwarded-host') || '';
+    const isDev = host.includes('ais-dev') || forwardedHost.includes('ais-dev') || host.includes('localhost');
+    const collectionName = isDev ? 'leads_dev' : 'leads';
+
+    console.log(`[Webhook ${requestId}] Env: host=${host}, isDev=${isDev}, collection=${collectionName}`);
+
+    // Map incoming body to Lead interface
     const newLead = {
-      nome,
-      email: email || '',
-      whatsapp: whatsapp || '',
-      origem: origem || 'landing_page',
-      mensagem: mensagem || '',
-      status: 'novo',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      historico: [
-        {
-          data: new Date().toISOString(),
-          mensagem: 'Lead capturado via Webhook (Landing Page)',
-          usuario: 'Sistema'
+      nome: body.nome,
+      companyName: body.companyName || body.empresa || '',
+      whatsapp: body.whatsapp || body.telefone || body.phone || '',
+      email: body.email || '',
+      origem: 'landing_page', // Force landing_page for Traffic funnel visibility
+      status: '1_mensagem',   // Stage "NOVO LEAD" in Traffic funnel
+      notas: body.notas || body.mensagem || body.note || '',
+      finalidade: body.finalidade || 'consumo',
+      temperature: body.temperature || 'morno',
+      createdAt: now,
+      updatedAt: now,
+      history: [
+        { 
+          status: '1_mensagem', 
+          timestamp: now, 
+          note: body.historyNote || 'Lead capturado via Webhook (Make.com)' 
         }
       ]
     };
 
-    // Save to Firestore
-    const docRef = await db.collection('leads').add(newLead);
+    // Save to Firestore using Admin SDK
+    try {
+      const adminDb = getAdminDb();
+      console.log(`[Webhook ${requestId}] Saving to Firestore...`);
+      const docRef = await adminDb.collection(collectionName).add(newLead);
+      console.log(`[Webhook ${requestId}] Success! ID: ${docRef.id}`);
 
-    return NextResponse.json({ 
-      success: true, 
-      id: docRef.id,
-      message: 'Lead capturado com sucesso' 
-    });
+      return NextResponse.json({ 
+        success: true, 
+        id: docRef.id,
+        message: 'Lead criado com sucesso no funil de Tráfego (etapa NOVO LEAD)',
+        stage: '1_mensagem',
+        collection: collectionName
+      });
+    } catch (dbError: any) {
+      console.error(`[Webhook ${requestId}] DB Error:`, dbError);
+      return NextResponse.json({ 
+        error: 'Erro ao salvar no banco de dados',
+        message: dbError.message,
+        code: dbError.code,
+        collection: collectionName
+      }, { status: 500 });
+    }
   } catch (error) {
-    console.error('Webhook Error:', error);
-    return NextResponse.json({ error: 'Erro interno ao processar lead' }, { status: 500 });
+    console.error(`[Webhook ${requestId}] Global Error:`, error);
+    return NextResponse.json({ 
+      error: 'Erro interno ao processar lead',
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   }
 }
 
-// Handle CORS for external requests
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
