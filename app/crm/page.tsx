@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useLeads, useUser, useAnalytics } from '@/lib/hooks';
+import { Lead } from '@/lib/types';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import CRMDashboard from '@/components/CRMDashboard';
