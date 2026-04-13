@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       dimensions: [{ name: 'newVsReturning' }],
       metrics: [{ name: 'sessions' }],
       dimensionFilter,
-    });
+    } as any);
 
     // 2. Sessions by Device
     const [deviceResponse] = await client.runReport({
@@ -76,7 +76,7 @@ export async function GET(request: Request) {
       dimensions: [{ name: 'deviceCategory' }],
       metrics: [{ name: 'sessions' }],
       dimensionFilter,
-    });
+    } as any);
 
     // 3. Sessions by Channel (Organic vs Direct)
     const [channelResponse] = await client.runReport({
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
       dimensions: [{ name: 'sessionDefaultChannelGroup' }],
       metrics: [{ name: 'sessions' }],
       dimensionFilter,
-    });
+    } as any);
 
     // 4. Daily Sessions for Chart
     const [dailyResponse] = await client.runReport({
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
       metrics: [{ name: 'sessions' }],
       orderBys: [{ dimension: { dimensionName: 'date' } }],
       dimensionFilter,
-    });
+    } as any);
 
     // Process Data
     const currentSessions = response.rows
