@@ -51,6 +51,7 @@ interface KanbanBoardProps {
 }
 
 interface SortableOrderCardProps {
+  key?: React.Key;
   order: Order;
   onUpdateOrder: (order: Order) => void;
   onMoveOrder: (order: Order, direction: 'next' | 'prev') => void;
@@ -700,6 +701,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
 }
 
 interface KanbanColumnProps {
+  key?: React.Key;
   column: any;
   orders: Order[];
   onUpdateOrder: (order: Order) => void;

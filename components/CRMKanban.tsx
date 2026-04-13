@@ -32,7 +32,7 @@ interface CRMKanbanProps {
   role?: UserRole;
 }
 
-function SortableLeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDeleteLead, disabled, role }: { lead: Lead; onClick: () => void; onUpdateLead: (leadId: string, updates: Partial<Lead>) => void; onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void; onDeleteLead: (leadId: string) => void; disabled?: boolean; role?: UserRole; }) {
+function SortableLeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDeleteLead, disabled, role }: { key?: React.Key; lead: Lead; onClick: () => void; onUpdateLead: (leadId: string, updates: Partial<Lead>) => void; onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void; onDeleteLead: (leadId: string) => void; disabled?: boolean; role?: UserRole; }) {
   const {
     attributes,
     listeners,
@@ -69,7 +69,7 @@ function SortableLeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDeleteLea
   );
 }
 
-function KanbanColumn({ id, title, leads, onLeadClick, onUpdateLead, onMoveLead, onDeleteLead, readOnly, role }: { id: string; title: string; leads: Lead[]; onLeadClick: (lead: Lead) => void; onUpdateLead: (leadId: string, updates: Partial<Lead>) => void; onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void; onDeleteLead: (leadId: string) => void; readOnly?: boolean; role?: UserRole; }) {
+function KanbanColumn({ id, title, leads, onLeadClick, onUpdateLead, onMoveLead, onDeleteLead, readOnly, role }: { key?: React.Key; id: string; title: string; leads: Lead[]; onLeadClick: (lead: Lead) => void; onUpdateLead: (leadId: string, updates: Partial<Lead>) => void; onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void; onDeleteLead: (leadId: string) => void; readOnly?: boolean; role?: UserRole; }) {
   const { setNodeRef } = useDroppable({
     id,
     disabled: readOnly,

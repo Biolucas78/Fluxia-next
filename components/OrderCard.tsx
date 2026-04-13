@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { calculateWeightInKg } from '@/lib/parser';
 
 interface OrderCardProps {
+  key?: React.Key;
   order: Order;
   onUpdateOrder: (order: Order) => void;
   onMoveOrder: (order: Order, direction: 'next' | 'prev') => void;

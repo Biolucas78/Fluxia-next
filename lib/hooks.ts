@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Order, DashboardStats, UserProfile, UserRole, Lead, CRMStats, AuthorizedEmail } from './types';
+import { Order, DashboardStats, UserProfile, UserRole, Lead, CRMStats, AuthorizedEmail, AnalyticsStats, LeadHistory } from './types';
 import { calculateWeightInKg } from './parser';
 import { db, auth } from './firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, orderBy, where, getDocFromServer } from 'firebase/firestore';

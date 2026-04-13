@@ -67,7 +67,7 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
   const [editedAddress, setEditedAddress] = useState(lead.address || '');
 
   const [isEditingObservations, setIsEditingObservations] = useState(false);
-  const [editedObservations, setEditedObservations] = useState(lead.notes || '');
+  const [editedObservations, setEditedObservations] = useState(lead.notas || '');
 
   const [temperature, setTemperature] = useState<LeadTemperature>(lead.temperature || 'morno');
   const [finalidade, setFinalidade] = useState(lead.finalidade || '');
@@ -109,7 +109,7 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
   const handleSaveObservations = async () => {
     setIsSaving(true);
     try {
-      await onUpdate(lead.id, { notes: editedObservations });
+      await onUpdate(lead.id, { notas: editedObservations });
       setIsEditingObservations(false);
       toast.success('Observações atualizadas!');
     } catch (error) {
@@ -470,7 +470,7 @@ export default function LeadDetailsModal({ lead, onClose, onUpdate, role }: Lead
                   />
                 ) : (
                   <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
-                    {lead.notes || 'Nenhuma observação registrada.'}
+                    {lead.notas || 'Nenhuma observação registrada.'}
                   </p>
                 )}
               </div>
