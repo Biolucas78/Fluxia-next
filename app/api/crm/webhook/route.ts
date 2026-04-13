@@ -1,8 +1,15 @@
-import { POST as leadsPost, OPTIONS as leadsOptions } from '../leads/webhook/route';
+import { handleLeadWebhook, handleWebhookOptions } from '@/lib/webhook-handler';
 import { NextResponse } from 'next/server';
 
-export const POST = leadsPost;
-export const OPTIONS = leadsOptions;
+export const dynamic = 'force-dynamic';
+
+export async function POST(req: Request) {
+  return handleLeadWebhook(req);
+}
+
+export async function OPTIONS() {
+  return handleWebhookOptions();
+}
 
 export async function GET() {
   return NextResponse.json({ 
