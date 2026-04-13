@@ -17,16 +17,13 @@ export async function handleLeadWebhook(req: Request) {
       body = await req.json();
     } catch (e) {
       console.error(`[Webhook ${requestId}] Failed to parse JSON body`);
-      return NextResponse.json({ error: 'Corpo da requisição inválido (JSON esperado)' }, { status: 400, headers: corsHeaders });
+      return NextResponse.json(
+        { error: 'Corpo da requisição inválido (JSON esperado)' }, 
+        { status: 400, headers: corsHeaders }
+      );
     }
 
     console.log(`[Webhook ${requestId}] Body:`, JSON.stringify(body));
-    
-    // Basic validation
-    if (!body.nome) {
-      console.error(`[Webhook ${requestId}] Missing "nome" field`);
-      return NextResponse.json({ error: 'O campo "nome" é obrigatório' }, { status: 400, headers: corsHeaders });
-    }
 
     const now = new Date().toISOString();
     
@@ -34,31 +31,22 @@ export async function handleLeadWebhook(req: Request) {
     const host = req.headers.get('host') || '';
     const forwardedHost = req.headers.get('x-forwarded-host') || '';
     const isDev = host.includes('ais-dev') || forwardedHost.includes('ais-dev') || host.includes('localhost') || host.includes('vercel.app') === false;
-    // Note: If using Vercel production, it will use 'leads' collection.
     const collectionName = isDev && !host.includes('vercel.app') ? 'leads_dev' : 'leads';
 
     console.log(`[Webhook ${requestId}] Env: host=${host}, isDev=${isDev}, collection=${collectionName}`);
 
-    // Map incoming body to Lead interface
+    // Map incoming body to Lead interface exactly as requested
     const newLead = {
-      nome: body.nome,
-      companyName: body.companyName || body.empresa || '',
-      whatsapp: body.whatsapp || body.telefone || body.phone || '',
+      nome: body.nome || body.name || 'Sem nome',
       email: body.email || '',
-      origem: 'landing_page', // Force landing_page for Traffic funnel visibility
-      status: '1_mensagem',   // Stage "NOVO LEAD" in Traffic funnel
-      notas: body.notas || body.mensagem || body.note || '',
-      finalidade: body.finalidade || 'consumo',
-      temperature: body.temperature || 'morno',
+      whatsapp: body.whatsapp || body.telefone || body.phone || '',
+      notas: body.mensagem || body.notas || body.note || body.finalidade || '',
+      origem: 'landing_page',
+      status: '1_mensagem',
+      temperature: 'morno',
+      history: [],
       createdAt: now,
       updatedAt: now,
-      history: [
-        { 
-          status: '1_mensagem', 
-          timestamp: now, 
-          note: body.historyNote || 'Lead capturado via Webhook (Make.com)' 
-        }
-      ]
     };
 
     // Save to Firestore using Admin SDK
@@ -68,33 +56,42 @@ export async function handleLeadWebhook(req: Request) {
       const docRef = await adminDb.collection(collectionName).add(newLead);
       console.log(`[Webhook ${requestId}] Success! ID: ${docRef.id}`);
 
-      return NextResponse.json({ 
-        success: true, 
-        id: docRef.id,
-        message: 'Lead criado com sucesso no funil de Tráfego (etapa NOVO LEAD)',
-        stage: '1_mensagem',
-        collection: collectionName
-      }, { headers: corsHeaders });
+      return NextResponse.json(
+        { 
+          success: true, 
+          id: docRef.id,
+          message: 'Lead criado com sucesso no funil de Tráfego (etapa NOVO LEAD)',
+          stage: '1_mensagem',
+          collection: collectionName
+        }, 
+        { status: 201, headers: corsHeaders }
+      );
     } catch (dbError: any) {
       console.error(`[Webhook ${requestId}] DB Error:`, dbError);
-      return NextResponse.json({ 
-        error: 'Erro ao salvar no banco de dados',
-        message: dbError.message,
-        code: dbError.code,
-        collection: collectionName
-      }, { status: 500, headers: corsHeaders });
+      return NextResponse.json(
+        { 
+          error: 'Erro ao salvar no banco de dados',
+          message: dbError.message,
+          code: dbError.code,
+          collection: collectionName
+        }, 
+        { status: 500, headers: corsHeaders }
+      );
     }
   } catch (error) {
     console.error(`[Webhook ${requestId}] Global Error:`, error);
-    return NextResponse.json({ 
-      error: 'Erro interno ao processar lead',
-      details: error instanceof Error ? error.message : String(error)
-    }, { status: 500, headers: corsHeaders });
+    return NextResponse.json(
+      { 
+        error: 'Erro interno ao processar lead',
+        details: error instanceof Error ? error.message : String(error)
+      }, 
+      { status: 500, headers: corsHeaders }
+    );
   }
 }
 
 export function handleWebhookOptions() {
-  return new NextResponse(null, {
+  return new Response(null, {
     status: 204,
     headers: corsHeaders,
   });
