@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { QueryDocumentSnapshot, DocumentData } from 'firebase-admin/firestore';
 import { adminDb, adminDbDefault, projectId, databaseId } from '@/lib/firebase-admin';
 import { getValidBlingTokenServer } from '@/lib/bling-server';
 import { fetchWithRetry } from '@/lib/bling-utils';
@@ -433,7 +434,7 @@ async function mapProductsToBling(token: string, products: any[]) {
     try {
       const snapshot = await adminDb.collection('product_mapping').get();
       if (!snapshot.empty) {
-        allMappings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        allMappings = snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ id: doc.id, ...doc.data() }));
         console.log(`[Bling API] Fetched ${allMappings.length} mappings from Named DB`);
       }
     } catch (e: any) {
@@ -449,7 +450,7 @@ async function mapProductsToBling(token: string, products: any[]) {
       try {
         const defaultSnapshot = await adminDbDefault.collection('product_mapping').get();
         if (!defaultSnapshot.empty) {
-          allMappings = defaultSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          allMappings = defaultSnapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ id: doc.id, ...doc.data() }));
           console.log(`[Bling API] Fetched ${allMappings.length} mappings from Default DB`);
         }
       } catch (e: any) {
@@ -514,13 +515,13 @@ async function mapProductsToBling(token: string, products: any[]) {
 
     // Try SKU first
     if (product.blingSku) {
-      mapping = allMappings.find(m => m.blingSku === product.blingSku);
+      mapping = allMappings.find((m: any) => m.blingSku === product.blingSku);
       if (mapping) console.log(`[Bling API] Found mapping by SKU: ${product.blingSku}`);
     }
 
     // 1. Try exact match (Name + Weight + Grind)
     if (!mapping) {
-      mapping = allMappings.find(m => 
+      mapping = allMappings.find((m: any) => 
         normalize(m.appName) === normName && 
         normalize(m.appWeight) === normWeight && 
         normalize(m.appGrind) === normGrind
@@ -530,7 +531,7 @@ async function mapProductsToBling(token: string, products: any[]) {
 
     // 2. Try Name + Weight
     if (!mapping) {
-      mapping = allMappings.find(m => 
+      mapping = allMappings.find((m: any) => 
         normalize(m.appName) === normName && 
         normalize(m.appWeight) === normWeight
       );
@@ -539,7 +540,7 @@ async function mapProductsToBling(token: string, products: any[]) {
 
     // 3. Try Name only (Fuzzy/Contains)
     if (!mapping) {
-      mapping = allMappings.find(m => {
+      mapping = allMappings.find((m: any) => {
         const mName = normalize(m.appName);
         return mName === normName || mName.includes(normName) || normName.includes(mName);
       });
@@ -549,7 +550,7 @@ async function mapProductsToBling(token: string, products: any[]) {
     // 4. Last resort: If the mapping in DB has the full string in appName
     if (!mapping) {
       const fullSearch = `${normName} ${normWeight} ${normGrind}`.trim();
-      mapping = allMappings.find(m => {
+      mapping = allMappings.find((m: any) => {
         const mName = normalize(m.appName);
         return mName === fullSearch || fullSearch.includes(mName) || mName.includes(fullSearch);
       });
