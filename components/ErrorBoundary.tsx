@@ -73,7 +73,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             )}
 
             <button
-              onClick={handleReset}
+              onClick={this.handleReset}
               className="w-full py-4 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
             >
               <RefreshCcw className="size-5" />
