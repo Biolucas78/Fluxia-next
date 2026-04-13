@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Lead } from '@/lib/types';
+import { Lead, UserRole } from '@/lib/types';
 import LeadCard from './LeadCard';
 import LeadDetailsModal from './LeadDetailsModal';
 import { 
