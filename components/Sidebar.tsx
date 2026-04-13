@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@/lib/hooks';
@@ -18,13 +18,13 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
 
   const navItems = [
     { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'user'] },
+    { id: 'producao', title: 'Produção', icon: Factory, href: '/producao', roles: ['admin', 'user'] },
     { id: 'crm', title: 'CRM Leads', icon: Kanban, href: '/crm', roles: ['admin', 'gestor_vendas', 'gestor_trafego'] },
     { id: 'recorrencia', title: 'Recorrência', icon: RefreshCcw, href: '/recorrencia', roles: ['admin', 'gestor_vendas'] },
-    { id: 'producao', title: 'Produção', icon: Factory, href: '/producao', roles: ['admin', 'user'] },
     { id: 'logistica', title: 'Logística', icon: Truck, href: '/logistica', roles: ['admin', 'user'] },
     { id: 'clientes', title: 'Clientes', icon: User, href: '/clientes', roles: ['admin', 'user'] },
     { id: 'produtos', title: 'Produtos', icon: Package, href: '/produtos', roles: ['admin', 'user'] },
-    { id: 'arquivados', title: 'Arquivados', icon: Settings, href: '/arquivados', roles: ['admin', 'user'] },
+    { id: 'arquivados', title: 'Arquivados', icon: Archive, href: '/arquivados', roles: ['admin', 'user'] },
     { id: 'configuracoes', title: 'Configurações', icon: Settings, href: '/configuracoes', roles: ['admin', 'user'] },
   ];
 
