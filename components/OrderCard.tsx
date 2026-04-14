@@ -307,6 +307,27 @@ export default function OrderCard({
     return state ? `${abbrCity} - ${state.toUpperCase()}` : abbrCity;
   }, [order.address, order.addressDetails]);
 
+  const delayAlert = useMemo(() => {
+    if (order.status === 'entregue' || order.status === 'enviado') return null;
+    
+    let lastUpdate = order.createdAt;
+    if (order.statusHistory && order.statusHistory.length > 0) {
+      const currentStatusEntry = [...order.statusHistory].reverse().find(h => h.status === order.status);
+      if (currentStatusEntry) {
+        lastUpdate = currentStatusEntry.timestamp;
+      }
+    }
+
+    const daysInColumn = Math.floor((new Date().getTime() - new Date(lastUpdate).getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysInColumn >= 3) {
+      return { level: 'critical', message: `Parado há ${daysInColumn} dias` };
+    } else if (daysInColumn >= 2) {
+      return { level: 'warning', message: `Parado há ${daysInColumn} dias` };
+    }
+    return null;
+  }, [order.status, order.createdAt, order.statusHistory]);
+
   return (
     <motion.div 
       layout
@@ -318,13 +339,37 @@ export default function OrderCard({
       } ${
         order.status === 'entregue' 
           ? 'border-emerald-200 dark:border-emerald-900/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+          : delayAlert?.level === 'critical'
+          ? 'border-red-300 dark:border-red-800 shadow-[0_0_10px_rgba(239,68,68,0.2)]'
+          : delayAlert?.level === 'warning'
+          ? 'border-amber-300 dark:border-amber-800 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
           : 'border-slate-200 dark:border-slate-800 hover:border-primary'
       }`}
     >
       {locationInfo && (
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-700">
             {locationInfo}
+          </span>
+          {delayAlert && (
+            <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border ${
+              delayAlert.level === 'critical' 
+                ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800' 
+                : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:border-amber-800'
+            }`}>
+              {delayAlert.message}
+            </span>
+          )}
+        </div>
+      )}
+      {!locationInfo && delayAlert && (
+        <div className="absolute top-2 right-2 z-10">
+          <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border ${
+            delayAlert.level === 'critical' 
+              ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800' 
+              : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:border-amber-800'
+          }`}>
+            {delayAlert.message}
           </span>
         </div>
       )}
@@ -383,6 +428,10 @@ export default function OrderCard({
                 Amostra
               </span>
             )}
+          </div>
+          <div className="text-[9px] text-slate-400 mt-0.5 flex items-center gap-1">
+            <Calendar className="size-2.5" />
+            {new Date(order.createdAt).toLocaleDateString('pt-BR')} às {new Date(order.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
           </div>
           <div className={`flex items-center justify-between mt-1 ${isExpanded ? 'hidden' : 'flex'}`}>
             <div className="flex items-center gap-2">

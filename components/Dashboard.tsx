@@ -36,11 +36,85 @@ interface CoffeeNeed {
   stockKg: number;
 }
 
-export default function Dashboard({ stats, orders, onSeedOrder, onUpdateOrder }: DashboardProps) {
+export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, onUpdateOrder }: DashboardProps) {
   const [filter, setFilter] = useState<FilterType>('month');
   const [chartMetric, setChartMetric] = useState<'kg' | 'units' | 'clients'>('kg');
   const [showShippedModal, setShowShippedModal] = useState(false);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
+  
+  // Global Date Filter
+  const [globalStartDate, setGlobalStartDate] = useState<string>('');
+  const [globalEndDate, setGlobalEndDate] = useState<string>('');
+  const [datePreset, setDatePreset] = useState<string>('custom');
+
+  const handlePresetChange = (preset: string) => {
+    setDatePreset(preset);
+    if (preset === 'custom') return;
+
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
+
+    switch (preset) {
+      case 'today':
+        break;
+      case 'yesterday':
+        start.setDate(now.getDate() - 1);
+        end.setDate(now.getDate() - 1);
+        break;
+      case 'this_week':
+        const dayOfWeek = now.getDay();
+        const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        start.setDate(diffToMonday);
+        break;
+      case 'last_week':
+        const lastWeekDay = now.getDay();
+        const lastWeekDiff = now.getDate() - lastWeekDay + (lastWeekDay === 0 ? -6 : 1) - 7;
+        start.setDate(lastWeekDiff);
+        end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        break;
+      case 'this_month':
+        start.setDate(1);
+        break;
+      case 'last_month':
+        start.setMonth(now.getMonth() - 1);
+        start.setDate(1);
+        end.setMonth(now.getMonth());
+        end.setDate(0);
+        break;
+    }
+
+    // Format to YYYY-MM-DD
+    const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    setGlobalStartDate(formatDate(start));
+    setGlobalEndDate(formatDate(end));
+  };
+
+  const orders = useMemo(() => {
+    return initialOrders.filter(o => {
+      if (globalStartDate) {
+        const orderDate = new Date(o.createdAt);
+        const start = new Date(globalStartDate);
+        start.setHours(0, 0, 0, 0);
+        if (orderDate < start) return false;
+      }
+      if (globalEndDate) {
+        const orderDate = new Date(o.createdAt);
+        const end = new Date(globalEndDate);
+        end.setHours(23, 59, 59, 999);
+        if (orderDate > end) return false;
+      }
+      return true;
+    });
+  }, [initialOrders, globalStartDate, globalEndDate]);
+
   const [coffeeStocks, setCoffeeStocks] = useState<Record<string, number>>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('coffee_stocks');
@@ -281,6 +355,61 @@ export default function Dashboard({ stats, orders, onSeedOrder, onUpdateOrder }:
 
   return (
     <div className="space-y-10 pb-10">
+      {/* Global Date Filter */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Filter className="size-5 text-primary" />
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Filtro Global:</span>
+        </div>
+        <div>
+          <select
+            value={datePreset}
+            onChange={(e) => handlePresetChange(e.target.value)}
+            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium outline-none focus:border-primary transition-all text-slate-700 dark:text-slate-300"
+          >
+            <option value="custom">Personalizado</option>
+            <option value="today">Dia Atual</option>
+            <option value="yesterday">Dia Anterior</option>
+            <option value="this_week">Semana Atual</option>
+            <option value="last_week">Semana Anterior</option>
+            <option value="this_month">Mês Atual</option>
+            <option value="last_month">Mês Anterior</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+            <input 
+              type="date" 
+              value={globalStartDate}
+              onChange={(e) => { setGlobalStartDate(e.target.value); setDatePreset('custom'); }}
+              className="pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+            <input 
+              type="date" 
+              value={globalEndDate}
+              onChange={(e) => { setGlobalEndDate(e.target.value); setDatePreset('custom'); }}
+              className="pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all"
+            />
+          </div>
+        </div>
+        {(globalStartDate || globalEndDate || datePreset !== 'custom') && (
+          <button 
+            onClick={() => { setGlobalStartDate(''); setGlobalEndDate(''); setDatePreset('custom'); }}
+            className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-red-500 bg-slate-100 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-red-900/20 rounded-lg transition-all"
+          >
+            Limpar
+          </button>
+        )}
+      </div>
+
       {selectedOrderForShipping && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <ShippingQuote 

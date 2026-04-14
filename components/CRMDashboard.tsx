@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { CRMStats, Lead, UserRole, AnalyticsStats } from '@/lib/types';
 import { 
   Users, 
@@ -17,7 +17,9 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Filter,
+  Calendar
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -47,8 +49,116 @@ interface CRMDashboardProps {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-export default function CRMDashboard({ stats, leads, role, analytics, analyticsLoading, analyticsError }: CRMDashboardProps) {
+export default function CRMDashboard({ stats, leads: initialLeads, role, analytics, analyticsLoading, analyticsError }: CRMDashboardProps) {
   const isTraffic = role === 'gestor_trafego';
+
+  // Global Date Filter
+  const [globalStartDate, setGlobalStartDate] = React.useState<string>('');
+  const [globalEndDate, setGlobalEndDate] = React.useState<string>('');
+  const [datePreset, setDatePreset] = React.useState<string>('custom');
+
+  const handlePresetChange = (preset: string) => {
+    setDatePreset(preset);
+    if (preset === 'custom') return;
+
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
+
+    switch (preset) {
+      case 'today':
+        break;
+      case 'yesterday':
+        start.setDate(now.getDate() - 1);
+        end.setDate(now.getDate() - 1);
+        break;
+      case 'this_week':
+        const dayOfWeek = now.getDay();
+        const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        start.setDate(diffToMonday);
+        break;
+      case 'last_week':
+        const lastWeekDay = now.getDay();
+        const lastWeekDiff = now.getDate() - lastWeekDay + (lastWeekDay === 0 ? -6 : 1) - 7;
+        start.setDate(lastWeekDiff);
+        end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        break;
+      case 'this_month':
+        start.setDate(1);
+        break;
+      case 'last_month':
+        start.setMonth(now.getMonth() - 1);
+        start.setDate(1);
+        end.setMonth(now.getMonth());
+        end.setDate(0);
+        break;
+    }
+
+    // Format to YYYY-MM-DD
+    const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    setGlobalStartDate(formatDate(start));
+    setGlobalEndDate(formatDate(end));
+  };
+
+  const leads = React.useMemo(() => {
+    return initialLeads.filter(l => {
+      if (globalStartDate) {
+        const leadDate = new Date(l.createdAt);
+        const start = new Date(globalStartDate);
+        start.setHours(0, 0, 0, 0);
+        if (leadDate < start) return false;
+      }
+      if (globalEndDate) {
+        const leadDate = new Date(l.createdAt);
+        const end = new Date(globalEndDate);
+        end.setHours(23, 59, 59, 999);
+        if (leadDate > end) return false;
+      }
+      return true;
+    });
+  }, [initialLeads, globalStartDate, globalEndDate]);
+
+  // Recalculate stats based on filtered leads
+  const filteredStats = React.useMemo(() => {
+    const totalLeads = leads.length;
+    const totalOrdersCount = leads.filter(l => l.status === 'fez_pedido' || l.status === 'recorrencia').length;
+    
+    // Calculate total sales value from lead history or other fields if available.
+    // For now, we'll use the original stats value if we can't calculate it, or 0.
+    // Assuming we don't have orderValue on Lead directly, we might need to rely on stats.totalSalesValue
+    // or calculate it if there's a way. We'll use stats.totalSalesValue for now as a fallback.
+    const totalSalesValue = stats.totalSalesValue;
+    
+    const conversionRate = totalLeads > 0 ? (totalOrdersCount / totalLeads) * 100 : 0;
+
+    const sourceDistribution = leads.reduce((acc, l) => {
+      const source = l.origem || 'Desconhecida';
+      acc[source] = (acc[source] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const statusDistribution = leads.reduce((acc, l) => {
+      acc[l.status] = (acc[l.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      totalLeads,
+      totalOrdersCount,
+      totalSalesValue,
+      conversionRate,
+      sourceDistribution,
+      statusDistribution,
+      comparison: stats.comparison
+    };
+  }, [leads, stats.comparison, stats.totalSalesValue]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -71,26 +181,26 @@ export default function CRMDashboard({ stats, leads, role, analytics, analyticsL
   const statCards = [
     {
       title: 'Total de Leads',
-      value: stats.totalLeads,
+      value: filteredStats.totalLeads,
       icon: Users,
       color: 'bg-blue-500',
-      change: stats.comparison?.leadsChange,
+      change: filteredStats.comparison?.leadsChange,
       description: 'Leads capturados'
     },
     {
       title: 'Vendas Totais',
-      value: formatCurrency(stats.totalSalesValue),
+      value: formatCurrency(filteredStats.totalSalesValue),
       icon: DollarSign,
       color: 'bg-emerald-500',
-      change: stats.comparison?.salesValueChange,
+      change: filteredStats.comparison?.salesValueChange,
       description: 'Valor faturado'
     },
     {
       title: 'Pedidos',
-      value: stats.totalOrdersCount,
+      value: filteredStats.totalOrdersCount,
       icon: ShoppingBag,
       color: 'bg-amber-500',
-      change: stats.comparison?.ordersCountChange,
+      change: filteredStats.comparison?.ordersCountChange,
       description: 'Número de pedidos'
     },
     {
@@ -123,6 +233,61 @@ export default function CRMDashboard({ stats, leads, role, analytics, analyticsL
 
   return (
     <div className="space-y-8 pb-10">
+      {/* Global Date Filter */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Filter className="size-5 text-primary" />
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Filtro Global:</span>
+        </div>
+        <div>
+          <select
+            value={datePreset}
+            onChange={(e) => handlePresetChange(e.target.value)}
+            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium outline-none focus:border-primary transition-all text-slate-700 dark:text-slate-300"
+          >
+            <option value="custom">Personalizado</option>
+            <option value="today">Dia Atual</option>
+            <option value="yesterday">Dia Anterior</option>
+            <option value="this_week">Semana Atual</option>
+            <option value="last_week">Semana Anterior</option>
+            <option value="this_month">Mês Atual</option>
+            <option value="last_month">Mês Anterior</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+            <input 
+              type="date" 
+              value={globalStartDate}
+              onChange={(e) => { setGlobalStartDate(e.target.value); setDatePreset('custom'); }}
+              className="pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+            <input 
+              type="date" 
+              value={globalEndDate}
+              onChange={(e) => { setGlobalEndDate(e.target.value); setDatePreset('custom'); }}
+              className="pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all"
+            />
+          </div>
+        </div>
+        {(globalStartDate || globalEndDate || datePreset !== 'custom') && (
+          <button 
+            onClick={() => { setGlobalStartDate(''); setGlobalEndDate(''); setDatePreset('custom'); }}
+            className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-red-500 bg-slate-100 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-red-900/20 rounded-lg transition-all"
+          >
+            Limpar
+          </button>
+        )}
+      </div>
+
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((stat, index) => (
@@ -323,7 +488,7 @@ export default function CRMDashboard({ stats, leads, role, analytics, analyticsL
             <h3 className="font-semibold text-slate-900 dark:text-white">Status dos Leads</h3>
           </div>
           <div className="space-y-3 max-h-[250px] overflow-y-auto custom-scrollbar pr-2">
-            {Object.entries(stats.leadsByStatus).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
+            {Object.entries(filteredStats.statusDistribution).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
               <div key={status} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                 <span className="text-xs capitalize text-slate-600 dark:text-slate-400">{status.replace(/_/g, ' ')}</span>
                 <span className="text-xs font-bold text-slate-900 dark:text-white">{count}</span>

@@ -427,26 +427,40 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
     scrollLeft.current = scrollRef.current.scrollLeft;
   };
 
+  const [archiveModal, setArchiveModal] = useState<{ open: boolean; availableMonths: string[] }>({ open: false, availableMonths: [] });
+  const [selectedArchiveMonth, setSelectedArchiveMonth] = useState('');
+
   const handleArchiveOldOrders = () => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const months = Array.from(new Set(orders.filter(o => o.status === 'entregue' && !o.archived).map(o => {
+      const d = new Date(o.createdAt);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }))).sort().reverse();
 
-    const ordersToArchive = orders.filter(o => {
-      if (o.status !== 'entregue' || o.archived) return false;
-      const orderDate = new Date(o.createdAt);
-      return orderDate.getMonth() !== currentMonth || orderDate.getFullYear() !== currentYear;
-    });
-
-    if (ordersToArchive.length === 0) {
-      toast.error('Nenhum pedido de meses anteriores encontrado para arquivar.');
+    if (months.length === 0) {
+      toast.error('Nenhum pedido entregue para arquivar.');
       return;
     }
 
-    if (window.confirm(`Deseja arquivar ${ordersToArchive.length} pedidos de meses anteriores?`)) {
-      ordersToArchive.forEach(o => onArchiveOrder(o.id));
-      toast.success(`${ordersToArchive.length} pedidos arquivados com sucesso!`);
+    setArchiveModal({ open: true, availableMonths: months });
+    setSelectedArchiveMonth(months[0]);
+  };
+
+  const confirmArchive = () => {
+    const ordersToArchive = orders.filter(o => {
+      if (o.status !== 'entregue' || o.archived) return false;
+      const d = new Date(o.createdAt);
+      const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return m === selectedArchiveMonth;
+    });
+
+    if (ordersToArchive.length === 0) {
+      toast.error('Nenhum pedido encontrado para o mês selecionado.');
+      return;
     }
+
+    ordersToArchive.forEach(o => onArchiveOrder(o.id));
+    toast.success(`${ordersToArchive.length} pedidos arquivados com sucesso!`);
+    setArchiveModal({ open: false, availableMonths: [] });
   };
 
   return (
@@ -579,6 +593,68 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
               title={bulkCheckModal.type === 'separation' ? 'Separar Embalagens' : 'Marcar Produção'}
               subtitle={bulkCheckModal.type === 'separation' ? 'Separação em Lote' : 'Produção em Lote'}
             />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {archiveModal.open && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-800"
+              >
+                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Trash2 className="size-5 text-primary" /> Arquivar Pedidos
+                  </h3>
+                  <button 
+                    onClick={() => setArchiveModal({ open: false, availableMonths: [] })}
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400"
+                  >
+                    <X className="size-5" />
+                  </button>
+                </div>
+                <div className="p-6 space-y-4">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Selecione o mês para arquivar os pedidos entregues. Eles continuarão disponíveis nos relatórios e dashboards.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mês/Ano</label>
+                    <select
+                      value={selectedArchiveMonth}
+                      onChange={(e) => setSelectedArchiveMonth(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                    >
+                      {archiveModal.availableMonths.map(m => {
+                        const [year, month] = m.split('-');
+                        const date = new Date(parseInt(year), parseInt(month) - 1);
+                        return (
+                          <option key={m} value={m}>
+                            {date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+                <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3">
+                  <button
+                    onClick={() => setArchiveModal({ open: false, availableMonths: [] })}
+                    className="px-4 py-2 text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmArchive}
+                    className="px-4 py-2 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors"
+                  >
+                    Arquivar Pedidos
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
 
