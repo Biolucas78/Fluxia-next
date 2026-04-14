@@ -1,15 +1,24 @@
 export type UserRole = 'admin' | 'user' | 'gestor_trafego' | 'gestor_vendas';
 
+export interface UserPermissions {
+  crm_read: boolean;
+  crm_edit: boolean;
+  crm_create: boolean;
+  crm_delete: boolean;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
   role: UserRole;
+  permissions?: UserPermissions;
 }
 
 export type LeadOrigin = 'landing_page' | 'munddi' | 'manual';
 export type LeadTemperature = 'gelado' | 'morno' | 'quente';
 
 export interface LeadHistory {
+  id?: string;
   status: string;
   timestamp: string;
   note?: string;
@@ -22,17 +31,39 @@ export interface Lead {
   responsibleName?: string;
   cnpj?: string;
   address?: string;
+  addressDetails?: {
+    street: string;
+    number: string;
+    complement: string;
+    district: string;
+    city: string;
+    state: string;
+    zip: string;
+  };
   whatsapp?: string;
   email?: string;
   finalidade?: 'consumo' | 'revenda';
   origem: LeadOrigin;
+  utm?: {
+    source?: string;
+    medium?: string;
+    campaign?: string;
+    term?: string;
+    content?: string;
+  };
   status: string;
   temperature?: LeadTemperature;
   notas?: string;
+  sampleType?: 'em grãos' | 'moído' | 'amostra mista';
+  sampleSentAt?: string;
+  shippingDate?: string;
+  trackingStatus?: string;
+  isDeleted?: boolean;
   createdAt: string;
   updatedAt: string;
   lastContactAt?: string;
   history: LeadHistory[];
+  activeActions?: string[];
 }
 
 export interface CRMStats {
@@ -173,6 +204,7 @@ export interface AuthorizedEmail {
   id: string;
   email: string;
   role: UserRole;
+  permissions?: UserPermissions;
   createdAt: string;
 }
 

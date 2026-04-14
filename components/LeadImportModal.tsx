@@ -75,7 +75,7 @@ export default function LeadImportModal({ onClose, onImport }: LeadImportModalPr
       setParsedLead({
         ...result,
         origem: 'manual',
-        status: 'lead',
+        status: '1_mensagem',
         temperature: 'morno'
       });
       

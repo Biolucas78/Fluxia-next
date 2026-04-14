@@ -51,7 +51,7 @@ function SettingsContent() {
   const [isSavingLojaId, setIsSavingLojaId] = useState(false);
 
   const { userProfile, loading: userLoading } = useUser();
-  const { emails, addAuthorizedEmail, removeAuthorizedEmail, updateAuthorizedRole } = useAuthorizedEmails();
+  const { emails, addAuthorizedEmail, removeAuthorizedEmail, updateAuthorizedRole, updateAuthorizedPermissions } = useAuthorizedEmails();
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('gestor_trafego');
   const [isAddingEmail, setIsAddingEmail] = useState(false);
@@ -916,6 +916,7 @@ function SettingsContent() {
                         <tr>
                           <th className="px-6 py-4">E-mail</th>
                           <th className="px-6 py-4">Função</th>
+                          <th className="px-6 py-4">Permissões CRM</th>
                           <th className="px-6 py-4">Data</th>
                           <th className="px-6 py-4 text-right">Ações</th>
                         </tr>
@@ -923,7 +924,7 @@ function SettingsContent() {
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {emails.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">Nenhum usuário autorizado ainda.</td>
+                            <td colSpan={5} className="px-6 py-8 text-center text-slate-400 italic">Nenhum usuário autorizado ainda.</td>
                           </tr>
                         ) : (
                           emails.map((email) => (
@@ -939,6 +940,46 @@ function SettingsContent() {
                                   <option value="gestor_vendas">Gestora de Vendas</option>
                                   <option value="admin">Administrador</option>
                                 </select>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex flex-col gap-2">
+                                  <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={email.permissions?.crm_read ?? true}
+                                      onChange={(e) => updateAuthorizedPermissions(email.id, { ...email.permissions, crm_read: e.target.checked })}
+                                      className="rounded border-slate-300 text-primary focus:ring-primary"
+                                    />
+                                    Leitor
+                                  </label>
+                                  <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={email.permissions?.crm_edit ?? true}
+                                      onChange={(e) => updateAuthorizedPermissions(email.id, { ...email.permissions, crm_edit: e.target.checked })}
+                                      className="rounded border-slate-300 text-primary focus:ring-primary"
+                                    />
+                                    Editor
+                                  </label>
+                                  <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={email.permissions?.crm_create ?? true}
+                                      onChange={(e) => updateAuthorizedPermissions(email.id, { ...email.permissions, crm_create: e.target.checked })}
+                                      className="rounded border-slate-300 text-primary focus:ring-primary"
+                                    />
+                                    Incluir Leads
+                                  </label>
+                                  <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={email.permissions?.crm_delete ?? (email.role === 'admin')}
+                                      onChange={(e) => updateAuthorizedPermissions(email.id, { ...email.permissions, crm_delete: e.target.checked })}
+                                      className="rounded border-slate-300 text-primary focus:ring-primary"
+                                    />
+                                    Excluir Leads
+                                  </label>
+                                </div>
                               </td>
                               <td className="px-6 py-4 text-xs text-slate-500">{new Date(email.createdAt).toLocaleDateString('pt-BR')}</td>
                               <td className="px-6 py-4 text-right">

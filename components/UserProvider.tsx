@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { UserProfile, UserRole } from '@/lib/types';
 
@@ -25,52 +25,67 @@ export function UserProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    let unsubscribeUser: (() => void) | undefined;
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            setUserProfile({
-              uid: user.uid,
-              email: user.email || '',
-              role: userDoc.data().role as UserRole
-            });
-          } else {
+          // Listen to authorized_emails to get real-time role and permissions
+          const q = query(collection(db, 'authorized_emails'), where('email', '==', user.email));
+          
+          unsubscribeUser = onSnapshot(q, async (authSnap) => {
             let role: UserRole = 'user';
+            let permissions = undefined;
             
             if (user.email === 'biolucas@gmail.com') {
               role = 'admin';
+              permissions = { crm_read: true, crm_edit: true, crm_create: true, crm_delete: true };
+            } else if (!authSnap.empty) {
+              const authData = authSnap.docs[0].data();
+              role = authData.role as UserRole;
+              permissions = authData.permissions;
             } else {
-              const q = query(collection(db, 'authorized_emails'), where('email', '==', user.email));
-              const authSnap = await getDocs(q);
-              if (!authSnap.empty) {
-                role = authSnap.docs[0].data().role as UserRole;
+              const userDoc = await getDoc(doc(db, 'users', user.uid));
+              if (userDoc.exists()) {
+                role = userDoc.data().role as UserRole;
+                permissions = userDoc.data().permissions;
               }
             }
 
-            const defaultProfile: UserProfile = {
+            const profile: UserProfile = {
               uid: user.uid,
               email: user.email || '',
-              role
+              role,
+              permissions
             };
-            setUserProfile(defaultProfile);
             
+            setUserProfile(profile);
+            
+            // Update users collection with latest info
             await setDoc(doc(db, 'users', user.uid), {
               uid: user.uid,
               email: user.email,
-              role: defaultProfile.role
-            });
-          }
+              role,
+              permissions: permissions || null
+            }, { merge: true });
+            
+            setLoading(false);
+          });
         } catch (error) {
           console.error("Error fetching user profile:", error);
+          setLoading(false);
         }
       } else {
         setUserProfile(null);
+        setLoading(false);
+        if (unsubscribeUser) unsubscribeUser();
       }
-      setLoading(false);
     });
 
-    return () => unsubscribeAuth();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeUser) unsubscribeUser();
+    };
   }, []);
 
   const changeViewMode = (role: UserRole | null) => {

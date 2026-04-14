@@ -40,8 +40,16 @@ export async function handleLeadWebhook(req: Request) {
       nome: body.nome || body.name || 'Sem nome',
       email: body.email || '',
       whatsapp: body.whatsapp || body.telefone || body.phone || '',
-      notas: body.mensagem || body.notas || body.note || body.finalidade || '',
-      origem: 'landing_page',
+      finalidade: body.finalidade || (body.mensagem && body.mensagem.toLowerCase().includes('revenda') ? 'revenda' : 'consumo'),
+      notas: body.mensagem || body.notas || body.note || '',
+      origem: body.origem || 'landing_page',
+      utm: {
+        source: body.utm_source || body.source || '',
+        medium: body.utm_medium || body.medium || '',
+        campaign: body.utm_campaign || body.campaign || '',
+        term: body.utm_term || body.term || '',
+        content: body.utm_content || body.content || ''
+      },
       status: '1_mensagem',
       temperature: 'morno',
       history: [],

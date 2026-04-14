@@ -29,15 +29,6 @@ export default function CRMPage() {
   const [view, setView] = useState<'dashboard' | 'kanban'>('kanban');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  // Set default view based on role
-  React.useEffect(() => {
-    if (effectiveRole === 'gestor_trafego') {
-      setView('dashboard');
-    } else if (effectiveRole === 'gestor_vendas') {
-      setView('kanban');
-    }
-  }, [effectiveRole]);
-
   if (userLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
@@ -50,48 +41,36 @@ export default function CRMPage() {
     return <Login />;
   }
 
-  // Define columns based on role
-  const salesColumns = [
-    { id: 'lead', title: 'Lead' },
-    { id: '1_mensagem', title: '1ª Mensagem' },
-    { id: '2_mensagem', title: '2ª Mensagem' },
-    { id: '3_mensagem', title: '3ª Mensagem' },
-    { id: '4_mensagem', title: '4ª Mensagem' },
-    { id: 'em_conversa', title: 'Em conversa' },
-    { id: 'pediu_amostra', title: 'Pediu Amostra' },
-    { id: 'nao_responde', title: 'Não Responde' },
-    { id: 'pos_amostra', title: 'Contato pós amostra' },
-    { id: 'contato_futuro', title: 'Contato Futuro' },
-    { id: 'negativo', title: 'Negativo' },
-    { id: 'fez_pedido', title: 'Fez Pedido' }
-  ];
-
-  const trafficColumns = [
-    { id: 'lead', title: 'Lead de Entrada' },
+  // Define unified columns for all roles
+  const columns = [
     { id: '1_mensagem', title: 'Novo Lead' },
     { id: 'em_conversa', title: 'Conexão' },
     { id: 'pediu_amostra', title: 'Lead Qualificado' },
     { id: 'pos_amostra', title: 'Follow up' },
     { id: 'fez_pedido', title: 'Venda' },
-    { id: 'recorrencia', title: 'Recorrência/Fidelização' }
+    { id: 'recorrencia', title: 'Recorrência/Fidelização' },
+    { id: 'quarentena', title: 'Quarentena' }
   ];
 
-  const columns = effectiveRole === 'gestor_trafego' ? trafficColumns : salesColumns;
-  const isTraffic = effectiveRole === 'gestor_trafego';
-  const showSidebar = effectiveRole !== 'gestor_trafego' || userProfile.role === 'admin';
+  const permissions = userProfile.permissions || {} as any;
+
+  const canEdit = permissions.crm_edit ?? true;
+  const canCreate = permissions.crm_create ?? true;
+  const canDelete = permissions.crm_delete ?? (userProfile.role === 'admin');
+  const canRead = permissions.crm_read ?? true;
 
   const handleCreate = () => {
-    if (isTraffic) return;
+    if (!canCreate) return;
     setIsImportModalOpen(true);
   };
 
   const handleImportLead = (leadData: Partial<Lead>) => {
-    if (isTraffic) return;
+    if (!canCreate) return;
     handleCreateLead(leadData);
   };
 
   const handleMoveLead = (lead: Lead, direction: 'next' | 'prev') => {
-    if (isTraffic) return;
+    if (!canEdit) return;
     const currentIndex = columns.findIndex(c => c.id === lead.status);
     if (currentIndex === -1) return;
     
@@ -107,14 +86,26 @@ export default function CRMPage() {
     }
   };
 
+  if (!canRead) {
+    return (
+      <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <Sidebar />
+        <main className="flex-1 flex flex-col items-center justify-center p-8">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Acesso Restrito</h1>
+          <p className="text-slate-500 text-center max-w-md">Você não tem permissão para visualizar o CRM.</p>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
-      {showSidebar && <Sidebar />}
+      <Sidebar />
       
       <main className="flex-1 flex flex-col overflow-hidden">
         <Header 
-          title={isTraffic ? 'Dashboard CRM - Tráfego' : 'CRM de Vendas'} 
-          onNewOrder={!isTraffic ? handleCreate : undefined}
+          title={'CRM de Vendas'} 
+          onNewOrder={canCreate ? handleCreate : undefined}
           newOrderLabel="Novo Lead"
         >
           <div className="flex items-center gap-4">
@@ -169,7 +160,8 @@ export default function CRMPage() {
               onUpdateLead={handleUpdateLead}
               onMoveLead={handleMoveLead}
               onDeleteLead={handleDeleteLead}
-              readOnly={isTraffic}
+              readOnly={!canEdit}
+              canDelete={canDelete}
               role={effectiveRole || userProfile.role}
             />
           )}

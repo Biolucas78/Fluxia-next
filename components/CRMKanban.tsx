@@ -29,10 +29,11 @@ interface CRMKanbanProps {
   onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void;
   onDeleteLead: (leadId: string) => void;
   readOnly?: boolean;
+  canDelete?: boolean;
   role?: UserRole;
 }
 
-function SortableLeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDeleteLead, disabled, role }: { key?: React.Key; lead: Lead; onClick: () => void; onUpdateLead: (leadId: string, updates: Partial<Lead>) => void; onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void; onDeleteLead: (leadId: string) => void; disabled?: boolean; role?: UserRole; }) {
+function SortableLeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDeleteLead, disabled, canDelete, role }: { key?: React.Key; lead: Lead; onClick: () => void; onUpdateLead: (leadId: string, updates: Partial<Lead>) => void; onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void; onDeleteLead: (leadId: string) => void; disabled?: boolean; canDelete?: boolean; role?: UserRole; }) {
   const {
     attributes,
     listeners,
@@ -63,13 +64,14 @@ function SortableLeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDeleteLea
         onUpdateLead={onUpdateLead} 
         onMoveLead={onMoveLead} 
         onDeleteLead={onDeleteLead} 
+        canDelete={canDelete}
         role={role}
       />
     </div>
   );
 }
 
-function KanbanColumn({ id, title, leads, onLeadClick, onUpdateLead, onMoveLead, onDeleteLead, readOnly, role }: { key?: React.Key; id: string; title: string; leads: Lead[]; onLeadClick: (lead: Lead) => void; onUpdateLead: (leadId: string, updates: Partial<Lead>) => void; onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void; onDeleteLead: (leadId: string) => void; readOnly?: boolean; role?: UserRole; }) {
+function KanbanColumn({ id, title, leads, onLeadClick, onUpdateLead, onMoveLead, onDeleteLead, readOnly, canDelete, role }: { key?: React.Key; id: string; title: string; leads: Lead[]; onLeadClick: (lead: Lead) => void; onUpdateLead: (leadId: string, updates: Partial<Lead>) => void; onMoveLead: (lead: Lead, direction: 'next' | 'prev') => void; onDeleteLead: (leadId: string) => void; readOnly?: boolean; canDelete?: boolean; role?: UserRole; }) {
   const { setNodeRef } = useDroppable({
     id,
     disabled: readOnly,
@@ -101,6 +103,7 @@ function KanbanColumn({ id, title, leads, onLeadClick, onUpdateLead, onMoveLead,
               onMoveLead={onMoveLead} 
               onDeleteLead={onDeleteLead} 
               disabled={readOnly}
+              canDelete={canDelete}
               role={role}
             />
           ))}
@@ -110,7 +113,7 @@ function KanbanColumn({ id, title, leads, onLeadClick, onUpdateLead, onMoveLead,
   );
 }
 
-export default function CRMKanban({ leads, columns, onUpdateLead, onMoveLead, onDeleteLead, readOnly, role }: CRMKanbanProps) {
+export default function CRMKanban({ leads, columns, onUpdateLead, onMoveLead, onDeleteLead, readOnly, canDelete, role }: CRMKanbanProps) {
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
@@ -157,6 +160,22 @@ export default function CRMKanban({ leads, columns, onUpdateLead, onMoveLead, on
     setActiveLead(null);
   };
 
+  const handleNextLead = () => {
+    if (!selectedLead) return;
+    const columnLeads = leads.filter(l => l.status === selectedLead.status);
+    const currentIndex = columnLeads.findIndex(l => l.id === selectedLead.id);
+    if (currentIndex >= 0 && currentIndex < columnLeads.length - 1) {
+      setSelectedLead(columnLeads[currentIndex + 1]);
+    }
+  };
+
+  const hasNextLead = () => {
+    if (!selectedLead) return false;
+    const columnLeads = leads.filter(l => l.status === selectedLead.status);
+    const currentIndex = columnLeads.findIndex(l => l.id === selectedLead.id);
+    return currentIndex >= 0 && currentIndex < columnLeads.length - 1;
+  };
+
   return (
     <DndContext
       sensors={sensors}
@@ -178,6 +197,7 @@ export default function CRMKanban({ leads, columns, onUpdateLead, onMoveLead, on
               onMoveLead={onMoveLead}
               onDeleteLead={onDeleteLead}
               readOnly={readOnly}
+              canDelete={canDelete}
               role={role}
             />
           ))}
@@ -187,7 +207,7 @@ export default function CRMKanban({ leads, columns, onUpdateLead, onMoveLead, on
       <DragOverlay adjustScale={false}>
         {activeLead ? (
           <div className="w-72 opacity-80 rotate-3 cursor-grabbing">
-            <LeadCard lead={activeLead} onClick={() => {}} role={role} />
+            <LeadCard lead={activeLead} onClick={() => {}} role={role} canDelete={canDelete} />
           </div>
         ) : null}
       </DragOverlay>
@@ -197,7 +217,10 @@ export default function CRMKanban({ leads, columns, onUpdateLead, onMoveLead, on
           lead={leads.find(l => l.id === selectedLead.id) || selectedLead}
           onClose={() => setSelectedLead(null)}
           onUpdate={onUpdateLead}
+          canEdit={!readOnly}
           role={role}
+          onNextLead={handleNextLead}
+          hasNextLead={hasNextLead()}
         />
       )}
     </DndContext>

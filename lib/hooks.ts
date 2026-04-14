@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Order, DashboardStats, UserProfile, UserRole, Lead, CRMStats, AuthorizedEmail, AnalyticsStats, LeadHistory } from './types';
+import { Order, DashboardStats, UserProfile, UserRole, UserPermissions, Lead, CRMStats, AuthorizedEmail, AnalyticsStats, LeadHistory } from './types';
 import { calculateWeightInKg } from './parser';
 import { db, auth } from './firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, orderBy, where, getDocFromServer } from 'firebase/firestore';
@@ -345,7 +345,11 @@ export function useAuthorizedEmails() {
     await updateDoc(doc(db, 'authorized_emails', id), { role });
   };
 
-  return { emails, loading, addAuthorizedEmail, removeAuthorizedEmail, updateAuthorizedRole };
+  const updateAuthorizedPermissions = async (id: string, permissions: Partial<UserPermissions>) => {
+    await updateDoc(doc(db, 'authorized_emails', id), { permissions });
+  };
+
+  return { emails, loading, addAuthorizedEmail, removeAuthorizedEmail, updateAuthorizedRole, updateAuthorizedPermissions };
 }
 
 export function useAnalytics(startDate?: string, endDate?: string) {
@@ -454,7 +458,7 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
         id,
         createdAt: now,
         updatedAt: now,
-        history: [{ status: leadData.status || 'lead', timestamp: now, note: 'Lead criado' }]
+        history: [{ status: leadData.status || '1_mensagem', timestamp: now, note: 'Lead criado' }]
       };
       await setDoc(doc(db, collectionName, id), sanitizeForFirestore(newLead));
     } catch (e) {

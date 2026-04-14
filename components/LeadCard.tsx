@@ -28,11 +28,11 @@ interface LeadCardProps {
   onUpdateLead?: (leadId: string, updates: Partial<Lead>) => void;
   onMoveLead?: (lead: Lead, direction: 'next' | 'prev') => void;
   onDeleteLead?: (leadId: string) => void;
+  canDelete?: boolean;
   role?: UserRole;
 }
 
-export default function LeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDeleteLead, role }: LeadCardProps) {
-  const isTraffic = role === 'gestor_trafego';
+export default function LeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDeleteLead, canDelete, role }: LeadCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -152,14 +152,12 @@ export default function LeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDe
           </div>
           <div className={`flex items-center justify-between mt-1 ${isExpanded ? 'hidden' : 'flex'}`}>
             <div className="flex items-center gap-2">
-              {!isTraffic && (
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
-                  {getOriginIcon()}
-                  <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {getOriginLabel()}
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
+                {getOriginIcon()}
+                <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  {getOriginLabel()}
+                </span>
+              </div>
               {lead.finalidade && (
                 <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${
                   lead.finalidade === 'revenda' 
@@ -178,14 +176,12 @@ export default function LeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDe
       <div className={`${isExpanded ? 'block' : 'hidden'} mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-2 duration-200 pl-2`}>
         <div className="flex justify-between items-start mb-3">
           <div className="flex items-center gap-2">
-            {!isTraffic && (
-              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
-                {getOriginIcon()}
-                <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  {getOriginLabel()}
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
+              {getOriginIcon()}
+              <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                {getOriginLabel()}
+              </span>
+            </div>
             {lead.finalidade && (
               <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${
                 lead.finalidade === 'revenda' 
@@ -195,14 +191,16 @@ export default function LeadCard({ lead, onClick, onUpdateLead, onMoveLead, onDe
                 {lead.finalidade}
               </span>
             )}
-            <button 
-              onClick={handleDelete}
-              onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 rounded-lg transition-all"
-              title="Excluir Lead"
-            >
-              <CloseIcon className="size-3.5" />
-            </button>
+            {canDelete && (
+              <button 
+                onClick={handleDelete}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 rounded-lg transition-all"
+                title="Excluir Lead"
+              >
+                <CloseIcon className="size-3.5" />
+              </button>
+            )}
           </div>
           <div className="text-right">
             <span className="text-[9px] text-slate-400 block">{new Date(lead.createdAt).toLocaleDateString()}</span>
