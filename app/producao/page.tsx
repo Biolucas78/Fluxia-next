@@ -128,6 +128,7 @@ export default function ProducaoPage() {
             onMoveOrder={handleMoveOrder}
             onDeleteOrder={handleDeleteOrder}
             onArchiveOrder={handleArchiveOrder}
+            onAddOrder={handleOrderCreated}
             searchQuery={searchQuery}
           />
         </div>

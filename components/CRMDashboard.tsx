@@ -93,6 +93,13 @@ export default function CRMDashboard({ stats, leads: initialLeads, role, analyti
         end.setMonth(now.getMonth());
         end.setDate(0);
         break;
+      case 'this_year':
+        start.setMonth(0, 1);
+        break;
+      case 'last_year':
+        start.setFullYear(now.getFullYear() - 1, 0, 1);
+        end.setFullYear(now.getFullYear() - 1, 11, 31);
+        break;
     }
 
     // Format to YYYY-MM-DD
@@ -252,6 +259,8 @@ export default function CRMDashboard({ stats, leads: initialLeads, role, analyti
             <option value="last_week">Semana Anterior</option>
             <option value="this_month">Mês Atual</option>
             <option value="last_month">Mês Anterior</option>
+            <option value="this_year">Ano Atual</option>
+            <option value="last_year">Ano Anterior</option>
           </select>
         </div>
         <div className="flex items-center gap-2">
@@ -313,6 +322,15 @@ export default function CRMDashboard({ stats, leads: initialLeads, role, analyti
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-1">
                 {stat.loading ? '---' : stat.value}
               </h3>
+              {(globalStartDate || globalEndDate || datePreset !== 'custom') && stat.title !== 'Sessões Landing Page' && (
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                  Total Geral: {
+                    stat.title === 'Total de Leads' ? stats.totalLeads :
+                    stat.title === 'Vendas Totais' ? formatCurrency(stats.totalSalesValue) :
+                    stat.title === 'Pedidos' ? stats.totalOrdersCount : ''
+                  }
+                </p>
+              )}
               <p className="text-[10px] text-slate-400 mt-1">{stat.description}</p>
             </div>
           </motion.div>

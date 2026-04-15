@@ -107,6 +107,8 @@ export interface AnalyticsStats {
 
 export type OrderStatus = 'pedidos' | 'embalagens_separadas' | 'embalagens_prontas' | 'caixa_montada' | 'enviado' | 'entregue';
 
+export type OrderOrigin = 'whatsapp' | 'Wix' | 'Amazon' | 'Meli' | 'CRM';
+
 export interface ProductItem {
   id: string;
   quantity: number;
@@ -154,6 +156,7 @@ export interface Order {
   archived?: boolean;
   archivedAt?: string;
   isSample?: boolean;
+  origin?: OrderOrigin;
   originType?: 'BH' | 'CRV';
   shippingQuote?: ShippingOption[];
   selectedShippingOption?: ShippingOption;

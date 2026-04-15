@@ -16,6 +16,7 @@ import {
   Pie
 } from 'recharts';
 import { calculateWeightInKg, extractCityState } from '@/lib/parser';
+import { useInventory } from '@/lib/hooks';
 import { motion, AnimatePresence } from 'motion/react';
 import ShippingQuote from '@/components/ShippingQuote';
 import ProductMappingManager from '@/components/ProductMappingManager';
@@ -83,6 +84,13 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         end.setMonth(now.getMonth());
         end.setDate(0);
         break;
+      case 'this_year':
+        start.setMonth(0, 1);
+        break;
+      case 'last_year':
+        start.setFullYear(now.getFullYear() - 1, 0, 1);
+        end.setFullYear(now.getFullYear() - 1, 11, 31);
+        break;
     }
 
     // Format to YYYY-MM-DD
@@ -115,26 +123,27 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     });
   }, [initialOrders, globalStartDate, globalEndDate]);
 
-  const [coffeeStocks, setCoffeeStocks] = useState<Record<string, number>>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('coffee_stocks');
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.error('Failed to parse coffee stocks', e);
-        }
-      }
-    }
-    return {};
-  });
+  const filteredStats = useMemo(() => {
+    let totalKg = 0;
+    let totalUnits = 0;
+    const clients = new Set<string>();
 
-  // Save stocks to localStorage when they change
-  const updateStock = (type: string, value: number) => {
-    const newStocks = { ...coffeeStocks, [type]: value };
-    setCoffeeStocks(newStocks);
-    localStorage.setItem('coffee_stocks', JSON.stringify(newStocks));
-  };
+    orders.forEach(o => {
+      o.products.forEach(p => {
+        totalKg += calculateWeightInKg(p.weight, p.quantity);
+        totalUnits += p.quantity;
+      });
+      clients.add(o.clientName);
+    });
+
+    return {
+      totalKg,
+      totalUnits,
+      totalClients: clients.size
+    };
+  }, [orders]);
+
+  const { stocks: coffeeStocks, updateStock } = useInventory();
 
   const roastPlanning = useMemo(() => {
     const needs: Record<string, number> = {};
@@ -374,6 +383,8 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
             <option value="last_week">Semana Anterior</option>
             <option value="this_month">Mês Atual</option>
             <option value="last_month">Mês Anterior</option>
+            <option value="this_year">Ano Atual</option>
+            <option value="last_year">Ano Anterior</option>
           </select>
         </div>
         <div className="flex items-center gap-2">
@@ -709,22 +720,37 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         <div className="flex flex-col gap-2 rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Produção Total</p>
           <p className="text-slate-900 dark:text-slate-100 tracking-tight text-4xl font-black">
-            {stats.totalKg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
+            {filteredStats.totalKg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
           </p>
+          {(globalStartDate || globalEndDate || datePreset !== 'custom') && (
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+              Total Geral: {stats.totalKg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
+            </p>
+          )}
         </div>
         {/* Volume de Itens */}
         <div className="flex flex-col gap-2 rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Volume de Itens</p>
           <p className="text-slate-900 dark:text-slate-100 tracking-tight text-4xl font-black">
-            {stats.totalUnits} unid
+            {filteredStats.totalUnits} unid
           </p>
+          {(globalStartDate || globalEndDate || datePreset !== 'custom') && (
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+              Total Geral: {stats.totalUnits} unid
+            </p>
+          )}
         </div>
         {/* Clientes Atendidos */}
         <div className="flex flex-col gap-2 rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Clientes Atendidos</p>
           <p className="text-slate-900 dark:text-slate-100 tracking-tight text-4xl font-black">
-            {stats.totalClients}
+            {filteredStats.totalClients}
           </p>
+          {(globalStartDate || globalEndDate || datePreset !== 'custom') && (
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+              Total Geral: {stats.totalClients}
+            </p>
+          )}
         </div>
       </div>
 

@@ -202,6 +202,25 @@ export default function OrderCard({
     }
   };
 
+  const getOriginBadge = () => {
+    if (!order.origin) return null;
+    
+    let colorClass = 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
+    switch (order.origin) {
+      case 'whatsapp': colorClass = 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'; break;
+      case 'Wix': colorClass = 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800'; break;
+      case 'Amazon': colorClass = 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800'; break;
+      case 'Meli': colorClass = 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800'; break;
+      case 'CRM': colorClass = 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800'; break;
+    }
+
+    return (
+      <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${colorClass}`}>
+        {order.origin}
+      </span>
+    );
+  };
+
   const getStatusBadge = () => {
     switch (order.status) {
       case 'pedidos': return <span className="bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Novo</span>;
@@ -213,67 +232,75 @@ export default function OrderCard({
     }
   };
 
+  const abbreviateName = (name: string) => {
+    if (!name) return '';
+    const n = name.trim();
+    const MAX_CHARS = 24; // Heuristic for 70% space
+    
+    const prefixes: Record<string, string> = {
+      'empório': 'Emp.', 'emporio': 'Emp.',
+      'cafeteria': 'Caf.', 'armazém': 'Arm.', 'armazem': 'Arm.',
+      'supermercado': 'Sup.', 'mercado': 'Merc.', 'padaria': 'Pad.',
+      'restaurante': 'Rest.', 'lanchonete': 'Lanch.', 'confeitaria': 'Conf.',
+      'mercearia': 'Merc.', 'distribuidora': 'Dist.', 'panificadora': 'Panif.'
+    };
+
+    let words = n.split(/\s+/);
+    if (words.length === 0) return '';
+
+    const firstWordLower = words[0].toLowerCase();
+    const prefix = prefixes[firstWordLower];
+    
+    // If it's a generic name, always abbreviate the prefix
+    if (prefix) {
+      words[0] = prefix;
+    }
+
+    const getStr = (ws: string[]) => ws.join(' ');
+
+    // 1. If it fits with abbreviated prefix (if any) and full names, return it
+    if (getStr(words).length <= MAX_CHARS) return getStr(words);
+
+    // 2. If it doesn't fit, start abbreviating from the end
+    // Keep first word (or prefix + first exclusive name)
+    const startIdx = prefix ? 2 : 1;
+    
+    for (let i = words.length - 1; i >= startIdx; i--) {
+      if (words[i].length > 2) {
+        words[i] = words[i][0].toUpperCase() + '.';
+        if (getStr(words).length <= MAX_CHARS) return getStr(words);
+      }
+    }
+
+    // 3. If still too long and has prefix, abbreviate prefix to single letter
+    if (prefix && words[0].length > 2) {
+      words[0] = words[0][0].toUpperCase() + '.';
+      if (getStr(words).length <= MAX_CHARS) return getStr(words);
+    }
+
+    return getStr(words);
+  };
+
   const abbreviateCity = (city: string) => {
     const c = city.trim();
     const lower = c.toLowerCase();
     
-    // Specific requested mappings
     if (lower === 'belo horizonte') return 'BH';
-    if (lower === 'são josé do rio preto') return 'SJ Rio Preto';
+    if (lower === 'são josé do rio preto') return 'SJRP';
     if (lower === 'rio de janeiro') return 'RJ';
     if (lower === 'são paulo') return 'SP';
     
-    // Dictionary of common title abbreviations in Portuguese
-    const titles: Record<string, string> = {
-      'coronel': 'Cel.',
-      'prefeito': 'Pref.',
-      'presidente': 'Pres.',
-      'governador': 'Gov.',
-      'general': 'Gen.',
-      'doutor': 'Dr.',
-      'doutora': 'Dra.',
-      'professor': 'Prof.',
-      'professora': 'Profa.',
-      'engenheiro': 'Eng.',
-      'engenheira': 'Enga.',
-      'marechal': 'Mal.',
-      'almirante': 'Alm.',
-      'tenente': 'Ten.',
-      'capitão': 'Cap.',
-      'major': 'Maj.',
-      'sargento': 'Sgt.',
-      'cabo': 'Cb.',
-      'soldado': 'Sd.',
-      'senador': 'Sen.',
-      'deputado': 'Dep.',
-      'vereador': 'Ver.',
-      'bispo': 'Bp.',
-      'padre': 'Pe.',
-      'frei': 'Fr.',
-      'irmã': 'Ir.',
-      'dom': 'D.',
-      'dona': 'Dna.',
-      'senhor': 'Sr.',
-      'senhora': 'Sra.',
-      'mestre': 'Me.',
-      'santo': 'Sto.',
-      'santa': 'Sta.',
-      'são': 'S.',
-    };
-
-    // Special case for São José
-    if (lower.startsWith('são josé ')) {
-      return 'SJ ' + c.substring(9);
+    const words = c.split(/\s+/);
+    const stopWords = ['de', 'da', 'do', 'das', 'dos', 'd'];
+    
+    if (words.length === 1) {
+      return words[0].substring(0, 3);
+    } else {
+      return words
+        .filter(w => !stopWords.includes(w.toLowerCase()))
+        .map(w => w[0].toUpperCase())
+        .join('');
     }
-
-    // Split and replace words
-    const words = c.split(' ');
-    const abbreviatedWords = words.map(word => {
-      const wordLower = word.toLowerCase();
-      return titles[wordLower] || word;
-    });
-
-    return abbreviatedWords.join(' ');
   };
 
   const locationInfo = useMemo(() => {
@@ -347,24 +374,15 @@ export default function OrderCard({
       }`}
     >
       {locationInfo && (
-        <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
-          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-700">
+        <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1 max-w-[30%]">
+          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-700 truncate w-full text-right" title={locationInfo}>
             {locationInfo}
           </span>
-          {delayAlert && (
-            <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border ${
-              delayAlert.level === 'critical' 
-                ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800' 
-                : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:border-amber-800'
-            }`}>
-              {delayAlert.message}
-            </span>
-          )}
         </div>
       )}
-      {!locationInfo && delayAlert && (
-        <div className="absolute top-2 right-2 z-10">
-          <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border ${
+      {delayAlert && (
+        <div className={`absolute right-3 z-10 transition-all ${isExpanded ? 'top-12' : 'top-1/2 -translate-y-1/2'}`}>
+          <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border whitespace-nowrap ${
             delayAlert.level === 'critical' 
               ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800' 
               : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:border-amber-800'
@@ -420,14 +438,11 @@ export default function OrderCard({
 
       {/* Collapsed View (Always visible) */}
       <div className="flex justify-between items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 truncate pr-16">
-            <h4 className="font-bold text-slate-900 dark:text-white leading-tight truncate">{order.tradeName || order.clientName}</h4>
-            {order.isSample && (
-              <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter shrink-0">
-                Amostra
-              </span>
-            )}
+        <div className="flex-1 min-w-0 max-w-[70%]">
+          <div className="flex items-center gap-2 truncate pr-2">
+            <h4 className="font-bold text-slate-900 dark:text-white leading-tight truncate" title={order.tradeName || order.clientName}>
+              {abbreviateName(order.tradeName || order.clientName)}
+            </h4>
           </div>
           <div className="text-[9px] text-slate-400 mt-0.5 flex items-center gap-1">
             <Calendar className="size-2.5" />
@@ -436,6 +451,12 @@ export default function OrderCard({
           <div className={`flex items-center justify-between mt-1 ${isExpanded ? 'hidden' : 'flex'}`}>
             <div className="flex items-center gap-2">
               {getStatusBadge()}
+              {getOriginBadge()}
+              {order.isSample && (
+                <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter shrink-0 border border-amber-200 dark:border-amber-800">
+                  Amostra
+                </span>
+              )}
               {order.carrier && (
                 <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase border ${getCarrierColor(order.carrier)}`}>
                   {order.carrier}
@@ -451,23 +472,28 @@ export default function OrderCard({
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold text-slate-400">
-                {order.products.filter(p => p.checked).length}/{order.products.length}
-              </span>
-              {order.products.every(p => p.checked) && <CheckCircle2 className="size-3 text-emerald-500" />}
-            </div>
           </div>
         </div>
       </div>
+
+      {/* Product Count - Absolute Bottom Right */}
+      {!isExpanded && (
+        <div className="absolute bottom-3 right-3 flex items-center gap-1">
+          <span className="text-[10px] font-bold text-slate-400">
+            {order.products.filter(p => p.checked).length}/{order.products.length}
+          </span>
+          {order.products.every(p => p.checked) && <CheckCircle2 className="size-3 text-emerald-500" />}
+        </div>
+      )}
 
       {/* Expanded View (Visible on hover with delay) */}
       <div className={`${isExpanded ? 'block' : 'hidden'} mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-2 duration-200`}>
         <div className="flex justify-between items-start mb-3">
           <div className="flex items-center gap-2">
             {getStatusBadge()}
+            {getOriginBadge()}
             {order.isSample && (
-              <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter">
+              <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter border border-amber-200 dark:border-amber-800">
                 Amostra
               </span>
             )}

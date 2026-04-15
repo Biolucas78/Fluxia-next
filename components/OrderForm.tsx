@@ -124,6 +124,7 @@ export default function OrderForm({ onOrderCreated, onClose }: OrderFormProps) {
             zip: rawOrderData.cep || ''
           },
           isSample: rawOrderData.isSample || false,
+          origin: rawOrderData.origin || 'whatsapp',
           paymentCondition: rawOrderData.paymentCondition || 'A vista',
           observations: rawOrderData.observations || '',
           products: rawOrderData.products.map((p: any) => ({

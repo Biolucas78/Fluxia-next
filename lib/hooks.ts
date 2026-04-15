@@ -86,6 +86,37 @@ const sanitizeForFirestore = (obj: any): any => {
   return hasValue ? sanitized : {};
 };
 
+export function useInventory() {
+  const [stocks, setStocks] = useState<Record<string, number>>({});
+  
+  useEffect(() => {
+    const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+    const docId = isDev ? 'inventory_dev' : 'inventory_prod';
+    const unsub = onSnapshot(doc(db, 'settings', docId), (docSnap) => {
+      if (docSnap.exists()) {
+        setStocks(docSnap.data().stocks || {});
+      } else {
+        setStocks({});
+      }
+    });
+    return unsub;
+  }, []);
+
+  const updateStock = async (type: string, value: number) => {
+    const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+    const docId = isDev ? 'inventory_dev' : 'inventory_prod';
+    const ref = doc(db, 'settings', docId);
+    
+    await setDoc(ref, {
+      stocks: {
+        [type]: value
+      }
+    }, { merge: true });
+  };
+
+  return { stocks, updateStock };
+}
+
 export function useOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -197,6 +228,7 @@ export function useOrders() {
   const handleUpdateOrder = async (updatedOrder: Order) => {
     console.log("Updating order in Firestore:", updatedOrder.id);
     try {
+      const oldOrder = orders.find(o => o.id === updatedOrder.id);
       const orderRef = doc(db, getCollectionName(), updatedOrder.id);
       const sanitizedOrder = sanitizeForFirestore(updatedOrder);
       
@@ -207,6 +239,43 @@ export function useOrders() {
       
       await updateDoc(orderRef, updateData);
       console.log("Order updated successfully");
+
+      // Adjust inventory if needed
+      if (oldOrder) {
+        const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+        const docId = isDev ? 'inventory_dev' : 'inventory_prod';
+        const ref = doc(db, 'settings', docId);
+        const docSnap = await getDoc(ref);
+        let currentStocks = docSnap.exists() ? docSnap.data().stocks || {} : {};
+        let stocksChanged = false;
+
+        updatedOrder.products.forEach(newP => {
+          const oldP = oldOrder.products.find(p => p.id === newP.id);
+          if (oldP && newP.checked !== oldP.checked) {
+            let weight = calculateWeightInKg(newP.weight, newP.quantity);
+            let type = newP.name;
+
+            if (type.toLowerCase().includes('dripcoffee')) {
+              weight = 0.1 * newP.quantity;
+              type = 'Catuaí';
+            }
+
+            if (newP.checked) {
+              // Product was checked, decrease stock
+              currentStocks[type] = Math.max(0, (currentStocks[type] || 0) - weight);
+              stocksChanged = true;
+            } else {
+              // Product was unchecked, increase stock
+              currentStocks[type] = (currentStocks[type] || 0) + weight;
+              stocksChanged = true;
+            }
+          }
+        });
+
+        if (stocksChanged) {
+          await setDoc(ref, { stocks: currentStocks }, { merge: true });
+        }
+      }
     } catch (e) {
       console.error("Failed to update in Firestore", e);
     }

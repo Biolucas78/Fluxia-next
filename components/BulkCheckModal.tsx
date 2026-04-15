@@ -37,16 +37,14 @@ export default function BulkCheckModal({
 
     selectedOrders.forEach(order => {
       order.products.forEach(product => {
+        // Only compute products that are NOT checked
+        if (product.checked) return;
+
         const key = `${product.name}-${product.weight}-${product.grindType}`;
         const existing = map.get(key);
 
         if (existing) {
           existing.totalQuantity += product.quantity;
-          // For the initial state, we consider it checked only if ALL instances across ALL orders are checked
-          // But usually, this modal is used to mark things that are NOT checked yet.
-          if (!product.checked) {
-            existing.allChecked = false;
-          }
         } else {
           map.set(key, {
             key,
@@ -54,7 +52,7 @@ export default function BulkCheckModal({
             weight: product.weight,
             grindType: product.grindType,
             totalQuantity: product.quantity,
-            allChecked: product.checked
+            allChecked: false
           });
         }
       });
@@ -107,6 +105,36 @@ export default function BulkCheckModal({
     }
     
     setIsUpdating(false);
+  };
+
+  const handleFinish = () => {
+    // Check each selected order
+    selectedOrders.forEach(order => {
+      const allChecked = order.products.every(p => p.checked);
+      
+      if (allChecked) {
+        let nextStatus: OrderStatus | null = null;
+        
+        if (order.status === 'pedidos') {
+          nextStatus = 'embalagens_separadas';
+        } else if (order.status === 'embalagens_separadas') {
+          nextStatus = 'embalagens_prontas';
+        }
+
+        if (nextStatus) {
+          onUpdateOrder({
+            ...order,
+            status: nextStatus,
+            statusHistory: [
+              ...(order.statusHistory || []),
+              { status: nextStatus, timestamp: new Date().toISOString() }
+            ]
+          });
+        }
+      }
+    });
+    
+    onClose();
   };
 
   return (
@@ -182,7 +210,7 @@ export default function BulkCheckModal({
 
         <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
           <button
-            onClick={onClose}
+            onClick={handleFinish}
             className="w-full bg-slate-900 dark:bg-slate-800 text-white px-6 py-3 rounded-2xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-lg"
           >
             Concluir e Fechar

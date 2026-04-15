@@ -5,7 +5,8 @@ import { Order, OrderStatus } from '@/lib/types';
 import OrderCard from './OrderCard';
 import OrderDetailsModal from './OrderDetailsModal';
 import BulkCheckModal from './BulkCheckModal';
-import { LayoutDashboard, Trash2, CheckSquare, Square, X, RefreshCw, ArrowRight, ChevronDown, Layers, Calendar, Filter, RotateCcw } from 'lucide-react';
+import BlingImportModal from './BlingImportModal';
+import { LayoutDashboard, Trash2, CheckSquare, Square, X, RefreshCw, ArrowRight, ChevronDown, Layers, Calendar, Filter, RotateCcw, Download, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-hot-toast';
 
@@ -47,6 +48,7 @@ interface KanbanBoardProps {
   onMoveOrder: (order: Order, direction: 'next' | 'prev') => void;
   onDeleteOrder: (orderId: string) => void;
   onArchiveOrder: (orderId: string) => void;
+  onAddOrder?: (order: Order) => void;
   searchQuery: string;
 }
 
@@ -91,13 +93,14 @@ function SortableOrderCard(props: SortableOrderCardProps) {
   );
 }
 
-export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDeleteOrder, onArchiveOrder, searchQuery }: KanbanBoardProps) {
+export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDeleteOrder, onArchiveOrder, onAddOrder, searchQuery }: KanbanBoardProps) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
+  const [isBlingImportOpen, setIsBlingImportOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -476,6 +479,14 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         <div className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-4">
             <button 
+              onClick={() => setIsBlingImportOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-lg"
+            >
+              <Download className="size-4" />
+              Importar Bling
+            </button>
+
+            <button 
               onClick={() => setShowFilters(!showFilters)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${showFilters ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
             >
@@ -592,6 +603,19 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
               onUpdateOrder={onUpdateOrder}
               title={bulkCheckModal.type === 'separation' ? 'Separar Embalagens' : 'Marcar Produção'}
               subtitle={bulkCheckModal.type === 'separation' ? 'Separação em Lote' : 'Produção em Lote'}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isBlingImportOpen && (
+            <BlingImportModal 
+              onClose={() => setIsBlingImportOpen(false)}
+              onImport={async (order) => {
+                if (onAddOrder) {
+                  await onAddOrder(order);
+                }
+              }}
             />
           )}
         </AnimatePresence>

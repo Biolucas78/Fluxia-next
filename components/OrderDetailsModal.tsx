@@ -95,7 +95,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     cpf: order.cpf || '',
     phone: order.phone || ''
   });
-  const [isEditingObservations, setIsEditingObservations] = useState(false);
   const [editedObservations, setEditedObservations] = useState(order.observations || '');
   const [paymentCondition, setPaymentCondition] = useState(order.paymentCondition || 'A vista');
   const [originType, setOriginType] = useState(order.originType || 'CRV');
@@ -1058,46 +1057,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
               <section>
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <FileText className="size-4" /> Observações
-                  </h3>
-                  {!isEditingObservations ? (
-                    <button 
-                      onClick={() => setIsEditingObservations(true)}
-                      className="text-[10px] font-bold text-primary hover:text-primary/80"
-                    >
-                      Editar
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => {
-                        onUpdateOrder({ ...order, observations: editedObservations });
-                        setIsEditingObservations(false);
-                      }}
-                      className="text-[10px] font-bold text-emerald-500 hover:text-emerald-600"
-                    >
-                      Salvar
-                    </button>
-                  )}
-                </div>
-                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-                  {isEditingObservations ? (
-                    <textarea 
-                      value={editedObservations}
-                      onChange={(e) => setEditedObservations(e.target.value)}
-                      className="w-full h-24 bg-transparent text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic outline-none resize-none"
-                      autoFocus
-                    />
-                  ) : (
-                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic">
-                      {order.observations || 'Sem observações'}
-                    </p>
-                  )}
-                </div>
-              </section>
-
-              <section>
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Receipt className="size-4" /> Condições de Pagamento
                   </h3>
                 </div>
@@ -1116,6 +1075,31 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       }`}
                     >
                       {condition}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <MapPin className="size-4" /> Origem do Pedido
+                  </h3>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {(['whatsapp', 'Wix', 'Amazon', 'Meli', 'CRM'] as const).map((originOption) => (
+                    <button
+                      key={originOption}
+                      onClick={() => {
+                        onUpdateOrder({ ...order, origin: originOption });
+                      }}
+                      className={`px-2 py-2 rounded-xl text-[10px] font-bold border transition-all ${
+                        (order.origin || 'whatsapp') === originOption
+                          ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-primary/50'
+                      }`}
+                    >
+                      {originOption}
                     </button>
                   ))}
                 </div>
@@ -1795,6 +1779,35 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 >
                   <Plus className="size-4" /> Adicionar Produto
                 </button>
+
+                {/* Observações do Pedido */}
+                <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <FileText className="size-4" /> Observações do Pedido
+                    </h3>
+                    <button 
+                      onClick={() => {
+                        setEditedObservations('');
+                        onUpdateOrder({ ...order, observations: '' });
+                      }}
+                      className="text-[10px] font-bold text-red-500 hover:text-red-600 flex items-center gap-1 transition-colors"
+                    >
+                      <Trash2 className="size-3" /> Limpar
+                    </button>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50 focus-within:border-primary/50 transition-all">
+                    <textarea 
+                      value={editedObservations}
+                      onChange={(e) => {
+                        setEditedObservations(e.target.value);
+                        onUpdateOrder({ ...order, observations: e.target.value });
+                      }}
+                      placeholder="Adicione observações importantes sobre este pedido..."
+                      className="w-full h-32 bg-transparent text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic outline-none resize-none custom-scrollbar"
+                    />
+                  </div>
+                </div>
               </div>
             </section>
           </div>

@@ -53,6 +53,7 @@ export async function parseOrderWithGemini(text: string) {
     8. TELEFONE: O campo "phone" deve conter APENAS o número de telefone. Se o texto for longo e não parecer um telefone, deixe vazio ou extraia apenas os dígitos do telefone.
     9. FLEXIBILIDADE (CRÍTICO): Se o formato da mensagem for incomum ou bagunçado, use o contexto para identificar o que é o nome do cliente, o que é o endereço e o que são os produtos. Priorize a extração correta dos produtos mesmo que o endereço esteja incompleto ou misturado. Se houver dúvidas sobre o que é o nome do cliente, use a primeira linha ou a identificação mais clara de pessoa/empresa.
     10. CONDIÇÃO DE PAGAMENTO: Identifique a condição de pagamento se mencionada (ex: "A vista", "15 dias", "21 dias", "30 dias", "2x"). Se não mencionada, use "A vista".
+    11. ORIGEM DO PEDIDO: Identifique a origem do pedido se mencionada. As origens possíveis são: 'whatsapp', 'Wix', 'Amazon', 'Meli', 'CRM'. Se não for mencionada, assuma 'whatsapp'.
     
     Texto do pedido:
     ${sanitizedText}
@@ -72,6 +73,7 @@ export async function parseOrderWithGemini(text: string) {
           "paymentCondition": "Condição de pagamento (A vista, 15 dias, 21 dias, 30 dias, 2x)",
           "observations": "Observações gerais do pedido",
           "isSample": true/false,
+          "origin": "whatsapp, Wix, Amazon, Meli, ou CRM",
           "products": [
             {
               "quantity": 10,
@@ -108,6 +110,10 @@ export async function parseOrderWithGemini(text: string) {
                   },
                   observations: { type: Type.STRING },
                   isSample: { type: Type.BOOLEAN },
+                  origin: {
+                    type: Type.STRING,
+                    description: "Origem do pedido: whatsapp, Wix, Amazon, Meli, ou CRM"
+                  },
                   products: {
                     type: Type.ARRAY,
                     items: {

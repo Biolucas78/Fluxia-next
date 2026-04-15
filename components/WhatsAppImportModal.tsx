@@ -153,6 +153,7 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose, existin
             warning: po.addressDetails?.warning || null
           },
           isSample: po.isSample || false,
+          origin: po.origin || 'whatsapp',
           status: 'pedidos' as OrderStatus,
           hasInvoice: false,
           hasBoleto: false,
