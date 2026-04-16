@@ -264,6 +264,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         if (o.archived) return false;
 
         const matchesSearch = o.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             (o.tradeName && o.tradeName.toLowerCase().includes(searchQuery.toLowerCase())) ||
                              o.id.toLowerCase().includes(searchQuery.toLowerCase());
         
         if (!matchesSearch) return false;

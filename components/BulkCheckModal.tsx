@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { X, CheckSquare, Square, Package, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Order, ProductItem } from '@/lib/types';
+import { Order, ProductItem, OrderStatus } from '@/lib/types';
 
 interface BulkCheckModalProps {
   selectedOrders: Order[];

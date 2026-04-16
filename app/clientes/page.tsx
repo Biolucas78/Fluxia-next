@@ -26,6 +26,8 @@ import { collection, query, onSnapshot, orderBy, limit, doc, deleteDoc, setDoc }
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'react-hot-toast';
 
+import MapWrapper from '@/components/MapWrapper';
+
 const initialCustomerState = {
   id: '',
   nome: '',
@@ -38,6 +40,7 @@ const initialCustomerState = {
   isentoIE: false,
   celular: '',
   email: '',
+  mostrarNoMapa: true,
   endereco: {
     geral: {
       cep: '',
@@ -137,6 +140,7 @@ export default function ClientesPage() {
         isentoIE: customer.ie === 'ISENTO',
         celular: customer.telefones?.celular || customer.celular || '',
         email: customer.email || '',
+        mostrarNoMapa: customer.mostrarNoMapa !== false,
         endereco: {
           geral: {
             cep: customer.endereco?.geral?.cep || customer.endereco?.cep || '',
@@ -249,6 +253,7 @@ export default function ClientesPage() {
         indicadorIe: parseInt(currentCustomer.contribuinte),
         celular: currentCustomer.celular,
         email: currentCustomer.email,
+        mostrarNoMapa: currentCustomer.mostrarNoMapa,
         endereco: currentCustomer.endereco,
         codigoRegimeTributario: parseInt(currentCustomer.codigoRegimeTributario),
         updatedAt: Date.now()
@@ -344,8 +349,8 @@ export default function ClientesPage() {
       <main className="flex-1 flex flex-col overflow-hidden">
         <Header title="Cadastro de Clientes (Bling)" />
         
-        <div className="flex-1 overflow-hidden flex flex-col p-8">
-          <div className="max-w-7xl mx-auto w-full flex flex-col h-full space-y-6">
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col p-8">
+          <div className="max-w-7xl mx-auto w-full flex flex-col space-y-6">
             
             {/* Action Bar */}
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
@@ -477,6 +482,9 @@ export default function ClientesPage() {
                 </table>
               </div>
             </div>
+
+            {/* Map Section */}
+            <MapWrapper customers={customers} />
           </div>
         </div>
 
@@ -761,6 +769,28 @@ export default function ClientesPage() {
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* Configurações do Mapa */}
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800 pb-2">4. Mapa de Revendedores</h4>
+                    <div className="flex items-center gap-3">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer"
+                          checked={currentCustomer.mostrarNoMapa}
+                          onChange={(e) => setCurrentCustomer({...currentCustomer, mostrarNoMapa: e.target.checked})}
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 dark:peer-focus:ring-primary/80 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-primary"></div>
+                        <span className="ml-3 text-sm font-bold text-slate-700 dark:text-slate-300">
+                          Mostrar no mapa público de revendedores
+                        </span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Se desmarcado, este cliente não aparecerá no mapa do seu site Wix, mesmo que seja um CNPJ.
+                    </p>
                   </div>
                 </form>
 

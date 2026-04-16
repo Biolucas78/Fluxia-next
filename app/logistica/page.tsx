@@ -91,7 +91,9 @@ export default function LogisticaPage() {
   // Logistics focus: orders in 'caixa_montada', 'enviado', 'entregue'
   const logisticsOrders = orders.filter(o => 
     ['caixa_montada', 'enviado', 'entregue'].includes(o.status) &&
-    (o.clientName.toLowerCase().includes(searchQuery.toLowerCase()) || o.id.toLowerCase().includes(searchQuery.toLowerCase()))
+    (o.clientName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     (o.tradeName && o.tradeName.toLowerCase().includes(searchQuery.toLowerCase())) || 
+     o.id.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const updateStatus = (order: any, newStatus: string) => {
