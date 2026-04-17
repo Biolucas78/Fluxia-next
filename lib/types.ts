@@ -174,6 +174,7 @@ export interface Order {
   invoiceValue?: number;
   productDescription?: string;
   trackingStatus?: string;
+  tags?: string[];
   trackingHistory?: {
     status: string;
     message: string;

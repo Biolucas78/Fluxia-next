@@ -115,6 +115,31 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [manualInvoiceValue, setManualInvoiceValue] = useState<number | ''>(order.invoiceValue || '');
   const [blingSearchResults, setBlingSearchResults] = useState<any[]>([]);
   const [showBlingResults, setShowBlingResults] = useState(false);
+  const [isEditingDate, setIsEditingDate] = useState(false);
+  const [editedDate, setEditedDate] = useState(order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+
+  const handleSaveDate = () => {
+    if (!editedDate) return;
+    
+    // Create a new date string based on the selected date (YYYY-MM-DD)
+    // We'll preserve the current time if possible, or just set it to noon to avoid timezone issues
+    const newDate = new Date(`${editedDate}T12:00:00Z`).toISOString();
+    
+    // Format the old date for the history log
+    const oldDateStr = new Date(order.createdAt).toLocaleDateString('pt-BR');
+    const newDateStr = new Date(newDate).toLocaleDateString('pt-BR');
+    
+    const historyEntry = `Data do pedido alterada de ${oldDateStr} para ${newDateStr}`;
+    
+    onUpdateOrder({
+      ...order,
+      createdAt: newDate,
+      observations: order.observations ? `${order.observations}\n[Histórico] ${historyEntry}` : `[Histórico] ${historyEntry}`
+    });
+    
+    setIsEditingDate(false);
+    toast.success('Data do pedido atualizada!');
+  };
 
   const handleSearchBling = async () => {
     if (!editedCustomer.clientName) return;
@@ -692,6 +717,40 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 <p className="text-[10px] font-bold text-primary uppercase tracking-wider">
                   {STATUS_INSTRUCTIONS[order.status]}
                 </p>
+                <div className="h-3 w-px bg-slate-200 dark:bg-slate-700" />
+                
+                {isEditingDate ? (
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="date" 
+                      value={editedDate}
+                      onChange={(e) => setEditedDate(e.target.value)}
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <button 
+                      onClick={handleSaveDate}
+                      className="text-emerald-500 hover:text-emerald-600 transition-colors"
+                    >
+                      <CheckCircle2 className="size-3" />
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setIsEditingDate(false);
+                        setEditedDate(order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+                      }}
+                      className="text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 group/date cursor-pointer" onClick={() => setIsEditingDate(true)}>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      {new Date(order.createdAt).toLocaleDateString('pt-BR')}
+                    </p>
+                    <Edit2 className="size-3 text-slate-300 group-hover/date:text-primary transition-colors" />
+                  </div>
+                )}
               </div>
             </div>
           </div>

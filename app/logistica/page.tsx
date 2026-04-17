@@ -22,6 +22,9 @@ export default function LogisticaPage() {
   const [simulateTracking, setSimulateTracking] = useState('');
   const [simulateStatus, setSimulateStatus] = useState('posted');
   const [isSimulating, setIsSimulating] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   const handleTestTracking = async () => {
     if (!testTracking) return;
@@ -89,12 +92,36 @@ export default function LogisticaPage() {
   }, []);
 
   // Logistics focus: orders in 'caixa_montada', 'enviado', 'entregue'
-  const logisticsOrders = orders.filter(o => 
-    ['caixa_montada', 'enviado', 'entregue'].includes(o.status) &&
-    (o.clientName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-     (o.tradeName && o.tradeName.toLowerCase().includes(searchQuery.toLowerCase())) || 
-     o.id.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const logisticsOrders = orders.filter(o => {
+    const isLogisticsStatus = ['caixa_montada', 'enviado', 'entregue'].includes(o.status);
+    if (!isLogisticsStatus) return false;
+
+    if (filterStatus !== 'all' && o.status !== filterStatus) return false;
+
+    const matchesSearch = o.clientName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          (o.tradeName && o.tradeName.toLowerCase().includes(searchQuery.toLowerCase())) || 
+                          o.id.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (startDate) {
+      // Find posting date (when it became 'enviado') or fallback to createdAt
+      const postingHistory = o.statusHistory?.find(h => h.status === 'enviado');
+      const dateToCompare = new Date(postingHistory ? postingHistory.timestamp : o.createdAt);
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      if (dateToCompare < start) return false;
+    }
+
+    if (endDate) {
+      const postingHistory = o.statusHistory?.find(h => h.status === 'enviado');
+      const dateToCompare = new Date(postingHistory ? postingHistory.timestamp : o.createdAt);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      if (dateToCompare > end) return false;
+    }
+
+    return true;
+  });
 
   const updateStatus = (order: any, newStatus: string) => {
     handleUpdateOrder({
@@ -220,6 +247,56 @@ export default function LogisticaPage() {
                 </div>
               </div>
             </div>
+            
+            {/* Filters */}
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-4">
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <span className="text-xs font-bold text-slate-500 uppercase">Status:</span>
+                <select 
+                  value={filterStatus} 
+                  onChange={e => setFilterStatus(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none w-full md:w-auto"
+                >
+                  <option value="all">Todos</option>
+                  <option value="caixa_montada">Caixa Montada</option>
+                  <option value="enviado">Enviado</option>
+                  <option value="entregue">Entregue</option>
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <span className="text-xs font-bold text-slate-500 uppercase">Postagem De:</span>
+                <input 
+                  type="date" 
+                  value={startDate}
+                  onChange={e => setStartDate(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none w-full md:w-auto"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <span className="text-xs font-bold text-slate-500 uppercase">Até:</span>
+                <input 
+                  type="date" 
+                  value={endDate}
+                  onChange={e => setEndDate(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none w-full md:w-auto"
+                />
+              </div>
+
+              {(filterStatus !== 'all' || startDate || endDate) && (
+                <button 
+                  onClick={() => {
+                    setFilterStatus('all');
+                    setStartDate('');
+                    setEndDate('');
+                  }}
+                  className="text-xs font-bold text-primary hover:underline ml-auto"
+                >
+                  Limpar Filtros
+                </button>
+              )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -283,6 +360,13 @@ export default function LogisticaPage() {
                     <h4 className="text-lg font-bold text-slate-900 dark:text-white">{order.clientName}</h4>
                     <p className="text-xs text-slate-500 flex items-center gap-1 italic">
                       <MapPin className="size-3" /> {order.address}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-medium">
+                      Postagem: {
+                        order.statusHistory?.find(h => h.status === 'enviado')?.timestamp 
+                          ? new Date(order.statusHistory.find(h => h.status === 'enviado')!.timestamp).toLocaleDateString('pt-BR')
+                          : new Date(order.createdAt).toLocaleDateString('pt-BR')
+                      }
                     </p>
                   </div>
                   

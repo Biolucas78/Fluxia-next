@@ -11,6 +11,21 @@ import { getValidBlingToken } from '@/lib/bling-client';
 import { toast } from 'react-hot-toast';
 import CustomerSearchForm from './CustomerSearchForm';
 
+function getSafeDate(dateString: string | undefined | null): string {
+  if (!dateString) return new Date().toISOString();
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) {
+    // If invalid, try to parse DD/MM/YYYY or just return today
+    const parts = dateString.split('/');
+    if (parts.length === 3) {
+      const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00Z`);
+      if (!isNaN(parsed.getTime())) return parsed.toISOString();
+    }
+    return new Date().toISOString();
+  }
+  return d.toISOString();
+}
+
 interface WhatsAppImportModalProps {
   onOrdersImported: (orders: Order[]) => void;
   onClose: () => void;
@@ -158,10 +173,10 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose, existin
           hasInvoice: false,
           hasBoleto: false,
           hasOrderDocument: false,
-          createdAt: new Date().toISOString(),
+          createdAt: getSafeDate(po.orderDate),
           statusHistory: [{
             status: 'pedidos' as OrderStatus,
-            timestamp: new Date().toISOString()
+            timestamp: getSafeDate(po.orderDate)
           }],
           products: po.products.map((p: any) => ({
             id: Math.random().toString(36).substr(2, 9),
@@ -289,6 +304,23 @@ Maria Oliveira: 5 pacotes Catuaí em grãos 500g"
                           <span>{p.quantity}x {p.name} ({p.weight}, {p.grindType})</span>
                         </div>
                       ))}
+                    </div>
+
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-500">Data do Pedido:</span>
+                      <input 
+                        type="date" 
+                        value={order.orderDate || new Date().toISOString().split('T')[0]}
+                        onChange={(e) => {
+                          setParsedOrders(prev => {
+                            if (!prev) return prev;
+                            const updated = [...prev];
+                            updated[idx] = { ...updated[idx], orderDate: e.target.value };
+                            return updated;
+                          });
+                        }}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary"
+                      />
                     </div>
 
                     <div className="pt-4 border-t border-slate-100 dark:border-slate-700">

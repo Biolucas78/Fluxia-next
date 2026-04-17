@@ -71,12 +71,18 @@ export default function ClientMap({ customers, isPublic = false }: ClientMapProp
     if (!addressString) return null;
 
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressString)}`);
+      const response = await fetch(`/api/geocode?address=${encodeURIComponent(addressString)}`);
+      
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
-      if (data && data.length > 0) {
+      if (data && data.lat && data.lng) {
         return {
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon)
+          lat: data.lat,
+          lng: data.lng
         };
       }
     } catch (error) {
@@ -177,18 +183,35 @@ export default function ClientMap({ customers, isPublic = false }: ClientMapProp
 
           <div className="flex-1"></div>
 
-          <button 
-            onClick={syncCoordinates}
-            disabled={isGeocoding}
-            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-all"
-          >
-            {isGeocoding ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            Sincronizar Coordenadas ({mapCustomers.length - customersWithCoords.length} pendentes)
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl">
+              <MapPin className="size-4 text-primary" />
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                {customersWithCoords.length} no mapa
+              </span>
+            </div>
+
+            <button 
+              onClick={syncCoordinates}
+              disabled={isGeocoding}
+              className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-all"
+            >
+              {isGeocoding ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              Sincronizar Coordenadas ({mapCustomers.length - customersWithCoords.length} pendentes)
+            </button>
+          </div>
         </div>
       )}
 
       <div className={`${isPublic ? 'h-screen rounded-none border-none' : 'h-[600px] rounded-3xl border border-slate-200 dark:border-slate-800'} w-full overflow-hidden relative z-0`}>
+        {isPublic && (
+          <div className="absolute top-4 right-4 z-[1000] bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm px-4 py-2 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-800 flex items-center gap-2">
+            <MapPin className="size-4 text-primary" />
+            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+              {customersWithCoords.length} parceiros
+            </span>
+          </div>
+        )}
         <MapContainer 
           center={[-14.235004, -51.92528]} 
           zoom={4} 

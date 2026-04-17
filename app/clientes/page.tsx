@@ -70,6 +70,8 @@ export default function ClientesPage() {
   const [isSubmittingLocal, setIsSubmittingLocal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -303,42 +305,87 @@ export default function ClientesPage() {
     }
   };
 
-  const handleDeleteCustomer = async () => {
-    if (!currentCustomer.id) return;
+  const handleDeleteCustomer = async (idToDelete?: string) => {
+    const id = idToDelete || currentCustomer.id;
+    if (!id) return;
     
     setIsDeleting(true);
     try {
       const token = await getValidBlingToken();
-      if (!token) {
-        toast.error('Você precisa conectar o Bling primeiro!');
-        setIsDeleting(false);
-        return;
-      }
+      let blingDeleted = false;
+      let blingError = '';
 
-      const response = await fetch(`/api/bling/customers/${currentCustomer.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
+      if (token) {
+        try {
+          const response = await fetch(`/api/bling/customers/${id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+
+          if (response.ok) {
+            blingDeleted = true;
+          } else {
+            const text = await response.text();
+            try {
+              const json = JSON.parse(text);
+              blingError = json.error || text;
+            } catch {
+              blingError = text;
+            }
+          }
+        } catch (e: any) {
+          blingError = e.message;
         }
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Erro ao excluir cliente no Bling');
       }
 
-      // Remove localmente também para feedback imediato
-      await deleteDoc(doc(db, 'bling_customers', currentCustomer.id));
+      // Remove localmente
+      await deleteDoc(doc(db, 'bling_customers', String(id)));
 
-      toast.success('Cliente excluído com sucesso!');
+      if (blingDeleted) {
+        toast.success('Cliente excluído com sucesso!');
+      } else {
+        toast.success('Cliente excluído localmente.');
+        if (blingError && blingError.includes('insufficient_scope')) {
+          toast.error('O Bling bloqueou a exclusão (falta de permissão no token).');
+        } else if (blingError) {
+          toast.error('Não foi possível excluir no Bling, apenas localmente.');
+        }
+      }
+      
       setIsModalOpen(false);
+      setSelectedCustomers(prev => prev.filter(cId => cId !== id));
     } catch (error: any) {
       console.error('Error deleting customer:', error);
-      toast.error(`Erro: ${error.message}`);
+      toast.error(`Erro ao excluir localmente: ${error.message}`);
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedCustomers.length === 0) return;
+    
+    setIsDeleting(true);
+    let successCount = 0;
+    
+    toast.loading(`Excluindo ${selectedCustomers.length} clientes localmente...`, { id: 'bulk-delete' });
+
+    try {
+      for (const id of selectedCustomers) {
+        await deleteDoc(doc(db, 'bling_customers', String(id)));
+        successCount++;
+      }
+      toast.success(`${successCount} clientes excluídos localmente com sucesso!`, { id: 'bulk-delete' });
+      setSelectedCustomers([]);
+      setShowBulkDeleteConfirm(false);
+    } catch (error: any) {
+      console.error('Error in bulk delete:', error);
+      toast.error(`Erro ao excluir: ${error.message}`, { id: 'bulk-delete' });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -364,21 +411,69 @@ export default function ClientesPage() {
                   className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none shadow-sm"
                 />
               </div>
-              <button 
-                onClick={() => handleOpenModal()}
-                className="w-full md:w-auto px-6 py-3 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-              >
-                <Plus className="size-5" />
-                Incluir Cadastro
-              </button>
+              
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                {selectedCustomers.length > 0 && (
+                  !showBulkDeleteConfirm ? (
+                    <button 
+                      onClick={() => setShowBulkDeleteConfirm(true)}
+                      className="px-4 py-3 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all"
+                    >
+                      <Trash2 className="size-5" />
+                      Excluir ({selectedCustomers.length})
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-2xl">
+                      <span className="text-xs font-bold text-red-600 dark:text-red-400">Confirmar?</span>
+                      <button 
+                        onClick={handleBulkDelete}
+                        disabled={isDeleting}
+                        className="px-3 py-1.5 bg-red-500 text-white rounded-xl font-bold text-xs hover:bg-red-600 transition-colors flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {isDeleting ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
+                        Sim
+                      </button>
+                      <button 
+                        onClick={() => setShowBulkDeleteConfirm(false)}
+                        disabled={isDeleting}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  )
+                )}
+
+                <button 
+                  onClick={() => handleOpenModal()}
+                  className="w-full md:w-auto px-6 py-3 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                >
+                  <Plus className="size-5" />
+                  Incluir Cadastro
+                </button>
+              </div>
             </div>
 
             {/* Customers List */}
-            <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xl flex flex-col">
-              <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+            <div className="h-[600px] shrink-0 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xl flex flex-col">
+              <div className="overflow-auto custom-scrollbar flex-1">
+                <table className="w-full text-left border-collapse relative">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-slate-50/90 dark:bg-slate-800/90 backdrop-blur-md border-b border-slate-100 dark:border-slate-800">
+                      <th className="px-6 py-4 w-12">
+                        <input 
+                          type="checkbox" 
+                          checked={filteredCustomers.length > 0 && selectedCustomers.length === filteredCustomers.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCustomers(filteredCustomers.map(c => c.id));
+                            } else {
+                              setSelectedCustomers([]);
+                            }
+                          }}
+                          className="rounded text-primary focus:ring-primary"
+                        />
+                      </th>
                       <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cliente</th>
                       <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Documento</th>
                       <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Contato</th>
@@ -389,14 +484,14 @@ export default function ClientesPage() {
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
                     {isLoading ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-20 text-center">
+                        <td colSpan={6} className="px-6 py-20 text-center">
                           <Loader2 className="size-8 animate-spin text-primary mx-auto mb-4" />
                           <p className="text-slate-500 text-sm">Carregando clientes...</p>
                         </td>
                       </tr>
                     ) : filteredCustomers.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-20 text-center">
+                        <td colSpan={6} className="px-6 py-20 text-center">
                           <User className="size-12 text-slate-200 dark:text-slate-800 mx-auto mb-4" />
                           <p className="text-slate-500 text-sm">Nenhum cliente encontrado.</p>
                         </td>
@@ -408,6 +503,20 @@ export default function ClientesPage() {
                           onClick={() => handleOpenModal(customer)}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group cursor-pointer"
                         >
+                          <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedCustomers.includes(customer.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedCustomers(prev => [...prev, customer.id]);
+                                } else {
+                                  setSelectedCustomers(prev => prev.filter(id => id !== customer.id));
+                                }
+                              }}
+                              className="rounded text-primary focus:ring-primary"
+                            />
+                          </td>
                           <td className="px-6 py-4">
                             <div className="flex flex-col">
                               <span className="font-bold text-slate-900 dark:text-white text-sm">
@@ -811,7 +920,7 @@ export default function ClientesPage() {
                           <span className="text-xs font-bold text-slate-500">Tem certeza?</span>
                           <button 
                             type="button"
-                            onClick={handleDeleteCustomer}
+                            onClick={() => handleDeleteCustomer()}
                             disabled={isDeleting}
                             className="px-3 py-1.5 bg-red-500 text-white rounded-lg font-bold text-xs hover:bg-red-600 transition-colors flex items-center gap-1 disabled:opacity-50"
                           >

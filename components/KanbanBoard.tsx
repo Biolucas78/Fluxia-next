@@ -99,6 +99,11 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [filterTag, setFilterTag] = useState<string>('all');
+  const [filterOrigin, setFilterOrigin] = useState<string>('all');
+  const [filterState, setFilterState] = useState<string>('all');
+  const [filterCity, setFilterCity] = useState<string>('');
+  const [filterCarrier, setFilterCarrier] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [isBlingImportOpen, setIsBlingImportOpen] = useState(false);
 
@@ -269,6 +274,18 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         
         if (!matchesSearch) return false;
 
+        if (filterTag !== 'all') {
+          if (filterTag === 'amostra' && !o.isSample) return false;
+          if (filterTag === 'hasInvoice' && !o.hasInvoice) return false;
+          if (filterTag === 'hasBoleto' && !o.hasBoleto) return false;
+          if (filterTag === 'custom' && (!o.tags || o.tags.length === 0)) return false; // Future use
+        }
+
+        if (filterOrigin !== 'all' && o.origin !== filterOrigin) return false;
+        if (filterState !== 'all' && (o.addressDetails?.state?.toLowerCase() !== filterState.toLowerCase())) return false;
+        if (filterCity && (!o.addressDetails?.city || !o.addressDetails.city.toLowerCase().includes(filterCity.toLowerCase()))) return false;
+        if (filterCarrier !== 'all' && o.carrier !== filterCarrier) return false;
+
         if (startDate) {
           const orderDate = new Date(o.createdAt);
           const start = new Date(startDate);
@@ -286,7 +303,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         return true;
       })
       .sort((a, b) => a.clientName.localeCompare(b.clientName, 'pt-BR', { sensitivity: 'base' }));
-  }, [orders, searchQuery, startDate, endDate]);
+  }, [orders, searchQuery, startDate, endDate, filterTag, filterOrigin, filterState, filterCity, filterCarrier]);
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -477,83 +494,174 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
     >
       <div className="flex flex-col h-full w-full overflow-hidden">
         {/* Filter Bar */}
-        <div className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setIsBlingImportOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-lg"
-            >
-              <Download className="size-4" />
-              Importar Bling
-            </button>
-
-            <button 
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${showFilters ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-            >
-              <Filter className="size-4" />
-              {showFilters ? 'Ocultar Filtros' : 'Filtrar por Data'}
-            </button>
-
-            {showFilters && (
-              <motion.div 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-3"
+        <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setIsBlingImportOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-lg"
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-                    <input 
-                      type="date" 
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-                    <input 
-                      type="date" 
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all"
-                    />
-                  </div>
-                </div>
-                {(startDate || endDate) && (
-                  <button 
-                    onClick={() => { setStartDate(''); setEndDate(''); }}
-                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
-                    title="Limpar Filtros"
-                  >
-                    <RotateCcw className="size-4" />
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </div>
+                <Download className="size-4" />
+                Importar Bling
+              </button>
 
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total:</span>
-              <span className="text-sm font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                {filteredOrders.length}
-              </span>
+              <button 
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${showFilters ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+              >
+                <Filter className="size-4" />
+                {showFilters ? 'Ocultar Filtros' : 'Filtros'}
+              </button>
             </div>
-            {selectedOrderIds.size > 0 && (
+
+            <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Selecionados:</span>
-                <span className="text-sm font-bold text-white bg-primary px-2 py-0.5 rounded-md shadow-sm">
-                  {selectedOrderIds.size}
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total:</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                  {filteredOrders.length}
                 </span>
               </div>
-            )}
+              {selectedOrderIds.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Selecionados:</span>
+                  <span className="text-sm font-bold text-white bg-primary px-2 py-0.5 rounded-md shadow-sm">
+                    {selectedOrderIds.size}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
+
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden border-t border-slate-100 dark:border-slate-800"
+              >
+                <div className="px-6 py-4 flex flex-wrap gap-4 items-end bg-slate-50/50 dark:bg-slate-900/50">
+                  {/* Date Range */}
+                  <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Postagem De:</span>
+                      <div className="relative">
+                        <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                        <input 
+                          type="date" 
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="pl-8 pr-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all w-[130px]"
+                        />
+                      </div>
+                    </div>
+                    <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                      <div className="relative">
+                        <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                        <input 
+                          type="date" 
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="pl-8 pr-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:border-primary transition-all w-[130px]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dropdowns */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tags / Flags:</span>
+                    <select
+                      value={filterTag}
+                      onChange={e => setFilterTag(e.target.value)}
+                      className="py-1.5 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-primary transition-all"
+                    >
+                      <option value="all">Todas as Tags</option>
+                      <option value="amostra">Amostras</option>
+                      <option value="hasInvoice">Com Nota Fiscal (NF-e)</option>
+                      <option value="hasBoleto">Com Boleto</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Origem:</span>
+                    <select
+                      value={filterOrigin}
+                      onChange={e => setFilterOrigin(e.target.value)}
+                      className="py-1.5 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-primary transition-all"
+                    >
+                      <option value="all">Todas as Origens</option>
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="Wix">Wix</option>
+                      <option value="Amazon">Amazon</option>
+                      <option value="Meli">Mercado Livre</option>
+                      <option value="CRM">CRM / Manual</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estado (UF):</span>
+                    <select
+                      value={filterState}
+                      onChange={e => setFilterState(e.target.value)}
+                      className="py-1.5 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-primary transition-all uppercase"
+                    >
+                      <option value="all">TODOS</option>
+                      {/* Generates a brief list of unique states actually present in orders */}
+                      {Array.from(new Set(orders.map(o => o.addressDetails?.state?.toUpperCase()).filter(Boolean))).sort().map(st => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cidade:</span>
+                    <input
+                      type="text"
+                      placeholder="Nome da cidade..."
+                      value={filterCity}
+                      onChange={e => setFilterCity(e.target.value)}
+                      className="py-1.5 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-primary transition-all w-32"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Transportadora:</span>
+                    <select
+                      value={filterCarrier}
+                      onChange={e => setFilterCarrier(e.target.value)}
+                      className="py-1.5 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-primary transition-all"
+                    >
+                      <option value="all">Todas</option>
+                      {Array.from(new Set(orders.map(o => o.carrier).filter(Boolean))).sort().map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {(startDate || endDate || filterTag !== 'all' || filterOrigin !== 'all' || filterState !== 'all' || filterCity || filterCarrier !== 'all') && (
+                    <button 
+                      onClick={() => { 
+                        setStartDate(''); 
+                        setEndDate(''); 
+                        setFilterTag('all');
+                        setFilterOrigin('all');
+                        setFilterState('all');
+                        setFilterCity('');
+                        setFilterCarrier('all');
+                      }}
+                      className="ml-auto p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all flex items-center gap-2 text-xs font-bold"
+                      title="Limpar Todos os Filtros"
+                    >
+                      <RotateCcw className="size-4" /> Limpar Filtros
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div 

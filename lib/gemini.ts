@@ -54,6 +54,7 @@ export async function parseOrderWithGemini(text: string) {
     9. FLEXIBILIDADE (CRÍTICO): Se o formato da mensagem for incomum ou bagunçado, use o contexto para identificar o que é o nome do cliente, o que é o endereço e o que são os produtos. Priorize a extração correta dos produtos mesmo que o endereço esteja incompleto ou misturado. Se houver dúvidas sobre o que é o nome do cliente, use a primeira linha ou a identificação mais clara de pessoa/empresa.
     10. CONDIÇÃO DE PAGAMENTO: Identifique a condição de pagamento se mencionada (ex: "A vista", "15 dias", "21 dias", "30 dias", "2x"). Se não mencionada, use "A vista".
     11. ORIGEM DO PEDIDO: Identifique a origem do pedido se mencionada. As origens possíveis são: 'whatsapp', 'Wix', 'Amazon', 'Meli', 'CRM'. Se não for mencionada, assuma 'whatsapp'.
+    12. DATA DO PEDIDO: Identifique a data do pedido se mencionada no texto (ex: "ontem", "dia 15", "15/04"). Se não houver menção, deixe vazio. O formato ideal é YYYY-MM-DD, mas pode extrair como string livre se não for possível converter.
     
     Texto do pedido:
     ${sanitizedText}
@@ -74,6 +75,7 @@ export async function parseOrderWithGemini(text: string) {
           "observations": "Observações gerais do pedido",
           "isSample": true/false,
           "origin": "whatsapp, Wix, Amazon, Meli, ou CRM",
+          "orderDate": "Data do pedido (YYYY-MM-DD ou texto livre)",
           "products": [
             {
               "quantity": 10,
@@ -113,6 +115,10 @@ export async function parseOrderWithGemini(text: string) {
                   origin: {
                     type: Type.STRING,
                     description: "Origem do pedido: whatsapp, Wix, Amazon, Meli, ou CRM"
+                  },
+                  orderDate: {
+                    type: Type.STRING,
+                    description: "Data do pedido (YYYY-MM-DD ou texto livre)"
                   },
                   products: {
                     type: Type.ARRAY,
