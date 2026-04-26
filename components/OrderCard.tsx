@@ -22,7 +22,7 @@ interface OrderCardProps {
   onToggleSelect?: (id: string) => void;
 }
 
-const CARRIERS = ['Correio', 'Braspress', 'MelhorEnvio', 'Lalamove'];
+const CARRIERS = ['Correio', 'Braspress', 'MelhorEnvio', 'Lalamove', 'Total Express'];
 
 export default function OrderCard({ 
   order, 

@@ -405,6 +405,13 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
     }
   };
 
+  const handleNextOrder = () => {
+    if (selectedOrder && hasNextOrder) {
+      const nextOrder = currentColumnOrders[selectedOrderIndex + 1];
+      setSelectedOrder(nextOrder);
+    }
+  };
+
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const startX = React.useRef(0);
@@ -700,6 +707,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
               onArchiveOrder={onArchiveOrder}
               hasNextOrder={hasNextOrder}
               onAdvanceAndNext={handleAdvanceAndNext}
+              onNextOrder={handleNextOrder}
             />
           )}
         </AnimatePresence>

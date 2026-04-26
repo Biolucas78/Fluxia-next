@@ -73,7 +73,7 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
         </div>
       )}
 
-      <nav className="flex-1 px-4 space-y-1 mt-4">
+      <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar">
         {filteredItems.map((item) => {
           const isActive = pathname === item.href;
           return (

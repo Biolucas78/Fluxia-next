@@ -394,8 +394,15 @@ export async function POST(req: Request) {
 
     if (!checkoutResponse.ok) {
         const errorData = await checkoutResponse.text();
-        console.error('Erro no checkout:', checkoutResponse.status, errorData);
-        return NextResponse.json({ error: 'Erro ao finalizar compra do frete.' }, { status: 500 });
+        console.warn('Erro no checkout mas carrinho foi preenchido:', checkoutResponse.status, errorData);
+        // Retorna sucesso com inCart = true em vez de erro
+        return NextResponse.json({ 
+            success: true, 
+            inCart: true,
+            shipmentId: cartId,
+            shippingProvider: 'melhorenvio',
+            message: 'A etiqueta foi gerada e enviada para o seu carrinho no Melhor Envio. Você precisa acessar o Melhor Envio para realizar o pagamento.'
+        });
     }
 
     // 3. Print label
@@ -412,8 +419,14 @@ export async function POST(req: Request) {
 
     if (!printResponse.ok) {
         const errorData = await printResponse.text();
-        console.error('Erro ao gerar etiqueta:', printResponse.status, errorData);
-        return NextResponse.json({ error: 'Erro ao gerar etiqueta.' }, { status: 500 });
+        console.warn('Erro ao imprimir, mas checkout feito:', printResponse.status, errorData);
+        return NextResponse.json({ 
+            success: true, 
+            inCart: true,
+            shipmentId: cartId,
+            shippingProvider: 'melhorenvio',
+            message: 'O pagamento da etiqueta foi processado ou está no carrinho, mas a impressão falhou. Acesse o site do Melhor Envio para tentar imprimir.'
+        });
     }
 
     const printData = JSON.parse(await printResponse.text());

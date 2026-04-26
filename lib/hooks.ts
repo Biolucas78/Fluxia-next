@@ -315,7 +315,7 @@ export function useOrders() {
   const archivedOrders = useMemo(() => orders.filter(o => o.archived), [orders]);
 
   const stats = useMemo<DashboardStats>(() => {
-    const producedOrders = activeOrders.filter(o => 
+    const producedOrders = orders.filter(o => 
       ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'].includes(o.status)
     );
 
@@ -327,10 +327,10 @@ export function useOrders() {
       return acc + order.products.reduce((pAcc, p) => pAcc + p.quantity, 0);
     }, 0);
 
-    const totalClients = new Set(activeOrders.map(o => o.clientName)).size;
+    const totalClients = new Set(orders.map(o => o.clientName)).size;
 
     return { totalKg, totalUnits, totalClients };
-  }, [activeOrders]);
+  }, [orders]);
 
   const syncFromDev = async () => {
     try {
@@ -357,9 +357,10 @@ export function useOrders() {
   };
 
   return {
-    orders: activeOrders,
+    orders: orders,
     archivedOrders,
     allOrders: orders,
+    activeOrders,
     setOrders,
     handleOrderCreated,
     handleUpdateOrder,

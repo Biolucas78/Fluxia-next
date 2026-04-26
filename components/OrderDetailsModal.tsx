@@ -33,7 +33,8 @@ import {
   ExternalLink,
   RefreshCw,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  FastForward
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProductItem, ShippingOption } from '@/lib/types';
@@ -49,6 +50,7 @@ interface OrderDetailsModalProps {
   onArchiveOrder: (orderId: string) => void;
   hasNextOrder?: boolean;
   onAdvanceAndNext?: (order: Order) => void;
+  onNextOrder?: () => void;
 }
 
 const COLUMNS: { id: OrderStatus; title: string; color: string; textColor: string }[] = [
@@ -60,7 +62,7 @@ const COLUMNS: { id: OrderStatus; title: string; color: string; textColor: strin
   { id: 'entregue', title: 'Entregue', color: 'bg-emerald-500', textColor: 'text-white' },
 ];
 
-const CARRIERS = ['Correio', 'Braspress', 'MelhorEnvio', 'Lalamove'];
+const CARRIERS = ['Correio', 'Braspress', 'MelhorEnvio', 'Lalamove', 'Total Express'];
 
 const STATUS_INSTRUCTIONS: Record<OrderStatus, string> = {
   pedidos: 'Separar as embalagens para produção',
@@ -71,7 +73,7 @@ const STATUS_INSTRUCTIONS: Record<OrderStatus, string> = {
   entregue: 'Fluxo finalizado',
 };
 
-export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArchiveOrder, hasNextOrder, onAdvanceAndNext }: OrderDetailsModalProps) {
+export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArchiveOrder, hasNextOrder, onAdvanceAndNext, onNextOrder }: OrderDetailsModalProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<ProductItem>>({});
@@ -230,7 +232,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       // Update order with blingOrderId if returned
       const updatedOrder = { 
         ...order, 
-        hasOrderDocument: true 
+        hasOrderDocument: true,
+        statusHistory: [
+          ...(order.statusHistory || []),
+          { 
+            action: 'Pedido enviado para o Bling',
+            details: data.blingOrderId ? `ID no Bling: ${data.blingOrderId}` : undefined,
+            timestamp: new Date().toISOString() 
+          }
+        ]
       };
       if (data.blingOrderId) {
         updatedOrder.blingOrderId = data.blingOrderId;
@@ -273,7 +283,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           hasInvoice: true, 
           invoiceKey: data.invoiceKey,
           invoiceNumber: data.invoiceNumber,
-          invoiceValue: data.invoiceValue
+          invoiceValue: data.invoiceValue,
+          statusHistory: [
+            ...(order.statusHistory || []),
+            { 
+              action: 'Nota fiscal vinculada (Sincronizada do Bling)',
+              details: `NF: ${data.invoiceNumber || 'N/A'}, Valor: R$ ${data.invoiceValue || '0.00'}`,
+              timestamp: new Date().toISOString() 
+            }
+          ]
         });
         setManualInvoiceKey(data.invoiceKey || '');
         setManualInvoiceNumber(data.invoiceNumber || '');
@@ -639,15 +657,27 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           trackingNumber: data.trackingNumber,
           shipmentId: data.shipmentId,
           shippingProvider: data.shippingProvider,
-          carrier: data.provider === 'Manual' ? order.carrier : data.provider
+          labelUrl: data.labelUrl || order.labelUrl,
+          carrier: data.provider === 'Manual' ? order.carrier : data.provider,
+          statusHistory: [
+            ...(order.statusHistory || []),
+            { 
+              action: data.inCart ? 'Etiqueta enviada para o carrinho' : 'Etiqueta gerada com sucesso',
+              details: `Transportadora: ${data.provider === 'Manual' ? order.carrier : data.provider}${data.trackingNumber ? ` - Rastreio: ${data.trackingNumber}` : ''}`,
+              timestamp: new Date().toISOString() 
+            }
+          ]
         });
         
-        // Open label in new tab if URL is available
-        if (data.labelUrl) {
+        setIsLabelModalOpen(false);
+
+        if (data.inCart) {
+          toast.success(data.message || 'Emissão enviada para o carrinho da transportadora para finalizar pagamento.', { duration: 6000 });
+        } else if (data.labelUrl) {
+          toast.success('Etiqueta gerada com sucesso e pronta para imprimir!');
           window.open(data.labelUrl, '_blank');
         } else {
-          // If labelUrl is missing, it means the async request failed or is still pending
-          setQuoteError('Pré-postagem criada com sucesso, mas a etiqueta ainda está sendo gerada pelos Correios. Tente novamente em alguns instantes.');
+          toast.success('Ação realizada com sucesso!');
         }
       } else {
         setQuoteError(data.error || 'Erro ao gerar etiqueta');
@@ -805,7 +835,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             cnpj: editedCustomer.cnpj,
                             cpf: editedCustomer.cpf,
                             phone: editedCustomer.phone,
-                            addressDetails: editedAddressDetails
+                            addressDetails: editedAddressDetails,
+                            statusHistory: [
+                              ...(order.statusHistory || []),
+                              {
+                                action: 'Dados do cliente atualizados manualmente',
+                                timestamp: new Date().toISOString()
+                              }
+                            ]
                           });
                           setIsEditingCustomer(false);
                         }}
@@ -1202,7 +1239,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                       ...order,
                                       invoiceKey: manualInvoiceKey,
                                       invoiceNumber: manualInvoiceNumber,
-                                      invoiceValue: manualInvoiceValue === '' ? undefined : Number(manualInvoiceValue)
+                                      invoiceValue: manualInvoiceValue === '' ? undefined : Number(manualInvoiceValue),
+                                      statusHistory: [
+                                        ...(order.statusHistory || []),
+                                        { 
+                                          action: 'Dados da Nota Fiscal atualizados manualmente',
+                                          details: `NF: ${manualInvoiceNumber || 'N/A'}, Valor: R$ ${manualInvoiceValue || '0.00'}`,
+                                          timestamp: new Date().toISOString() 
+                                        }
+                                      ]
                                     });
                                   }
                                   setIsEditingInvoiceManually(!isEditingInvoiceManually);
@@ -1665,17 +1710,22 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
               {order.statusHistory && order.statusHistory.length > 0 && (
                 <section className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <History className="size-4" /> Histórico de Status
+                    <History className="size-4" /> Histórico do Pedido
                   </h3>
-                  <div className="space-y-3">
+                  <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                     {order.statusHistory.map((entry, idx) => (
                       <div key={idx} className="flex items-start gap-3">
                         <div className="mt-1.5 size-1.5 rounded-full bg-primary shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                            {COLUMNS.find(c => c.id === entry.status)?.title || entry.status}
+                            {entry.action ? entry.action : (
+                              <>Alterado para <span className="text-primary">{COLUMNS.find(c => c.id === entry.status)?.title || entry.status}</span></>
+                            )}
                           </p>
-                          <p className="text-[10px] text-slate-400">
+                          {entry.details && (
+                            <p className="text-[10px] text-slate-500 mt-0.5">{entry.details}</p>
+                          )}
+                          <p className="text-[9px] text-slate-400">
                             {new Date(entry.timestamp).toLocaleString('pt-BR')}
                           </p>
                         </div>
@@ -1913,12 +1963,40 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           <div className="flex gap-2 relative">
             <button
               onClick={handleCreateBlingOrder}
-              disabled={isCreatingBlingOrder}
-              className="px-6 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+              disabled={isCreatingBlingOrder || !!order.blingOrderId}
+              className={`px-6 py-3 border rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
+                order.blingOrderId 
+                  ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed hidden md:flex'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
             >
-              {isCreatingBlingOrder ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-              Enviar para o Bling
+              {isCreatingBlingOrder ? <Loader2 className="size-4 animate-spin" /> : order.blingOrderId ? <CheckCircle2 className="size-4 text-emerald-500" /> : <RefreshCw className="size-4" />}
+              {order.blingOrderId ? 'Enviado pro Bling' : 'Enviar para o Bling'}
             </button>
+
+            {order.blingOrderId && (
+              <a
+                href={`https://www.bling.com.br/b/vendas.php#edit/${order.blingOrderId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-6 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all flex items-center gap-2 shadow-sm"
+                title="Abrir pedido no Bling para imprimir"
+              >
+                <Printer className="size-4" />
+                Imprimir (Bling)
+              </a>
+            )}
+
+            {hasNextOrder && onNextOrder && (
+              <button
+                onClick={onNextOrder}
+                className="px-6 py-3 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-all flex items-center gap-2 shadow-sm border border-slate-200 dark:border-slate-700"
+                title="Ir para o próximo pedido sem alterar a fase deste"
+              >
+                Pular para o Próximo
+                <FastForward className="size-4" />
+              </button>
+            )}
 
             {nextPhase && (
               <button
@@ -1930,7 +2008,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     : 'bg-primary hover:bg-primary/90 shadow-primary/20'
                 }`}
               >
-                {hasNextOrder ? 'Próximo Pedido' : 'Avançar e Fechar'}
+                {hasNextOrder ? 'Avançar e Próximo' : 'Avançar e Fechar'}
                 <ChevronRight className="size-4" />
               </button>
             )}

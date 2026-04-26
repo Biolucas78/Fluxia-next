@@ -147,6 +147,7 @@ export interface Order {
   carrier?: string;
   shippingProvider?: 'melhorenvio' | 'correios' | 'superfrete';
   shipmentId?: string; // UUID do Melhor Envio
+  labelUrl?: string;
   trackingNumber?: string;
   blingOrderId?: number;
   hasInvoice: boolean;
@@ -184,7 +185,9 @@ export interface Order {
   deliveryDate?: string;
   lastTrackingUpdate?: string;
   statusHistory?: {
-    status: OrderStatus;
+    status?: OrderStatus;
+    action?: string;
+    details?: string;
     timestamp: string;
   }[];
 }
