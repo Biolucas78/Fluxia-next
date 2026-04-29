@@ -299,7 +299,7 @@ async function trackMelhorEnvio(trackingNumber: string) {
 
 export async function POST(req: Request) {
   try {
-    const { trackingNumber, shipmentId, shippingProvider } = await req.json();
+    const { trackingNumber, shipmentId, shippingProvider, carrier } = await req.json();
 
     if (!trackingNumber && !shipmentId) {
       return NextResponse.json({ error: 'Código de rastreio ou ID de envio ausente.' }, { status: 400 });
@@ -309,6 +309,17 @@ export async function POST(req: Request) {
     const upperTracking = trimmedTracking.toUpperCase();
     const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
     let result = null;
+
+    const getTrackingDirectLink = (c: string, code: string) => {
+      const lowerC = (c || '').toLowerCase();
+      if (lowerC.includes('melhor') || lowerC.includes('envio')) {
+        return `https://melhorrastreio.com.br/rastreio/${code}`;
+      }
+      if (lowerC.includes('total')) {
+        return `https://totalconecta.totalexpress.com.br/rastreamento`;
+      }
+      return `https://linkcorreios.com.br/${code}`;
+    };
 
     // 1. Se tivermos o shipmentId (UUID) e o provedor for Melhor Envio, usamos o endpoint direto de shipment
     if (shipmentId && isUUID(shipmentId) && shippingProvider === 'melhorenvio') {
@@ -348,10 +359,10 @@ export async function POST(req: Request) {
     }
 
     if (!result) {
-      // If still no result, provide the direct link to LinkCorreios which the user confirmed works
+      // If still no result, provide the direct link which the user confirmed works
       return NextResponse.json({ 
         error: 'Rastreio não encontrado no sistema automático.',
-        directLink: `https://linkcorreios.com.br/${upperTracking}`
+        directLink: getTrackingDirectLink(carrier, upperTracking)
       }, { status: 200 });
     }
 

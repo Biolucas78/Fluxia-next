@@ -146,7 +146,14 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   const { stocks: coffeeStocks, updateStock } = useInventory();
 
   const roastPlanning = useMemo(() => {
-    const needs: Record<string, number> = {};
+    const needs: Record<string, number> = {
+      'Catuaí': 0,
+      'Torra Clara': 0,
+      'Torra Intensa': 0,
+      'Bourbom': 0,
+      'Yellow': 0,
+      'Gourmet': 0
+    };
     
     orders.forEach(order => {
       if (order.status === 'pedidos' || order.status === 'embalagens_separadas') {
@@ -156,11 +163,39 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
           if (isNeeded) {
             let weight = calculateWeightInKg(product.weight, product.quantity);
             let type = product.name;
+            const lowerName = type.toLowerCase();
 
-            // Rule: DripCoffee CX has 100g of Catuaí
-            if (type.toLowerCase().includes('dripcoffee')) {
+            // Handle Amostras
+            if (lowerName.includes('amostra')) {
+              needs['Catuaí'] += 0.25 * product.quantity;
+              needs['Torra Clara'] += 0.04 * product.quantity;
+              needs['Torra Intensa'] += 0.04 * product.quantity;
+              needs['Bourbom'] += 0.04 * product.quantity;
+              needs['Yellow'] += 0.04 * product.quantity;
+              needs['Gourmet'] += 0.04 * product.quantity;
+              return;
+            }
+
+            // Map personalized and normal coffees to base types
+            if (lowerName.includes('catuai') || lowerName.includes('catuaí')) {
+              type = 'Catuaí';
+            } else if (lowerName.includes('clara')) {
+              type = 'Torra Clara';
+            } else if (lowerName.includes('intensa')) {
+              type = 'Torra Intensa';
+            } else if (lowerName.includes('bourbom') || lowerName.includes('bourbon')) {
+              type = 'Bourbom';
+            } else if (lowerName.includes('yellow')) {
+              type = 'Yellow';
+            } else if (lowerName.includes('gourmet')) {
+              type = 'Gourmet';
+            } else if (lowerName.includes('dripcoffee') || lowerName.includes('drip coffee') || lowerName.includes('drip')) {
+              // Rule: DripCoffee CX has 100g of Catuaí
               weight = 0.1 * product.quantity; // 100g = 0.1kg
               type = 'Catuaí';
+            } else if (weight === 0 || lowerName.includes('caneca') || lowerName.includes('filtro') || lowerName.includes('copo')) {
+              // Ignore non-coffee items safely
+              return;
             }
 
             needs[type] = (needs[type] || 0) + weight;

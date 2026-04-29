@@ -78,7 +78,7 @@ export default function ShippingDataReviewModal({
     insuranceValue: order.insuranceValue || (order.invoiceValue ? String(order.invoiceValue) : ''),
     invoiceKey: order.invoiceKey || '',
     invoiceNumber: order.invoiceNumber || '',
-    productDescription: order.productDescription || '',
+    productDescription: order.productDescription || 'Café Torrado',
   });
 
   const [isParsing, setIsParsing] = useState(false);

@@ -436,18 +436,66 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     return 'bg-slate-100 text-slate-600 border-slate-200';
   };
 
+  const getTrackingLink = (carrier: string | undefined, trackingNumber: string | undefined) => {
+    if (!trackingNumber) return '#';
+    const c = (carrier || '').toLowerCase();
+    if (c.includes('melhor') || c.includes('envio')) {
+      return `https://melhorrastreio.com.br/rastreio/${trackingNumber}`;
+    }
+    if (c.includes('total')) {
+      return `https://totalconecta.totalexpress.com.br/rastreamento`;
+    }
+    return `https://linkcorreios.com.br/${trackingNumber}`;
+  };
+
+  const toggleAllProducts = () => {
+    const isAllChecked = order.products.length > 0 && order.products.every(p => p.checked);
+    const updatedProducts = order.products.map(p => ({ ...p, checked: !isAllChecked }));
+    onUpdateOrder({ 
+      ...order, 
+      products: updatedProducts,
+      statusHistory: [
+        ...(order.statusHistory || []),
+        { 
+          action: isAllChecked ? 'Desmarcou todos os produtos' : 'Marcou todos os produtos',
+          timestamp: new Date().toISOString() 
+        }
+      ]
+    });
+  };
+
   const toggleProduct = (productId: string) => {
-    console.log("Toggling product:", productId);
     const updatedProducts = order.products.map(p => 
       p.id === productId ? { ...p, checked: !p.checked } : p
     );
-    console.log("Updated products for order:", order.id, updatedProducts);
-    onUpdateOrder({ ...order, products: updatedProducts });
+    const toggledProduct = updatedProducts.find(p => p.id === productId);
+    onUpdateOrder({ 
+      ...order, 
+      products: updatedProducts,
+      statusHistory: [
+        ...(order.statusHistory || []),
+        { 
+          action: `${toggledProduct?.checked ? 'Marcou' : 'Desmarcou'} o produto: ${toggledProduct?.name}`,
+          timestamp: new Date().toISOString() 
+        }
+      ]
+    });
   };
 
   const handleDeleteProduct = (productId: string) => {
+    const productToDelete = order.products.find(p => p.id === productId);
     const updatedProducts = order.products.filter(p => p.id !== productId);
-    onUpdateOrder({ ...order, products: updatedProducts });
+    onUpdateOrder({ 
+      ...order, 
+      products: updatedProducts,
+      statusHistory: [
+        ...(order.statusHistory || []),
+        { 
+          action: `Removeu o produto: ${productToDelete?.name}`,
+          timestamp: new Date().toISOString() 
+        }
+      ]
+    });
     setActiveMenuId(null);
   };
 
@@ -462,7 +510,17 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     const updatedProducts = order.products.map(p => 
       p.id === editingProductId ? { ...p, ...editForm } as ProductItem : p
     );
-    onUpdateOrder({ ...order, products: updatedProducts });
+    onUpdateOrder({ 
+      ...order, 
+      products: updatedProducts,
+      statusHistory: [
+        ...(order.statusHistory || []),
+        { 
+          action: `Editou o produto: ${editForm.name || 'Desconhecido'}`,
+          timestamp: new Date().toISOString() 
+        }
+      ]
+    });
     setEditingProductId(null);
     setEditForm({});
   };
@@ -482,7 +540,17 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       checked: false,
     };
     const updatedProducts = [...order.products, newProduct];
-    onUpdateOrder({ ...order, products: updatedProducts });
+    onUpdateOrder({ 
+      ...order, 
+      products: updatedProducts,
+      statusHistory: [
+        ...(order.statusHistory || []),
+        { 
+          action: `Adicionou um novo produto`,
+          timestamp: new Date().toISOString() 
+        }
+      ]
+    });
     
     // Start editing the new product immediately
     setEditingProductId(newProduct.id);
@@ -1162,7 +1230,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       key={condition}
                       onClick={() => {
                         setPaymentCondition(condition);
-                        onUpdateOrder({ ...order, paymentCondition: condition });
+                        onUpdateOrder({
+                          ...order,
+                          paymentCondition: condition,
+                          statusHistory: [
+                            ...(order.statusHistory || []),
+                            { action: `Modificou a condição de pagamento para: ${condition}`, timestamp: new Date().toISOString() }
+                          ]
+                        });
                       }}
                       className={`px-2 py-2 rounded-xl text-[10px] font-bold border transition-all ${
                         paymentCondition === condition
@@ -1187,7 +1262,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     <button
                       key={originOption}
                       onClick={() => {
-                        onUpdateOrder({ ...order, origin: originOption });
+                        onUpdateOrder({
+                          ...order,
+                          origin: originOption,
+                          statusHistory: [
+                            ...(order.statusHistory || []),
+                            { action: `Modificou a origem para: ${originOption}`, timestamp: new Date().toISOString() }
+                          ]
+                        });
                       }}
                       className={`px-2 py-2 rounded-xl text-[10px] font-bold border transition-all ${
                         (order.origin || 'whatsapp') === originOption
@@ -1213,7 +1295,17 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           <input 
                             type="checkbox"
                             checked={order.hasInvoice}
-                            onChange={() => onUpdateOrder({ ...order, hasInvoice: !order.hasInvoice })}
+                            onChange={() => onUpdateOrder({
+                              ...order,
+                              hasInvoice: !order.hasInvoice,
+                              statusHistory: [
+                                ...(order.statusHistory || []),
+                                {
+                                  action: `${!order.hasInvoice ? 'Marcou' : 'Desmarcou'} Nota Fiscal`,
+                                  timestamp: new Date().toISOString()
+                                }
+                              ]
+                            })}
                             className="rounded border-slate-300 text-primary focus:ring-primary size-4"
                           />
                           <span className={`text-sm font-medium ${order.hasInvoice ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Nota Fiscal</span>
@@ -1332,7 +1424,17 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           <input 
                             type="checkbox"
                             checked={order.hasOrderDocument}
-                            onChange={() => onUpdateOrder({ ...order, hasOrderDocument: !order.hasOrderDocument })}
+                            onChange={() => onUpdateOrder({
+                              ...order,
+                              hasOrderDocument: !order.hasOrderDocument,
+                              statusHistory: [
+                                ...(order.statusHistory || []),
+                                {
+                                  action: `${!order.hasOrderDocument ? 'Marcou' : 'Desmarcou'} Declaração de Conteúdo`,
+                                  timestamp: new Date().toISOString()
+                                }
+                              ]
+                            })}
                             className="rounded border-slate-300 text-primary focus:ring-primary size-4"
                           />
                           <span className={`text-sm font-medium ${order.hasOrderDocument ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Declaração de Conteúdo</span>
@@ -1340,7 +1442,17 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         {!order.hasInvoice && !order.hasOrderDocument && (
                           <button
                             onClick={() => {
-                              onUpdateOrder({ ...order, hasOrderDocument: true });
+                              onUpdateOrder({
+                                ...order,
+                                hasOrderDocument: true,
+                                statusHistory: [
+                                  ...(order.statusHistory || []),
+                                  {
+                                    action: 'Emitiu Declaração de Conteúdo (Melhor Envio)',
+                                    timestamp: new Date().toISOString()
+                                  }
+                                ]
+                              });
                               toast.success('DC-e selecionada para este envio.');
                             }}
                             className="text-[10px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 px-3"
@@ -1359,7 +1471,17 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         <input 
                           type="checkbox"
                           checked={order.hasBoleto}
-                          onChange={() => onUpdateOrder({ ...order, hasBoleto: !order.hasBoleto })}
+                          onChange={() => onUpdateOrder({
+                            ...order,
+                            hasBoleto: !order.hasBoleto,
+                            statusHistory: [
+                              ...(order.statusHistory || []),
+                              {
+                                action: `${!order.hasBoleto ? 'Marcou' : 'Desmarcou'} Boleto`,
+                                timestamp: new Date().toISOString()
+                              }
+                            ]
+                          })}
                           className="rounded border-slate-300 text-primary focus:ring-primary size-4"
                         />
                         <span className={`text-sm font-medium ${order.hasBoleto ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Boleto</span>
@@ -1465,9 +1587,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             <div className="flex items-center gap-2">
                               <p className="text-sm font-mono font-bold text-slate-900 dark:text-white">{order.trackingNumber}</p>
                               <a 
-                                href={order.carrier?.toLowerCase().includes('correios') 
-                                  ? `https://linkcorreios.com.br/${order.trackingNumber}`
-                                  : `https://www.linkcorreios.com.br/?id=${order.trackingNumber}`}
+                                href={getTrackingLink(order.carrier, order.trackingNumber)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-primary"
@@ -1553,7 +1673,17 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Transportadora Preferencial</label>
                             <select 
                               value={order.carrier || ''}
-                              onChange={(e) => onUpdateOrder({ ...order, carrier: e.target.value })}
+                              onChange={(e) => onUpdateOrder({
+                                ...order,
+                                carrier: e.target.value,
+                                statusHistory: [
+                                  ...(order.statusHistory || []),
+                                  {
+                                    action: `Alterou transportadora preferencial para: ${e.target.value || 'Nenhuma'}`,
+                                    timestamp: new Date().toISOString()
+                                  }
+                                ]
+                              })}
                               className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
                             >
                               <option value="">Selecionar Manualmente...</option>
@@ -1669,20 +1799,73 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </section>
               )}
 
-                  {order.carrier && (
-                    <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <Hash className="size-4" /> Código de Rastreio
+              {order.status === 'caixa_montada' && (
+                <section className="space-y-4">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Truck className="size-4" /> Informações de Envio
                       </h3>
-                      <input 
-                        type="text"
-                        value={order.trackingNumber || ''}
-                        onChange={(e) => onUpdateOrder({ ...order, trackingNumber: e.target.value })}
-                        placeholder="Ex: BR123456789"
-                        className="w-full bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all"
-                      />
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Transportadora</label>
+                          <select 
+                            value={order.carrier || ''}
+                            onChange={(e) => onUpdateOrder({
+                              ...order,
+                              carrier: e.target.value,
+                              statusHistory: [
+                                ...(order.statusHistory || []),
+                                {
+                                  action: `Alterou transportadora para: ${e.target.value || 'Nenhuma'}`,
+                                  timestamp: new Date().toISOString()
+                                }
+                              ]
+                            })}
+                            className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+                          >
+                            <option value="">Selecionar Manualmente...</option>
+                            {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Código de Rastreio</label>
+                          <div className="flex gap-2">
+                            <input 
+                              type="text"
+                              value={order.trackingNumber || ''}
+                              onChange={(e) => onUpdateOrder({
+                                ...order,
+                                trackingNumber: e.target.value,
+                                statusHistory: [
+                                  ...(order.statusHistory || []),
+                                  {
+                                    action: `Alterou código de rastreio para: ${e.target.value || 'Vazio'}`,
+                                    timestamp: new Date().toISOString()
+                                  }
+                                ]
+                              })}
+                              placeholder="Ex: BR123456789"
+                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+                            />
+                            {order.trackingNumber && (
+                              <a 
+                                href={getTrackingLink(order.carrier, order.trackingNumber)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-center bg-primary text-white rounded-xl px-4 hover:bg-primary/90 transition-colors"
+                                title="Rastrear no site da transportadora"
+                              >
+                                <ExternalLink className="size-5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  )}
+                  </div>
+                </section>
+              )}
 
               {['enviado', 'entregue'].includes(order.status) && order.carrier && (
                 <section className="space-y-4">
@@ -1699,9 +1882,20 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <Hash className="size-4" /> Código de Rastreio
                       </h3>
-                      <p className="text-sm font-mono text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 select-all">
-                        {order.trackingNumber}
-                      </p>
+                      <div className="flex gap-2">
+                        <p className="flex-1 text-sm font-mono text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 select-all">
+                          {order.trackingNumber}
+                        </p>
+                        <a 
+                          href={getTrackingLink(order.carrier, order.trackingNumber)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center bg-primary text-white rounded-xl px-4 hover:bg-primary/90 transition-colors"
+                          title="Rastrear no site da transportadora"
+                        >
+                          <ExternalLink className="size-5" />
+                        </a>
+                      </div>
                     </div>
                   )}
                 </section>
@@ -1742,9 +1936,31 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                   <Package className="size-4" /> Itens do Pedido
                 </h3>
-                <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500">
-                  {order.products.filter(p => p.checked).length} / {order.products.length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleAllProducts}
+                    className="text-[10px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1.5 transition-colors"
+                    title={order.products.length > 0 && order.products.every(p => p.checked) ? "Desmarcar todos os produtos" : "Marcar todos os produtos"}
+                  >
+                    <div className={`size-3.5 rounded-sm border flex items-center justify-center transition-colors ${
+                      order.products.length > 0 && order.products.every(p => p.checked)
+                        ? 'bg-primary border-primary text-white' 
+                        : order.products.some(p => p.checked)
+                          ? 'bg-primary border-primary text-white bg-opacity-70'
+                          : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                    }`}>
+                      {order.products.length > 0 && order.products.every(p => p.checked) ? (
+                        <Check className="size-2.5" />
+                      ) : order.products.some(p => p.checked) ? (
+                        <div className="size-1.5 bg-white rounded-sm" />
+                      ) : null}
+                    </div>
+                    <span>{order.products.length > 0 && order.products.every(p => p.checked) ? 'Desmarcar Todos' : 'Marcar Todos'}</span>
+                  </button>
+                  <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500">
+                    {order.products.filter(p => p.checked).length} / {order.products.length}
+                  </span>
+                </div>
               </div>
               <div className="space-y-3">
                 {order.products.map((product) => (

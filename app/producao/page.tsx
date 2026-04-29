@@ -104,7 +104,15 @@ export default function ProducaoPage() {
       handleUpdateOrder({
         ...order,
         status: nextStatus,
-        products: updatedProducts
+        products: updatedProducts,
+        statusHistory: [
+          ...(order.statusHistory || []),
+          { 
+            status: nextStatus,
+            action: `Moveu o card para a etapa atual`,
+            timestamp: new Date().toISOString() 
+          }
+        ]
       });
     }
   };
