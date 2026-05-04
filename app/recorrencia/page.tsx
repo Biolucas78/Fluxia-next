@@ -151,7 +151,7 @@ export default function RecorrenciaPage() {
     });
 
     return result.sort((a, b) => b.daysSinceDelivered - a.daysSinceDelivered);
-  }, [allOrders, isLoaded, refreshTrigger]);
+  }, [allOrders, isLoaded]); // refreshTrigger removido para evitar warning
 
   const filteredData = useMemo(() => {
     return recurrenceData.filter(client => {
@@ -248,11 +248,12 @@ export default function RecorrenciaPage() {
     }
   };
 
-  const handleRemoveFromRecurrence = async () => {
-    if (!selectedClient) return;
-    if (!confirm('Tem certeza que deseja ocultar este cliente da listagem de recorrência definitivamente?')) return;
+  const [clientToRemove, setClientToRemove] = useState<typeof recurrenceData[0] | null>(null);
+
+  const confirmRemove = async () => {
+    if (!clientToRemove) return;
     try {
-      const orderToUpdate = { ...selectedClient.latestOrder };
+      const orderToUpdate = { ...clientToRemove.latestOrder };
       orderToUpdate.recurrenceRemoved = true;
       
       orderToUpdate.statusHistory = [
@@ -265,10 +266,22 @@ export default function RecorrenciaPage() {
 
       await handleUpdateOrder(orderToUpdate);
       toast.success('Cliente removido da recorrência.');
-      setSelectedClient(null);
+      setClientToRemove(null);
+      if (selectedClient?.identifier === clientToRemove.identifier) {
+        setSelectedClient(null);
+      }
     } catch (e: any) {
       toast.error('Erro ao remover: ' + e.message);
     }
+  };
+
+  const handleQuickRemove = (client: typeof recurrenceData[0]) => {
+    setClientToRemove(client);
+  };
+
+  const handleRemoveFromRecurrence = () => {
+    if (!selectedClient) return;
+    setClientToRemove(selectedClient);
   };
 
   const generateWhatsappUrl = () => {
@@ -459,13 +472,22 @@ export default function RecorrenciaPage() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">LTV (Pedidos)</p>
                         <p className="text-sm font-black text-slate-700 dark:text-slate-300">{client.totalOrders}</p>
                       </div>
-                      <button 
-                        onClick={() => handleOpenClient(client)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-                      >
-                        <MessageSquare className="size-4" />
-                        Abordar
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleQuickRemove(client); }}
+                          className="flex items-center justify-center p-2 bg-slate-100 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 rounded-xl transition-all"
+                          title="Remover cliente da recorrência"
+                        >
+                          <EyeOff className="size-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleOpenClient(client)}
+                          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                        >
+                          <MessageSquare className="size-4" />
+                          Abordar
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 ))}
@@ -730,6 +752,52 @@ export default function RecorrenciaPage() {
                     className="py-2.5 px-6 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20"
                   >
                     <Save className="size-4" /> Salvar Frases
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Confirmation Modal */}
+        <AnimatePresence>
+          {clientToRemove && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setClientToRemove(null)}
+                className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800"
+              >
+                <div className="p-6">
+                  <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mb-4">
+                    <AlertCircle className="size-6" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Remover da Recorrência</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Tem certeza que deseja ocultar o cliente <strong className="text-slate-700 dark:text-slate-300">{clientToRemove.clientName}</strong> da listagem de recorrência definitivamente?
+                  </p>
+                </div>
+                
+                <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex justify-end gap-3">
+                  <button 
+                    onClick={() => setClientToRemove(null)}
+                    className="py-2.5 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={confirmRemove}
+                    className="py-2.5 px-6 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20"
+                  >
+                    Sim, remover cliente
                   </button>
                 </div>
               </motion.div>

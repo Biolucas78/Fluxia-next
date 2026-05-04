@@ -25,6 +25,7 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
   }, []);
 
   // Close sidebar on navigation on mobile
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     setIsOpenMobile(false);
   }, [pathname]);
