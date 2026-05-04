@@ -1257,8 +1257,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     <MapPin className="size-4" /> Origem do Pedido
                   </h3>
                 </div>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                  {(['whatsapp', 'Wix', 'Amazon', 'Meli', 'CRM'] as const).map((originOption) => (
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {(['whatsapp', 'Wix', 'Amazon', 'Meli', 'CRM', 'Whatsapp PF'] as const).map((originOption) => (
                     <button
                       key={originOption}
                       onClick={() => {
@@ -1554,14 +1554,42 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       )}
                     </div>
 
-                    {order.status === 'entregue' && order.deliveryDate && (
+                    {order.status === 'entregue' && (
                       <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl flex items-center gap-3">
                         <div className="size-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
                           <CheckCircle2 className="size-6" />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm font-bold text-emerald-900 dark:text-emerald-400">Pedido Entregue</p>
-                          <p className="text-xs text-emerald-700 dark:text-emerald-500">Entregue em: {new Date(order.deliveryDate).toLocaleString('pt-BR')}</p>
+                          {order.deliveryDate ? (
+                            <p className="text-xs text-emerald-700 dark:text-emerald-500">
+                              Entregue em: {new Date(order.deliveryDate).toLocaleString('pt-BR')}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-emerald-700 dark:text-emerald-500 italic">Data de entrega não registrada.</p>
+                          )}
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          <input 
+                            type="date"
+                            className="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 text-xs rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-emerald-500"
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                const newDate = new Date(e.target.value).toISOString();
+                                onUpdateOrder({
+                                  ...order, 
+                                  deliveryDate: newDate,
+                                  statusHistory: [
+                                    ...(order.statusHistory || []),
+                                    {
+                                      action: `Definiu data de entrega manualmente para ${new Date(newDate).toLocaleDateString('pt-BR')}`,
+                                      timestamp: new Date().toISOString()
+                                    }
+                                  ]
+                                });
+                              }
+                            }}
+                          />
                         </div>
                       </div>
                     )}

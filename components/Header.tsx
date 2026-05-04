@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Bell, Plus, MessageSquare, LogOut, User } from 'lucide-react';
+import { Search, Bell, Plus, MessageSquare, LogOut, User, Menu } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { useUser } from '@/lib/hooks';
@@ -24,10 +24,16 @@ export default function Header({ title, searchQuery, onSearchChange, onImportWha
   };
 
   return (
-    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 shrink-0">
-      <div className="flex items-center gap-6">
+    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-8 shrink-0">
+      <div className="flex items-center gap-3 md:gap-6">
+        <button 
+          onClick={() => window.dispatchEvent(new CustomEvent('toggleSidebar'))}
+          className="md:hidden p-2 -ml-2 text-slate-500 hover:text-slate-800 dark:hover:text-white"
+        >
+          <Menu className="size-6" />
+        </button>
         <div className="flex items-center gap-4">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h2>
+          <h2 className="text-base md:text-lg font-bold text-slate-900 dark:text-white truncate max-w-[150px] sm:max-w-none">{title}</h2>
           <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-full">
             <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
             <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Live Updates</span>

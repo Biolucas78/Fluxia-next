@@ -117,6 +117,53 @@ export function useInventory() {
   return { stocks, updateStock };
 }
 
+export interface RecurrenceMessages {
+  b2b_1: string;
+  b2b_2: string;
+  b2b_3: string;
+  pf_1: string;
+  pf_2: string;
+  pf_3: string;
+}
+
+export const defaultRecurrenceMessages: RecurrenceMessages = {
+  b2b_1: `Bom dia {Nome}. Tudo bem? Precisa de reposição do Café Fazenda Itaoca essa semana? Tem torra fresquinha saindo hoje. Obrigado e boa semana.`,
+  b2b_2: `Olá {Nome}, como estão as vendas? Passando para avisar que temos nova fornada de torra essa semana. Vamos agendar uma reposição?`,
+  b2b_3: `Oi {Nome}, tudo certo? O estoque de Itaoca aguentou bem? Qualquer necessidade de reposição estamos à disposição!`,
+  pf_1: `Bom dia {Nome}. Tudo bem? Seu estoque de cafés especiais já está acabando? Tem torra fresquinha saindo da Fazenda Itaoca hoje. Obrigado e boa semana.`,
+  pf_2: `Olá {Nome}, tudo bem? Passando para lembrar que temos torra fresca saindo do forno! Quer garantir seu café para a semana?`,
+  pf_3: `Oi {Nome}, como vai? Precisando renovar o estoque de cafés para casa? Pode contar com a gente!`
+};
+
+export function useRecurrenceMessages() {
+  const [messages, setMessages] = useState<RecurrenceMessages>(defaultRecurrenceMessages);
+
+  useEffect(() => {
+    const isDev = window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+    const docId = isDev ? 'recurrence_messages_dev' : 'recurrence_messages_prod';
+    const unsub = onSnapshot(doc(db, 'settings', docId), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().messages) {
+        setMessages({ ...defaultRecurrenceMessages, ...docSnap.data().messages });
+      } else {
+        setMessages(defaultRecurrenceMessages);
+      }
+    });
+    return unsub;
+  }, []);
+
+  const updateMessages = async (newMessages: RecurrenceMessages) => {
+    const isDev = window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+    const docId = isDev ? 'recurrence_messages_dev' : 'recurrence_messages_prod';
+    const ref = doc(db, 'settings', docId);
+    
+    await setDoc(ref, {
+      messages: newMessages
+    }, { merge: true });
+  };
+
+  return { messages, updateMessages };
+}
+
 export function useOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);

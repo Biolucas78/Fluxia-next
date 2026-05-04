@@ -107,7 +107,7 @@ export interface AnalyticsStats {
 
 export type OrderStatus = 'pedidos' | 'embalagens_separadas' | 'embalagens_prontas' | 'caixa_montada' | 'enviado' | 'entregue';
 
-export type OrderOrigin = 'whatsapp' | 'Wix' | 'Amazon' | 'Meli' | 'CRM';
+export type OrderOrigin = 'whatsapp' | 'Wix' | 'Amazon' | 'Meli' | 'CRM' | 'Whatsapp PF';
 
 export interface ProductItem {
   id: string;
@@ -124,6 +124,7 @@ export interface ProductItem {
 export interface Order {
   id: string;
   clientName: string;
+  contactName?: string;
   tradeName?: string;
   cnpj?: string;
   cpf?: string;
@@ -190,6 +191,8 @@ export interface Order {
     details?: string;
     timestamp: string;
   }[];
+  lastRecurrenceContact?: string;
+  recurrenceRemoved?: boolean;
 }
 
 export interface ShippingOption {

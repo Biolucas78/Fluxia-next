@@ -1,11 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive } from 'lucide-react';
+import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@/lib/hooks';
+import { AnimatePresence, motion } from 'motion/react';
 
 interface SidebarProps {
   onNewOrder?: () => void;
@@ -15,6 +16,18 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { userProfile, loading, viewMode, changeViewMode, effectiveRole } = useUser();
+  const [isOpenMobile, setIsOpenMobile] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = () => setIsOpenMobile((prev) => !prev);
+    window.addEventListener('toggleSidebar', handleToggle);
+    return () => window.removeEventListener('toggleSidebar', handleToggle);
+  }, []);
+
+  // Close sidebar on navigation on mobile
+  useEffect(() => {
+    setIsOpenMobile(false);
+  }, [pathname]);
 
   const navItems = [
     { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'user'] },
@@ -35,8 +48,8 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
 
   const filteredItems = navItems.filter(item => item.roles.includes(currentRole));
 
-  return (
-    <aside className="hidden md:flex w-64 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 h-screen shrink-0">
+  const sidebarContent = (
+    <>
       <div className="p-6 flex items-center gap-3">
         <div className="size-10 rounded-xl flex items-center justify-center text-white bg-primary shadow-lg shadow-primary/20">
           <LayoutDashboard className="size-6" />
@@ -109,6 +122,45 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
           </p>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex w-64 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 h-screen shrink-0 relative z-20">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Sidebar */}
+      <AnimatePresence>
+        {isOpenMobile && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsOpenMobile(false)}
+              className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+            />
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+              className="fixed inset-y-0 left-0 w-64 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 h-screen z-50 md:hidden shadow-2xl"
+            >
+              <button 
+                onClick={() => setIsOpenMobile(false)}
+                className="absolute top-4 right-4 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
+              >
+                <X className="size-5" />
+              </button>
+              {sidebarContent}
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

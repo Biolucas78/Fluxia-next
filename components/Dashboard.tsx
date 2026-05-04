@@ -295,22 +295,51 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   }, [orders]);
 
   const geographyData = useMemo(() => {
-    const states: Record<string, number> = {};
-    const cities: Record<string, number> = {};
+    const states: Record<string, { kg: number; units: number; clients: Set<string>; orders: number }> = {};
+    const cities: Record<string, { kg: number; units: number; clients: Set<string>; orders: number }> = {};
 
     orders.forEach(order => {
       const { city, state } = extractCityState(order.address || '');
-      if (state !== 'N/A') states[state] = (states[state] || 0) + 1;
-      if (city !== 'N/A') cities[`${city} (${state})`] = (cities[`${city} (${state})`] || 0) + 1;
+      
+      let kg = 0;
+      let units = 0;
+      order.products.forEach(p => {
+        kg += calculateWeightInKg(p.weight, p.quantity);
+        units += p.quantity;
+      });
+
+      if (state !== 'N/A') {
+        if (!states[state]) states[state] = { kg: 0, units: 0, clients: new Set(), orders: 0 };
+        states[state].kg += kg;
+        states[state].units += units;
+        states[state].orders += 1;
+        states[state].clients.add(order.clientName);
+      }
+      
+      if (city !== 'N/A') {
+        const cityKey = `${city} (${state})`;
+        if (!cities[cityKey]) cities[cityKey] = { kg: 0, units: 0, clients: new Set(), orders: 0 };
+        cities[cityKey].kg += kg;
+        cities[cityKey].units += units;
+        cities[cityKey].orders += 1;
+        cities[cityKey].clients.add(order.clientName);
+      }
     });
 
-    const sortedStates = Object.entries(states).map(([name, value]) => ({ name, value }))
+    const getVal = (data: { kg: number; units: number; clients: Set<string>; orders: number }) => {
+      if (chartMetric === 'kg') return data.kg;
+      if (chartMetric === 'units') return data.units;
+      if (chartMetric === 'clients') return data.clients.size;
+      return data.orders;
+    };
+
+    const sortedStates = Object.entries(states).map(([name, data]) => ({ name, value: getVal(data) }))
       .sort((a, b) => b.value - a.value);
-    const sortedCities = Object.entries(cities).map(([name, value]) => ({ name, value }))
+    const sortedCities = Object.entries(cities).map(([name, data]) => ({ name, value: getVal(data) }))
       .sort((a, b) => b.value - a.value).slice(0, 5);
 
     return { states: sortedStates, cities: sortedCities };
-  }, [orders]);
+  }, [orders, chartMetric]);
 
   const shippedOrders = useMemo(() => {
     return orders.filter(o => o.status === 'enviado');
@@ -857,7 +886,9 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                 {geographyData.states.slice(0, 5).map(state => (
                   <div key={state.name} className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{state.name}</span>
-                    <span className="text-xs font-black text-primary">{state.value} pedidos</span>
+                    <span className="text-xs font-black text-primary">
+                      {chartMetric === 'kg' ? `${state.value.toFixed(2)} kg` : chartMetric === 'units' ? `${state.value} unid` : chartMetric === 'clients' ? `${state.value} cls` : `${state.value} ped`}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -868,7 +899,9 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                 {geographyData.cities.map(city => (
                   <div key={city.name} className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate pr-2">{city.name}</span>
-                    <span className="text-xs font-black text-emerald-500">{city.value}</span>
+                    <span className="text-xs font-black text-emerald-500">
+                      {chartMetric === 'kg' ? `${city.value.toFixed(2)} kg` : chartMetric === 'units' ? `${city.value} unid` : chartMetric === 'clients' ? `${city.value} cls` : `${city.value} ped`}
+                    </span>
                   </div>
                 ))}
               </div>
