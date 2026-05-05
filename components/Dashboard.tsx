@@ -158,48 +158,44 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     orders.forEach(order => {
       if (order.status === 'pedidos' || order.status === 'embalagens_separadas') {
         order.products.forEach(product => {
-          const isNeeded = order.status === 'pedidos' || !product.checked;
-          
-          if (isNeeded) {
-            let weight = calculateWeightInKg(product.weight, product.quantity);
-            let type = product.name;
-            const lowerName = type.toLowerCase();
+          let weight = calculateWeightInKg(product.weight, product.quantity);
+          let type = product.name;
+          const lowerName = type.toLowerCase();
 
-            // Handle Amostras
-            if (lowerName.includes('amostra')) {
-              needs['Catuaí'] += 0.25 * product.quantity;
-              needs['Torra Clara'] += 0.04 * product.quantity;
-              needs['Torra Intensa'] += 0.04 * product.quantity;
-              needs['Bourbom'] += 0.04 * product.quantity;
-              needs['Yellow'] += 0.04 * product.quantity;
-              needs['Gourmet'] += 0.04 * product.quantity;
-              return;
-            }
-
-            // Map personalized and normal coffees to base types
-            if (lowerName.includes('catuai') || lowerName.includes('catuaí')) {
-              type = 'Catuaí';
-            } else if (lowerName.includes('clara')) {
-              type = 'Torra Clara';
-            } else if (lowerName.includes('intensa')) {
-              type = 'Torra Intensa';
-            } else if (lowerName.includes('bourbom') || lowerName.includes('bourbon')) {
-              type = 'Bourbom';
-            } else if (lowerName.includes('yellow')) {
-              type = 'Yellow';
-            } else if (lowerName.includes('gourmet')) {
-              type = 'Gourmet';
-            } else if (lowerName.includes('dripcoffee') || lowerName.includes('drip coffee') || lowerName.includes('drip')) {
-              // Rule: DripCoffee CX has 100g of Catuaí
-              weight = 0.1 * product.quantity; // 100g = 0.1kg
-              type = 'Catuaí';
-            } else if (weight === 0 || lowerName.includes('caneca') || lowerName.includes('filtro') || lowerName.includes('copo')) {
-              // Ignore non-coffee items safely
-              return;
-            }
-
-            needs[type] = (needs[type] || 0) + weight;
+          // Handle Amostras
+          if (lowerName.includes('amostra')) {
+            needs['Catuaí'] += 0.25 * product.quantity;
+            needs['Torra Clara'] += 0.04 * product.quantity;
+            needs['Torra Intensa'] += 0.04 * product.quantity;
+            needs['Bourbom'] += 0.04 * product.quantity;
+            needs['Yellow'] += 0.04 * product.quantity;
+            needs['Gourmet'] += 0.04 * product.quantity;
+            return;
           }
+
+          // Map personalized and normal coffees to base types
+          if (lowerName.includes('catuai') || lowerName.includes('catuaí')) {
+            type = 'Catuaí';
+          } else if (lowerName.includes('clara')) {
+            type = 'Torra Clara';
+          } else if (lowerName.includes('intensa')) {
+            type = 'Torra Intensa';
+          } else if (lowerName.includes('bourbom') || lowerName.includes('bourbon')) {
+            type = 'Bourbom';
+          } else if (lowerName.includes('yellow')) {
+            type = 'Yellow';
+          } else if (lowerName.includes('gourmet')) {
+            type = 'Gourmet';
+          } else if (lowerName.includes('dripcoffee') || lowerName.includes('drip coffee') || lowerName.includes('drip')) {
+            // Rule: DripCoffee CX has 100g of Catuaí
+            weight = 0.1 * product.quantity; // 100g = 0.1kg
+            type = 'Catuaí';
+          } else if (weight === 0 || lowerName.includes('caneca') || lowerName.includes('filtro') || lowerName.includes('copo')) {
+            // Ignore non-coffee items safely
+            return;
+          }
+
+          needs[type] = (needs[type] || 0) + weight;
         });
       }
     });
@@ -219,7 +215,8 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
       if (order.status === 'pedidos') {
         order.products.forEach(product => {
           if (!product.checked) {
-            const key = `${product.name} ${product.weight}`;
+            const grind = product.grindType !== 'N/A' ? ` (${product.grindType})` : '';
+            const key = `${product.name} ${product.weight}${grind}`;
             demand[key] = (demand[key] || 0) + product.quantity;
           }
         });
@@ -234,22 +231,12 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     const shelf: Record<string, number> = {};
     
     orders.forEach(order => {
-      // 1. Marked in 'embalagens_separadas'
-      if (order.status === 'embalagens_separadas') {
-        order.products.forEach(p => {
-          if (p.checked) {
-            const key = `${p.name} ${p.weight}`;
-            shelf[key] = (shelf[key] || 0) + p.quantity;
-          }
-        });
-      }
-      // 2. Unmarked in 'embalagens_prontas'
+      // Somente as que os pedidos estiverem na fase "Embalagens prontas"
       if (order.status === 'embalagens_prontas') {
         order.products.forEach(p => {
-          if (!p.checked) {
-            const key = `${p.name} ${p.weight}`;
-            shelf[key] = (shelf[key] || 0) + p.quantity;
-          }
+          const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+          const key = `${p.name} ${p.weight}${grind}`;
+          shelf[key] = (shelf[key] || 0) + p.quantity;
         });
       }
     });
