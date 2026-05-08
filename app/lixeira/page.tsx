@@ -114,7 +114,7 @@ export default function LixeiraPage() {
     <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
-        <Header />
+      <Header title="Lixeira" />
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-5xl mx-auto space-y-6">
 

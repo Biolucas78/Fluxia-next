@@ -23,7 +23,7 @@ const COLUMNS: { id: OrderStatus; title: string }[] = [
 ];
 
 export default function ProducaoPage() {
-  const { orders, setOrders, handleOrderCreated, handleUpdateOrder, handleDeleteOrder, handleArchiveOrder, isLoaded } = useOrders();
+  const { activeOrders: orders, setOrders, handleOrderCreated, handleUpdateOrder, handleDeleteOrder, handleArchiveOrder, isLoaded } = useOrders();
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState<any>(null);

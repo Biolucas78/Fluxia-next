@@ -11,7 +11,8 @@ import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function Home() {
-  const { orders, stats, handleOrderCreated, handleUpdateOrder, isLoaded } = useOrders();
+  const { orders: allOrders, stats, handleOrderCreated, handleUpdateOrder, isLoaded } = useOrders();
+  const orders = allOrders.filter(o => !o.isDeleted);
   const { userProfile, loading: userLoading, effectiveRole } = useUser();
   const router = useRouter();
 

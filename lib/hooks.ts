@@ -376,7 +376,7 @@ export function useOrders() {
     orders,
     archivedOrders,
     deletedOrders,
-    allOrders: orders,
+    allOrders: orders.filter(o => !o.isDeleted),
     activeOrders,
     setOrders,
     handleOrderCreated,
