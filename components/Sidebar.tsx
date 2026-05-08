@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive, X } from 'lucide-react';
+import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@/lib/hooks';
@@ -24,7 +24,6 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
     return () => window.removeEventListener('toggleSidebar', handleToggle);
   }, []);
 
-  // Close sidebar on navigation on mobile
   useEffect(() => {
     const timeoutId = setTimeout(() => setIsOpenMobile(false), 0);
     return () => clearTimeout(timeoutId);
@@ -39,6 +38,7 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
     { id: 'clientes', title: 'Clientes', icon: User, href: '/clientes', roles: ['admin', 'user'] },
     { id: 'produtos', title: 'Produtos', icon: Package, href: '/produtos', roles: ['admin', 'user'] },
     { id: 'arquivados', title: 'Arquivados', icon: Archive, href: '/arquivados', roles: ['admin', 'user'] },
+    { id: 'lixeira', title: 'Lixeira', icon: Trash2, href: '/lixeira', roles: ['admin'] },
     { id: 'configuracoes', title: 'Configurações', icon: Settings, href: '/configuracoes', roles: ['admin', 'user'] },
   ];
 
@@ -46,7 +46,6 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
   if (!userProfile) return null;
 
   const currentRole = effectiveRole || userProfile.role;
-
   const filteredItems = navItems.filter(item => item.roles.includes(currentRole));
 
   const sidebarContent = (
@@ -70,7 +69,6 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
               onChange={(e) => {
                 const newRole = e.target.value === 'admin' ? null : e.target.value as any;
                 changeViewMode(newRole);
-                
                 if (newRole === 'gestor_trafego' || newRole === 'gestor_vendas') {
                   router.push('/crm');
                 } else {

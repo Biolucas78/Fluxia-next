@@ -59,6 +59,7 @@ export interface Lead {
   shippingDate?: string;
   trackingStatus?: string;
   isDeleted?: boolean;
+  deletedAt?: string;
   createdAt: string;
   updatedAt: string;
   lastContactAt?: string;
@@ -71,7 +72,6 @@ export interface CRMStats {
   leadsByStatus: Record<string, number>;
   leadsByOrigin: Record<string, number>;
   conversionRate: number;
-  // New metrics
   totalSalesValue: number;
   totalOrdersCount: number;
   formSubmissions: number;
@@ -113,7 +113,7 @@ export interface ProductItem {
   id: string;
   quantity: number;
   name: string;
-  weight: string; // e.g., "250g", "1kg"
+  weight: string;
   grindType: 'moído' | 'grãos' | 'N/A';
   productionNotes?: string;
   checked: boolean;
@@ -147,7 +147,7 @@ export interface Order {
   status: OrderStatus;
   carrier?: string;
   shippingProvider?: 'melhorenvio' | 'correios' | 'superfrete';
-  shipmentId?: string; // UUID do Melhor Envio
+  shipmentId?: string;
   labelUrl?: string;
   trackingNumber?: string;
   blingOrderId?: number;
@@ -193,6 +193,8 @@ export interface Order {
   }[];
   lastRecurrenceContact?: string;
   recurrenceRemoved?: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface ShippingOption {

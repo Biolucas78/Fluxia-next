@@ -61,18 +61,10 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 const sanitizeForFirestore = (obj: any): any => {
   if (obj === undefined) return undefined;
   if (obj === null) return null;
-  
-  // Handle basic types
   if (typeof obj !== 'object') return obj;
-  
-  // Handle arrays
   if (Array.isArray(obj)) {
-    return obj
-      .map(sanitizeForFirestore)
-      .filter(item => item !== undefined);
+    return obj.map(sanitizeForFirestore).filter(item => item !== undefined);
   }
-  
-  // Handle plain objects
   const sanitized: any = {};
   let hasValue = false;
   Object.keys(obj).forEach(key => {
@@ -106,12 +98,7 @@ export function useInventory() {
     const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
     const docId = isDev ? 'inventory_dev' : 'inventory_prod';
     const ref = doc(db, 'settings', docId);
-    
-    await setDoc(ref, {
-      stocks: {
-        [type]: value
-      }
-    }, { merge: true });
+    await setDoc(ref, { stocks: { [type]: value } }, { merge: true });
   };
 
   return { stocks, updateStock };
@@ -155,10 +142,7 @@ export function useRecurrenceMessages() {
     const isDev = window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
     const docId = isDev ? 'recurrence_messages_dev' : 'recurrence_messages_prod';
     const ref = doc(db, 'settings', docId);
-    
-    await setDoc(ref, {
-      messages: newMessages
-    }, { merge: true });
+    await setDoc(ref, { messages: newMessages }, { merge: true });
   };
 
   return { messages, updateMessages };
@@ -178,7 +162,6 @@ export function useOrders() {
 
   useEffect(() => {
     if (!userId) {
-      // Use a microtask or timeout to avoid synchronous setState in effect body
       const timer = setTimeout(() => {
         setOrders([]);
         setIsLoaded(true);
@@ -193,24 +176,19 @@ export function useOrders() {
              window.location.hostname.includes('localhost');
     };
 
-    // Determine collection name based on environment
     const collectionName = isDevelopment() ? 'orders_dev' : 'orders';
 
-    // Migration logic: check localStorage and move to Firestore
     const migrateData = async () => {
       const saved = localStorage.getItem('coffee_crm_orders');
       if (saved) {
         try {
           const loadedOrders: Order[] = JSON.parse(saved);
           if (loadedOrders.length > 0) {
-            console.log(`Migrating orders to Firestore collection: ${collectionName}...`);
             for (const order of loadedOrders) {
               const sanitizedOrder = sanitizeForFirestore(order);
-              // Use setDoc with the existing ID to maintain consistency
               await setDoc(doc(db, collectionName, order.id), sanitizedOrder);
             }
             localStorage.removeItem('coffee_crm_orders');
-            console.log("Migration complete.");
           }
         } catch (e) {
           console.error("Failed to migrate data", e);
@@ -223,9 +201,7 @@ export function useOrders() {
 
     const setupListener = async () => {
       await migrateData();
-      
       if (!isMounted) return;
-
       const q = query(collection(db, collectionName));
       unsubscribeOrders = onSnapshot(q, (snapshot) => {
         if (!isMounted) return;
@@ -257,37 +233,23 @@ export function useOrders() {
   };
 
   const handleOrderCreated = async (order: Order) => {
-    console.log("Creating order in Firestore:", order.id);
     try {
       const sanitizedOrder = sanitizeForFirestore(order);
-      console.log("Sanitized order for creation:", JSON.stringify(sanitizedOrder));
-      
-      // Use setDoc with the client-side ID to maintain consistency
       const collectionName = getCollectionName();
       await setDoc(doc(db, collectionName, order.id), sanitizedOrder);
-      
-      console.log("Order created successfully");
     } catch (e) {
       console.error("Failed to save to Firestore", e);
     }
   };
 
   const handleUpdateOrder = async (updatedOrder: Order) => {
-    console.log("Updating order in Firestore:", updatedOrder.id);
     try {
       const oldOrder = orders.find(o => o.id === updatedOrder.id);
       const orderRef = doc(db, getCollectionName(), updatedOrder.id);
       const sanitizedOrder = sanitizeForFirestore(updatedOrder);
-      
-      // Remove id from update payload as it's part of the path
       const { id, ...updateData } = sanitizedOrder;
-      
-      console.log("Update data for Firestore:", JSON.stringify(updateData));
-      
       await updateDoc(orderRef, updateData);
-      console.log("Order updated successfully");
 
-      // Adjust inventory if needed
       if (oldOrder) {
         const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
         const docId = isDev ? 'inventory_dev' : 'inventory_prod';
@@ -301,21 +263,16 @@ export function useOrders() {
           if (oldP && newP.checked !== oldP.checked) {
             let weight = calculateWeightInKg(newP.weight, newP.quantity);
             let type = newP.name;
-
             if (type.toLowerCase().includes('dripcoffee')) {
               weight = 0.1 * newP.quantity;
               type = 'Catuaí';
             }
-
             if (newP.checked) {
-              // Product was checked, decrease stock
               currentStocks[type] = Math.max(0, (currentStocks[type] || 0) - weight);
-              stocksChanged = true;
             } else {
-              // Product was unchecked, increase stock
               currentStocks[type] = (currentStocks[type] || 0) + weight;
-              stocksChanged = true;
             }
+            stocksChanged = true;
           }
         });
 
@@ -329,14 +286,14 @@ export function useOrders() {
   };
 
   const handleDeleteOrder = async (orderId: string) => {
-    console.log("handleDeleteOrder called with ID:", orderId);
     try {
-      const collectionName = getCollectionName();
-      console.log("Deleting from collection:", collectionName);
-      await deleteDoc(doc(db, collectionName, orderId));
-      console.log("Successfully deleted from Firestore");
+      const orderRef = doc(db, getCollectionName(), orderId);
+      await updateDoc(orderRef, {
+        isDeleted: true,
+        deletedAt: new Date().toISOString()
+      });
     } catch (e) {
-      console.error("Failed to delete from Firestore", e);
+      console.error("Failed to move to trash", e);
     }
   };
 
@@ -358,24 +315,39 @@ export function useOrders() {
     }
   };
 
-  const activeOrders = useMemo(() => orders.filter(o => !o.archived), [orders]);
-  const archivedOrders = useMemo(() => orders.filter(o => o.archived), [orders]);
+  const handleRestoreFromTrashOrder = async (orderId: string) => {
+    try {
+      const orderRef = doc(db, getCollectionName(), orderId);
+      await updateDoc(orderRef, { isDeleted: false, deletedAt: null });
+    } catch (e) {
+      console.error("Failed to restore from trash", e);
+    }
+  };
+
+  const handlePermanentDeleteOrder = async (orderId: string) => {
+    try {
+      await deleteDoc(doc(db, getCollectionName(), orderId));
+    } catch (e) {
+      console.error("Failed to permanent delete", e);
+    }
+  };
+
+  const activeOrders = useMemo(() => orders.filter(o => !o.archived && !o.isDeleted), [orders]);
+  const archivedOrders = useMemo(() => orders.filter(o => o.archived && !o.isDeleted), [orders]);
+  const deletedOrders = useMemo(() => orders.filter(o => o.isDeleted), [orders]);
 
   const stats = useMemo<DashboardStats>(() => {
-    const producedOrders = orders.filter(o => 
+    const producedOrders = orders.filter(o =>
+      !o.isDeleted &&
       ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'].includes(o.status)
     );
-
     const totalKg = producedOrders.reduce((acc, order) => {
       return acc + order.products.reduce((pAcc, p) => pAcc + calculateWeightInKg(p.weight, p.quantity), 0);
     }, 0);
-
     const totalUnits = producedOrders.reduce((acc, order) => {
       return acc + order.products.reduce((pAcc, p) => pAcc + p.quantity, 0);
     }, 0);
-
-    const totalClients = new Set(orders.map(o => o.clientName)).size;
-
+    const totalClients = new Set(orders.filter(o => !o.isDeleted).map(o => o.clientName)).size;
     return { totalKg, totalUnits, totalClients };
   }, [orders]);
 
@@ -384,18 +356,15 @@ export function useOrders() {
       const { getDocs, collection } = await import('firebase/firestore');
       const devSnapshot = await getDocs(collection(db, 'orders_dev'));
       const devOrders = devSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Order));
-      
       if (devOrders.length === 0) {
         return { success: false, message: 'Nenhum pedido encontrado na coleção de desenvolvimento.' };
       }
-
       let migratedCount = 0;
       for (const order of devOrders) {
         const sanitizedOrder = sanitizeForFirestore(order);
         await setDoc(doc(db, 'orders', order.id), sanitizedOrder);
         migratedCount++;
       }
-
       return { success: true, message: `${migratedCount} pedidos migrados com sucesso!` };
     } catch (e) {
       console.error('Erro na migração:', e);
@@ -404,8 +373,9 @@ export function useOrders() {
   };
 
   return {
-    orders: orders,
+    orders,
     archivedOrders,
+    deletedOrders,
     allOrders: orders,
     activeOrders,
     setOrders,
@@ -414,6 +384,8 @@ export function useOrders() {
     handleDeleteOrder,
     handleArchiveOrder,
     handleRestoreOrder,
+    handleRestoreFromTrashOrder,
+    handlePermanentDeleteOrder,
     syncFromDev,
     stats,
     isLoaded,
@@ -447,10 +419,7 @@ export function useAuthorizedEmails() {
   const addAuthorizedEmail = async (email: string, role: UserRole) => {
     const id = Math.random().toString(36).substr(2, 9);
     await setDoc(doc(db, 'authorized_emails', id), {
-      id,
-      email,
-      role,
-      createdAt: new Date().toISOString()
+      id, email, role, createdAt: new Date().toISOString()
     });
   };
 
@@ -477,7 +446,6 @@ export function useAnalytics(startDate?: string, endDate?: string) {
   useEffect(() => {
     async function fetchAnalytics() {
       if (!startDate || !endDate) return;
-      
       setLoading(true);
       setError(null);
       try {
@@ -494,7 +462,6 @@ export function useAnalytics(startDate?: string, endDate?: string) {
         setLoading(false);
       }
     }
-
     fetchAnalytics();
   }, [startDate, endDate]);
 
@@ -509,7 +476,6 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
 
   useEffect(() => {
     if (userLoading) return;
-    
     if (!userProfile) {
       setTimeout(() => {
         setLeads([]);
@@ -527,23 +493,17 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
     
     let q;
     if (effectiveRole === 'gestor_trafego') {
-      // Gestor de tráfego só pode ver leads da landing page
-      q = query(
-        collection(db, collectionName), 
-        where('origem', '==', 'landing_page')
-      );
+      q = query(collection(db, collectionName), where('origem', '==', 'landing_page'));
     } else {
       q = query(collection(db, collectionName));
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log(`[useLeads] Received ${snapshot.docs.length} leads from ${collectionName}`);
-      const loadedLeads = snapshot.docs.map(doc => ({
+      const allLeads = snapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
       } as Lead)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
-      setLeads(loadedLeads);
+      setLeads(allLeads);
       setIsLoaded(true);
     }, (error) => {
       console.error(`[useLeads Error] Collection: ${collectionName}`, error);
@@ -552,12 +512,6 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
 
     return () => unsubscribe();
   }, [userProfile, userLoading, effectiveRole]);
-
-  useEffect(() => {
-    if (leads.length > 0) {
-      console.log(`[useLeads] State updated: ${leads.length} leads in memory`);
-    }
-  }, [leads]);
 
   const getCollectionName = () => {
     if (typeof window === 'undefined') return 'leads';
@@ -588,11 +542,7 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
       const leadRef = doc(db, getCollectionName(), leadId);
       const now = new Date().toISOString();
       const currentLead = leads.find(l => l.id === leadId);
-      
-      const updatePayload: any = {
-        ...updates,
-        updatedAt: now
-      };
+      const updatePayload: any = { ...updates, updatedAt: now };
 
       if (updates.status && currentLead && updates.status !== currentLead.status) {
         const historyItem: LeadHistory = {
@@ -610,12 +560,13 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
   };
 
   const stats = useMemo<CRMStats>(() => {
-    const filteredLeads = dateRange 
-      ? leads.filter(l => {
+    const activeLeads = leads.filter(l => !l.isDeleted);
+    const filteredLeads = dateRange
+      ? activeLeads.filter(l => {
           const d = new Date(l.createdAt);
           return d >= dateRange.start && d <= dateRange.end;
         })
-      : leads;
+      : activeLeads;
 
     const prevLeads = dateRange
       ? leads.filter(l => {
@@ -655,13 +606,10 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
     const totalLeads = filteredLeads.length;
     const closedWon = leadsByStatus['fez_pedido'] || 0;
     const conversionRate = totalLeads > 0 ? (closedWon / totalLeads) * 100 : 0;
-
     const totalSalesValue = filteredOrders.reduce((acc, o) => acc + (o.invoiceValue || 0), 0);
     const prevSalesValue = prevOrders.reduce((acc, o) => acc + (o.invoiceValue || 0), 0);
-    
     const totalOrdersCount = filteredOrders.length;
     const prevOrdersCount = prevOrders.length;
-
     const formSubmissions = filteredLeads.filter(l => l.origem === 'landing_page').length;
 
     const comparison = dateRange ? {
@@ -670,33 +618,47 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
       ordersCountChange: prevOrdersCount > 0 ? ((totalOrdersCount - prevOrdersCount) / prevOrdersCount) * 100 : 0,
     } : undefined;
 
-    return { 
-      totalLeads, 
-      leadsByStatus, 
-      leadsByOrigin, 
-      conversionRate,
-      totalSalesValue,
-      totalOrdersCount,
-      formSubmissions,
-      comparison
-    };
+    return { totalLeads, leadsByStatus, leadsByOrigin, conversionRate, totalSalesValue, totalOrdersCount, formSubmissions, comparison };
   }, [leads, allOrders, dateRange]);
 
   const handleDeleteLead = async (leadId: string) => {
     try {
       const leadRef = doc(db, getCollectionName(), leadId);
-      await deleteDoc(leadRef);
+      await updateDoc(leadRef, { isDeleted: true, deletedAt: new Date().toISOString() });
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, getCollectionName());
     }
   };
 
+  const handleRestoreFromTrashLead = async (leadId: string) => {
+    try {
+      const leadRef = doc(db, getCollectionName(), leadId);
+      await updateDoc(leadRef, { isDeleted: false, deletedAt: null });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, getCollectionName());
+    }
+  };
+
+  const handlePermanentDeleteLead = async (leadId: string) => {
+    try {
+      await deleteDoc(doc(db, getCollectionName(), leadId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, getCollectionName());
+    }
+  };
+
+  const activeLeads = leads.filter(l => !l.isDeleted);
+  const deletedLeads = leads.filter(l => l.isDeleted);
+
   return {
-    leads,
+    leads: activeLeads,
+    deletedLeads,
     stats,
     isLoaded,
     handleCreateLead,
     handleUpdateLead,
-    handleDeleteLead
+    handleDeleteLead,
+    handleRestoreFromTrashLead,
+    handlePermanentDeleteLead
   };
 }
