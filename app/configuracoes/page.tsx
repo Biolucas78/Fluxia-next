@@ -20,7 +20,10 @@ import {
   Save,
   Package,
   Copy,
-  Plus
+  Plus,
+  Download,
+  Database,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/lib/firebase';
@@ -56,6 +59,47 @@ function SettingsContent() {
   const [newRole, setNewRole] = useState<UserRole>('gestor_trafego');
   const [isAddingEmail, setIsAddingEmail] = useState(false);
 
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState(false);
+
+  const handleExportBackup = async () => {
+    setIsExporting(true);
+    setExportSuccess(false);
+    try {
+      const collections = ['leads', 'orders', 'bling_customers', 'authorized_emails', 'product_mapping'];
+      const backup: Record<string, any[]> = {};
+      for (const col of collections) {
+        const snapshot = await getDocs(collection(db, col));
+        backup[col] = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      }
+      const configSnap = await getDocs(collection(db, 'config'));
+      backup['config'] = configSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        environment: 'production',
+        project: 'Fluxia',
+        data: backup,
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fluxia-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setExportSuccess(true);
+      toast.success('Backup exportado com sucesso!');
+      setTimeout(() => setExportSuccess(false), 4000);
+    } catch (error) {
+      console.error('Erro ao exportar backup:', error);
+      toast.error('Erro ao exportar backup. Tente novamente.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
   const handleAddEmail = async () => {
     if (!newEmail) return;
     setIsAddingEmail(true);
@@ -1001,6 +1045,48 @@ function SettingsContent() {
               </div>
             </section>
 
+            <section className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
+                  <Database className="size-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Backup de Dados</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Exporte todos os dados de produção para um arquivo JSON no seu computador</p>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 mb-6 flex items-start gap-3">
+                  <ShieldCheck className="size-5 text-emerald-500 mt-0.5 shrink-0" />
+                  <div className="text-sm text-slate-600 dark:text-slate-300">
+                    <p className="font-medium mb-1">O que será exportado:</p>
+                    <ul className="space-y-1 text-slate-500 dark:text-slate-400">
+                      <li>• <strong>Leads</strong> — todos os leads de produção</li>
+                      <li>• <strong>Pedidos</strong> — histórico completo de pedidos</li>
+                      <li>• <strong>Clientes</strong> — base de clientes do Bling</li>
+                      <li>• <strong>Configurações</strong> — e-mails autorizados e mapeamentos</li>
+                    </ul>
+                  </div>
+                </div>
+                <button
+                  onClick={handleExportBackup}
+                  disabled={isExporting}
+                  className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-medium rounded-2xl transition-all duration-200 shadow-md hover:shadow-lg"
+                >
+                  {isExporting ? (
+                    <><Loader2 className="size-4 animate-spin" /> Exportando dados...</>
+                  ) : exportSuccess ? (
+                    <><CheckCircle2 className="size-4" /> Backup salvo com sucesso!</>
+                  ) : (
+                    <><Download className="size-4" /> Exportar Backup Agora</>
+                  )}
+                </button>
+                <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+                  O arquivo será salvo na pasta de downloads com o nome <span className="font-mono">fluxia-backup-YYYY-MM-DD.json</span>
+                </p>
+              </div>
+            </section>
+            
           </div>
         </div>
       </main>
