@@ -35,6 +35,9 @@ interface CoffeeNeed {
   type: string;
   neededKg: number;
   stockKg: number;
+  greenNeeded: number;
+  roastOutput: number;
+  greenInput: number;
 }
 
 export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, onUpdateOrder }: DashboardProps) {
@@ -145,67 +148,61 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
 
   const { stocks: coffeeStocks, updateStock } = useInventory();
 
+  const ROAST_LOTS = {
+    'Catuai':        { greenInput: 10, roastOutput: 8 },
+    'Bourbom':       { greenInput: 10, roastOutput: 8 },
+    'Gourmet':       { greenInput: 10, roastOutput: 8 },
+    'Torra Clara':   { greenInput: 8,  roastOutput: 6.4 },
+    'Torra Intensa': { greenInput: 8,  roastOutput: 6.4 },
+    'Yellow':        { greenInput: 8,  roastOutput: 6.4 },
+  };
+  const getLot = (type: string) => (ROAST_LOTS as Record<string, {greenInput: number; roastOutput: number}>)[type] || { greenInput: 10, roastOutput: 8 };
+  const mapType = (n: string): string | null => {
+    if (n.includes('catuai') || n.includes('catuaí')) return 'Catuáí';
+    if (n.includes('clara')) return 'Torra Clara';
+    if (n.includes('intensa')) return 'Torra Intensa';
+    if (n.includes('bourbom') || n.includes('bourbon')) return 'Bourbom';
+    if (n.includes('yellow')) return 'Yellow';
+    if (n.includes('gourmet')) return 'Gourmet';
+    if (n.includes('drip')) return 'Catuáí';
+    return null;
+  };
   const roastPlanning = useMemo(() => {
-    const needs: Record<string, number> = {
-      'Catuaí': 0,
-      'Torra Clara': 0,
-      'Torra Intensa': 0,
-      'Bourbom': 0,
-      'Yellow': 0,
-      'Gourmet': 0
-    };
-    
+    const needed: Record<string, number> = { 'Catuáí': 0, 'Torra Clara': 0, 'Torra Intensa': 0, 'Bourbom': 0, 'Yellow': 0, 'Gourmet': 0 };
+    const used: Record<string, number> = { 'Catuáí': 0, 'Torra Clara': 0, 'Torra Intensa': 0, 'Bourbom': 0, 'Yellow': 0, 'Gourmet': 0 };
     orders.forEach(order => {
-      if (order.status === 'pedidos' || order.status === 'embalagens_separadas') {
-        order.products.forEach(product => {
-          let weight = calculateWeightInKg(product.weight, product.quantity);
-          let type = product.name;
-          const lowerName = type.toLowerCase();
-
-          // Handle Amostras
-          if (lowerName.includes('amostra')) {
-            needs['Catuaí'] += 0.25 * product.quantity;
-            needs['Torra Clara'] += 0.04 * product.quantity;
-            needs['Torra Intensa'] += 0.04 * product.quantity;
-            needs['Bourbom'] += 0.04 * product.quantity;
-            needs['Yellow'] += 0.04 * product.quantity;
-            needs['Gourmet'] += 0.04 * product.quantity;
-            return;
-          }
-
-          // Map personalized and normal coffees to base types
-          if (lowerName.includes('catuai') || lowerName.includes('catuaí')) {
-            type = 'Catuaí';
-          } else if (lowerName.includes('clara')) {
-            type = 'Torra Clara';
-          } else if (lowerName.includes('intensa')) {
-            type = 'Torra Intensa';
-          } else if (lowerName.includes('bourbom') || lowerName.includes('bourbon')) {
-            type = 'Bourbom';
-          } else if (lowerName.includes('yellow')) {
-            type = 'Yellow';
-          } else if (lowerName.includes('gourmet')) {
-            type = 'Gourmet';
-          } else if (lowerName.includes('dripcoffee') || lowerName.includes('drip coffee') || lowerName.includes('drip')) {
-            // Rule: DripCoffee CX has 100g of Catuaí
-            weight = 0.1 * product.quantity; // 100g = 0.1kg
-            type = 'Catuaí';
-          } else if (weight === 0 || lowerName.includes('caneca') || lowerName.includes('filtro') || lowerName.includes('copo')) {
-            // Ignore non-coffee items safely
-            return;
-          }
-
-          needs[type] = (needs[type] || 0) + weight;
-        });
-      }
+      const isEmb = order.status === 'embalagens_separadas';
+      const isPed = order.status === 'pedidos';
+      if (!isPed && !isEmb) return;
+      order.products.forEach(product => {
+        const ln = product.name.toLowerCase();
+        const checked = product.checked === true;
+        if (ln.includes('caneca') || ln.includes('filtro') || ln.includes('copo')) return;
+        if (ln.includes('amostra')) {
+          const t = (isEmb && checked) ? used : needed;
+          t['Catuáí'] += 0.25 * product.quantity;
+          t['Torra Clara'] += 0.04 * product.quantity;
+          t['Torra Intensa'] += 0.04 * product.quantity;
+          t['Bourbom'] += 0.04 * product.quantity;
+          t['Yellow'] += 0.04 * product.quantity;
+          t['Gourmet'] += 0.04 * product.quantity;
+          return;
+        }
+        const type = mapType(ln);
+        if (!type) return;
+        const weight = ln.includes('drip') ? 0.1 * product.quantity : calculateWeightInKg(product.weight, product.quantity);
+        if (weight === 0) return;
+        if (isEmb && checked) { used[type] = (used[type]||0) + weight; }
+        else { needed[type] = (needed[type]||0) + weight; }
+      });
     });
-
-    return Object.entries(needs).map(([type, neededKg]) => ({
-      type,
-      neededKg,
-      stockKg: coffeeStocks[type] || 0,
-      greenNeeded: Math.max(0, (neededKg - (coffeeStocks[type] || 0)) / 0.8)
-    })).sort((a, b) => b.neededKg - a.neededKg);
+    return Object.entries(needed).map(([type, neededKg]) => {
+      const lot = getLot(type);
+      const rawStock = coffeeStocks[type] || 0;
+      const stockKg = Math.max(0, rawStock - ((used as Record<string, number>)[type]||0));
+      const greenNeeded = Math.max(0, (neededKg - stockKg) / 0.8);
+      return { type, neededKg, stockKg, greenNeeded, roastOutput: lot.roastOutput, greenInput: lot.greenInput };
+    }).sort((a, b) => b.neededKg - a.neededKg);
   }, [orders, coffeeStocks]);
 
   const packagingDemand = useMemo(() => {
@@ -567,56 +564,66 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
               </div>
               <div>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Planejamento de Torra</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Café Torrado vs Verde (Drip=100g Catuaí)</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Estoque vivo · Verde p/ torrar · Drip=100g Catuáí</p>
               </div>
             </div>
             <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-900/20 rounded-full">
               <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Perda: 20%</span>
             </div>
           </div>
-          
-          <div className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/30 dark:bg-slate-800/30">
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo de Café</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Necessário (Kg)</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Estoque (Kg)</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-primary uppercase tracking-widest text-right">Torrar Verde (Kg)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {roastPlanning.map((item) => (
-                    <tr key={item.type} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-bold text-slate-900 dark:text-white">{item.type}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-sm font-mono font-bold text-slate-600 dark:text-slate-400">
-                          {item.neededKg.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <input 
-                          type="number"
-                          step="0.1"
-                          value={item.stockKg || ''}
-                          onChange={(e) => updateStock(item.type, parseFloat(e.target.value) || 0)}
-                          placeholder="0.0"
-                          className="w-20 px-2 py-1 bg-slate-100 dark:bg-slate-800 border-none rounded-lg text-sm font-bold text-center focus:ring-2 focus:ring-primary outline-none transition-all"
-                        />
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className={`text-sm font-mono font-black ${item.greenNeeded > 0 ? 'text-primary' : 'text-emerald-500'}`}>
-                          {item.greenNeeded.toFixed(2)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {roastPlanning.filter(item => item.neededKg > 0).map((item) => {
+              const ok = item.stockKg >= item.neededKg;
+              const torras = item.greenNeeded > 0 ? Math.ceil(item.greenNeeded / item.greenInput) : 0;
+              const rawStock = coffeeStocks[item.type] || 0;
+              const pct = item.neededKg > 0 ? Math.min(100, (item.stockKg / item.neededKg) * 100) : 100;
+              return (
+                <div key={item.type} className={`rounded-2xl border p-4 flex flex-col gap-3 transition-all ${ok ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">{item.type}</span>
+                    {ok
+                      ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">✓ OK</span>
+                      : <span className="text-[10px] font-black text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">Torrar</span>
+                    }
+                  </div>
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5">
+                    <div className={`h-1.5 rounded-full transition-all ${ok ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-2">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Necessário</p>
+                      <p className="text-base font-black text-slate-800 dark:text-white">{item.neededKg.toFixed(1)}<span className="text-[10px] font-bold text-slate-400 ml-0.5">kg</span></p>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-2">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Estoque</p>
+                      <input type="number" step="0.1" min="0" value={rawStock || ''} onChange={(e) => updateStock(item.type, parseFloat(e.target.value) || 0)} placeholder="0.0" className="w-full bg-transparent text-base font-black text-center text-primary focus:outline-none border-none p-0" />
+                      <p className="text-[9px] text-slate-400 -mt-0.5">kg</p>
+                    </div>
+                  </div>
+                  {item.greenNeeded > 0 && (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-2 text-center border border-amber-100 dark:border-amber-800/50">
+                      <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Verde p/ Torrar</p>
+                      <p className="text-lg font-black text-amber-700 dark:text-amber-400">{item.greenNeeded.toFixed(1)}<span className="text-[10px] font-bold ml-0.5">kg</span></p>
+                      <p className="text-[9px] text-amber-600 mt-0.5">~{torras} torra{torras !== 1 ? 's' : ''} de {item.greenInput}kg verde</p>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => updateStock(item.type, Math.max(0, rawStock - item.roastOutput))} className="flex-1 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-black transition-all">
+                      − 1 torra ({item.roastOutput}kg)
+                    </button>
+                    <button onClick={() => updateStock(item.type, rawStock + item.roastOutput)} className="flex-1 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black transition-all shadow-sm shadow-amber-500/20">
+                      + 1 torra ({item.roastOutput}kg)
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {roastPlanning.filter(item => item.neededKg > 0).length === 0 && (
+              <div className="col-span-full text-center py-10 text-slate-400">
+                <CheckCircle className="size-8 mx-auto mb-2 text-emerald-400" />
+                <p className="text-sm font-bold">Nenhum pedido pendente de torra!</p>
+              </div>
+            )}
           </div>
         </div>
 
