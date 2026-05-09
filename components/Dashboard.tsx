@@ -415,22 +415,24 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
 
   const getCoffeeCardStyle = (name: string) => {
     const n = name.toLowerCase();
-    if (n.includes('catuai') || n.includes('catuaí')) return 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30';
-    if (n.includes('bourbom') || n.includes('bourbon')) return 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-900/30';
-    if (n.includes('gourmet')) return 'bg-amber-100 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900/30';
-    if (n.includes('clara')) return 'bg-pink-50 dark:bg-pink-900/10 border-pink-200 dark:border-pink-900/30';
+    if (n.includes('drip')) return 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-900/30';
+    if (n.includes('catuai') || n.includes('catuaí')) return 'bg-rose-100 dark:bg-rose-900/20 border-rose-300 dark:border-rose-900/40';
+    if (n.includes('bourbom') || n.includes('bourbon')) return 'bg-yellow-100 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-900/40';
+    if (n.includes('gourmet')) return 'bg-stone-200 dark:bg-stone-900/30 border-stone-300 dark:border-stone-700';
+    if (n.includes('clara')) return 'bg-fuchsia-50 dark:bg-fuchsia-900/10 border-fuchsia-300 dark:border-fuchsia-900/40';
     if (n.includes('intensa')) return 'bg-slate-100 dark:bg-slate-800/50 border-slate-300 dark:border-slate-700';
-    if (n.includes('yellow')) return 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/30';
+    if (n.includes('yellow')) return 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-900/30';
     return 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700';
   };
   const getCoffeeQtyColor = (name: string) => {
     const n = name.toLowerCase();
-    if (n.includes('catuai') || n.includes('catuaí')) return 'text-red-500 dark:text-red-400';
+    if (n.includes('drip')) return 'text-green-600 dark:text-green-400';
+    if (n.includes('catuai') || n.includes('catuaí')) return 'text-rose-700 dark:text-rose-400';
     if (n.includes('bourbom') || n.includes('bourbon')) return 'text-yellow-600 dark:text-yellow-500';
-    if (n.includes('gourmet')) return 'text-amber-700 dark:text-amber-400';
-    if (n.includes('clara')) return 'text-pink-500 dark:text-pink-400';
+    if (n.includes('gourmet')) return 'text-stone-600 dark:text-stone-400';
+    if (n.includes('clara')) return 'text-fuchsia-600 dark:text-fuchsia-400';
     if (n.includes('intensa')) return 'text-slate-500 dark:text-slate-400';
-    if (n.includes('yellow')) return 'text-orange-500 dark:text-orange-400';
+    if (n.includes('yellow')) return 'text-blue-500 dark:text-blue-400';
     return 'text-slate-700 dark:text-white';
   };
   return (
