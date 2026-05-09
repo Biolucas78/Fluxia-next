@@ -31,16 +31,23 @@ async function trackSiteRastreio(trackingNumber: string) {
     const data = await response.json();
     console.log('SiteRastreio resposta:', JSON.stringify(data).substring(0, 300));
 
-    // A API retorna o que a transportadora envia — precisamos normalizar
-    // Estrutura esperada dos Correios via SiteRastreio
-    const objetos = data.objetos || data.objeto || (Array.isArray(data) ? data : null);
-    const objeto = Array.isArray(objetos) ? objetos[0] : objetos;
+    // A API retorna os dados dentro de um campo "json" como string
+    let parsed: any = data;
+    if (data.json && typeof data.json === 'string') {
+      try {
+        parsed = JSON.parse(data.json);
+      } catch (e) {
+        console.warn('SiteRastreio: Falha ao parsear campo json');
+        return null;
+      }
+    }
 
-    // Tenta estrutura alternativa — alguns retornam direto eventos
-    const eventos = objeto?.eventos || data.eventos || [];
-    
-    if (!objeto && eventos.length === 0) {
-      console.warn('SiteRastreio: Nenhum dado retornado para', trackingNumber);
+    // Suporta objeto único ou array
+    const objeto = parsed.objetos?.[0] || parsed;
+    const eventos = objeto?.eventos || [];
+
+    if (!objeto || eventos.length === 0) {
+      console.warn('SiteRastreio: Nenhum evento retornado para', trackingNumber);
       return null;
     }
 
