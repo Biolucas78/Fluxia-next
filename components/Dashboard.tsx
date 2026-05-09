@@ -852,9 +852,12 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
           <p className="text-slate-900 dark:text-slate-100 tracking-tight text-4xl font-black">
             {filteredStats.totalKg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
           </p>
+          <p className="text-amber-600 dark:text-amber-400 text-sm font-black uppercase tracking-widest">
+            ☕ {(filteredStats.totalKg / 48).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} sacas torradas
+          </p>
           {(globalStartDate || globalEndDate || datePreset !== 'custom') && (
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
-              Total Geral: {stats.totalKg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
+              Total Geral: {stats.totalKg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg · {(stats.totalKg / 48).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} sacas
             </p>
           )}
         </div>
