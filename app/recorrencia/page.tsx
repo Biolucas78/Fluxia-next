@@ -8,6 +8,8 @@ import { Loader2, Calendar, MessageSquare, AlertCircle, Filter, Search, Edit2, X
 import Login from '@/components/Login';
 import { motion, AnimatePresence } from 'motion/react';
 import { Order } from '@/lib/types';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
 
 interface ClientRecurrence {
@@ -75,10 +77,8 @@ export default function RecorrenciaPage() {
   const recurrenceData = useMemo(() => {
     if (!isLoaded) return [];
 
-    // Agrupar pedidos por cliente
     const clientsMap = new Map<string, { orders: Order[] }>();
 
-    // Função para gerar um identificador único para agrupar clientes e evitar duplicidade
     const getIdentifier = (order: Order) => {
       if (order.cnpj) return order.cnpj.replace(/\D/g, '');
       if (order.cpf) return order.cpf.replace(/\D/g, '');
@@ -88,7 +88,7 @@ export default function RecorrenciaPage() {
 
     allOrders.forEach(order => {
       const id = getIdentifier(order);
-      if (!id) return; // Ignora se não tem identificação nenhuma (raro)
+      if (!id) return;
 
       if (!clientsMap.has(id)) {
         clientsMap.set(id, { orders: [] });
@@ -100,22 +100,14 @@ export default function RecorrenciaPage() {
     const result: ClientRecurrence[] = [];
 
     clientsMap.forEach((data, identifier) => {
-      // Ordenar pedidos do cliente do mais recente para o mais antigo (baseado no createdAt)
       const sortedOrders = [...data.orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       const latestOrder = sortedOrders[0];
 
-      // Se o pedido mais recente NÃO for entregue (ex: está em pedidos, produção), não entra na recorrência
-      if (latestOrder.status !== 'entregue') {
-        return;
-      }
+      if (latestOrder.status !== 'entregue') return;
+      if (latestOrder.recurrenceRemoved) return;
 
-      if (latestOrder.recurrenceRemoved) {
-        return;
-      }
-
-      // Calcular quando o pedido se tornou "entregue"
-      let deliveredAtStr = latestOrder.createdAt; // default
+      let deliveredAtStr = latestOrder.createdAt;
       
       if (latestOrder.deliveryDate) {
         deliveredAtStr = latestOrder.deliveryDate;
@@ -129,7 +121,6 @@ export default function RecorrenciaPage() {
       const deliveredDate = new Date(deliveredAtStr);
       const daysSinceDelivered = Math.floor((now.getTime() - deliveredDate.getTime()) / (1000 * 60 * 60 * 24));
 
-      // Calcular contato
       let daysSinceContact = null;
       if (latestOrder.lastRecurrenceContact) {
         const contactDate = new Date(latestOrder.lastRecurrenceContact);
@@ -151,11 +142,10 @@ export default function RecorrenciaPage() {
     });
 
     return result.sort((a, b) => b.daysSinceDelivered - a.daysSinceDelivered);
-  }, [allOrders, isLoaded]); // refreshTrigger removido para evitar warning
+  }, [allOrders, isLoaded]);
 
   const filteredData = useMemo(() => {
     return recurrenceData.filter(client => {
-      // Filtro de Texto
       if (searchTerm) {
         const term = normalizeString(searchTerm);
         const matchesName = normalizeString(client.clientName).includes(term);
@@ -163,21 +153,14 @@ export default function RecorrenciaPage() {
         if (!matchesName && !matchesPhone) return false;
       }
 
-      // Filtro de Origem
-      if (filterOrigin !== 'all' && client.origin !== filterOrigin) {
-        return false;
-      }
+      if (filterOrigin !== 'all' && client.origin !== filterOrigin) return false;
 
-      // Filtro de Status na Recorrência (10 ou 20 dias cruciais)
       if (filterStatus === 'contacted') {
-        // Mostra só quem foi contatado recentemente (menos de 10 dias)
         if (client.daysSinceContact === null || client.daysSinceContact >= 10) return false;
       } else if (filterStatus === 'need_contact') {
-        // Mostra quem precisa de contato (se passaram 20 dias da entrega, e se tem contato, passaram 10 dias)
         if (client.daysSinceDelivered < 20) return false;
         if (client.daysSinceContact !== null && client.daysSinceContact < 10) return false;
       } else if (filterStatus === 'all') {
-        // Só mostramos clientes com mais de 20 dias da entrega
         if (client.daysSinceDelivered < 20) return false;
       }
 
@@ -192,7 +175,6 @@ export default function RecorrenciaPage() {
     setEditedPhone(client.phone || '');
     setIsEditingData(false);
     
-    // Auto-selecionar PF ou PJ com base na origem ou CNPJ
     if (client.origin.toLowerCase().includes('pf') || client.origin.toLowerCase() === 'whatsapp' && !client.cnpj) {
       setSelectedMessage('pf_1');
     } else {
@@ -209,7 +191,6 @@ export default function RecorrenciaPage() {
       if (editedPhone) {
         orderToUpdate.phone = editedPhone;
       }
-      
       orderToUpdate.statusHistory = [
         ...(orderToUpdate.statusHistory || []),
         {
@@ -217,9 +198,42 @@ export default function RecorrenciaPage() {
           timestamp: new Date().toISOString()
         }
       ];
-
       await handleUpdateOrder(orderToUpdate);
-      toast.success('Dados atualizados com sucesso!');
+
+      if (editedPhone) {
+        try {
+          const cleanPhone = editedPhone.replace(/\D/g, '');
+          const cleanDoc = (selectedClient.cnpj || selectedClient.cpf || '').replace(/\D/g, '');
+          const cleanName = normalizeString(selectedClient.clientName);
+
+          const snapshot = await getDocs(collection(db, 'bling_customers'));
+          const match = snapshot.docs.find(d => {
+            const data = d.data();
+            const docNum = (data.numeroDocumento || '').replace(/\D/g, '');
+            const nome = normalizeString(data.nome || '');
+            const fantasia = normalizeString(data.fantasia || '');
+
+            if (cleanDoc && docNum && cleanDoc === docNum) return true;
+            return nome === cleanName || fantasia === cleanName ||
+                   nome.includes(cleanName) || fantasia.includes(cleanName);
+          });
+
+          if (match) {
+            await updateDoc(doc(db, 'bling_customers', match.id), {
+              celular: cleanPhone
+            });
+            toast.success('Dados atualizados e sincronizados com o cadastro de clientes!');
+          } else {
+            toast.success('Dados atualizados com sucesso!');
+          }
+        } catch (syncError) {
+          console.warn('Não foi possível sincronizar com bling_customers:', syncError);
+          toast.success('Dados atualizados! (Sincronização com clientes falhou silenciosamente)');
+        }
+      } else {
+        toast.success('Dados atualizados com sucesso!');
+      }
+
       setIsEditingData(false);
     } catch (e: any) {
       toast.error('Erro ao atualizar: ' + e.message);
@@ -284,12 +298,11 @@ export default function RecorrenciaPage() {
     setClientToRemove(selectedClient);
   };
 
-  const generateWhatsappUrl = () => {
+  const generateWhatsappUrl = (myNumber: string) => {
     if (!selectedClient) return '#';
     let phone = editedPhone || selectedClient.phone;
     if (!phone) return '#';
     
-    // Clean phone number
     phone = phone.replace(/\D/g, '');
     if (!phone.startsWith('55')) phone = '55' + phone;
 
@@ -297,7 +310,7 @@ export default function RecorrenciaPage() {
     const firstName = nameToUse.split(' ')[0] || 'Cliente';
     const msg = (messages as any)[selectedMessage].replace('{Nome}', firstName);
     
-    return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+    return `https://wa.me/${myNumber}?text=${encodeURIComponent(msg)}`;
   };
 
   if (userLoading) {
@@ -428,7 +441,6 @@ export default function RecorrenciaPage() {
                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
                     }`}
                   >
-                    {/* Status Badge Background Highlight */}
                     {client.daysSinceContact === null && client.daysSinceDelivered > 30 && (
                       <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 dark:bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
                     )}
@@ -616,14 +628,29 @@ export default function RecorrenciaPage() {
 
                 {/* Ações da Abordagem */}
                 <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex flex-col gap-3">
-                  <a 
-                    href={generateWhatsappUrl()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
-                  >
-                    <Send className="size-5" /> Iniciar Conversa no WhatsApp
-                  </a>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Iniciar conversa via</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <a
+                      href={generateWhatsappUrl('5531987988629')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-colors shadow-lg shadow-emerald-500/20 text-center"
+                    >
+                      <Send className="size-4" />
+                      <span className="text-xs">Pessoal</span>
+                      <span className="text-[10px] opacity-75">DDD 31</span>
+                    </a>
+                    <a
+                      href={generateWhatsappUrl('5511915889584')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-colors shadow-lg shadow-emerald-600/20 text-center"
+                    >
+                      <Send className="size-4" />
+                      <span className="text-xs">Business</span>
+                      <span className="text-[10px] opacity-75">DDD 11</span>
+                    </a>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     <button 
@@ -667,7 +694,6 @@ export default function RecorrenciaPage() {
                 </div>
 
                 <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
-                  {/* B2B Messages */}
                   <div>
                     <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">Revenda (B2B)</h4>
                     <div className="space-y-4">
@@ -698,7 +724,6 @@ export default function RecorrenciaPage() {
                     </div>
                   </div>
 
-                  {/* PF Messages */}
                   <div>
                     <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">Pessoa Física (Consumo)</h4>
                     <div className="space-y-4">
