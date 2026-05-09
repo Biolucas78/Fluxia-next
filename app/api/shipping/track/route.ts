@@ -7,13 +7,11 @@ const MELHOR_ENVIO_URL = (process.env.MELHOR_ENVIO_URL || 'https://sandbox.melho
 
 async function trackCorreiosProxy(trackingNumber: string) {
   try {
-    // Endpoint público usado pelo App Oficial dos Correios
     const url = `https://proxyapp.correios.com.br/v1/sro-rastro/${trackingNumber.toUpperCase()}`;
     
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        // User-Agent mais próximo do App oficial para evitar 403
         'User-Agent': 'Dart/2.15 (dart:io)',
         'Accept': 'application/json',
         'Accept-Language': 'pt-BR'
@@ -30,7 +28,6 @@ async function trackCorreiosProxy(trackingNumber: string) {
     
     if (!objeto || objeto.mensagem) return null;
 
-    // Mapeamento dos eventos do Proxy App
     const history = (objeto.eventos || []).map((e: any) => ({
       status: e.descricao,
       message: e.detalhe || e.descricao,
@@ -52,7 +49,6 @@ async function trackCorreiosProxy(trackingNumber: string) {
   }
 }
 
-// Mapa de tradução de status dos Correios para mensagens amigáveis
 const CORREIOS_STATUS_MAP: Record<string, string> = {
   'BDE': 'Objeto entregue ao destinatário',
   'BDI': 'Objeto entregue ao destinatário',
@@ -70,7 +66,6 @@ const CORREIOS_STATUS_MAP: Record<string, string> = {
 async function trackCorreios(trackingNumber: string) {
   try {
     const token = await getCorreiosToken();
-    // Adicionando idioma=pt-BR para resolver o erro SRO-018
     const url = `https://api.correios.com.br/srorastro/v1/objetos/${trackingNumber.toUpperCase()}?resultado=T&idioma=pt-BR`;
     
     const response = await fetch(url, {
@@ -127,8 +122,6 @@ async function trackMelhorEnvioById(shipmentId: string) {
   if (!MELHOR_ENVIO_TOKEN) return null;
 
   try {
-    // Usamos o endpoint de tracking (POST) em vez do de shipment (GET) 
-    // porque o de tracking retorna o histórico formatado para rastreio.
     const response = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/shipment/tracking`, {
       method: 'POST',
       headers: {
@@ -187,12 +180,10 @@ async function trackMelhorEnvio(trackingNumber: string) {
   const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
   let shipmentId = trackingNumber;
 
-  // Se o código não for um UUID (36 caracteres), tentamos buscar o ID do envio primeiro
   if (!isUUID(trackingNumber)) {
     try {
       console.log(`Melhor Envio: Buscando ID do envio para o código ${trackingNumber}`);
       const searchUrl = `${MELHOR_ENVIO_URL}/api/v2/me/orders/search?q=${trackingNumber}`;
-      console.log(`Melhor Envio: Chamando busca em ${searchUrl}`);
       const searchResponse = await fetch(searchUrl, {
         method: 'GET',
         headers: {
@@ -203,8 +194,8 @@ async function trackMelhorEnvio(trackingNumber: string) {
       });
 
       if (searchResponse.status === 204) {
-         console.warn(`Melhor Envio: Nenhum envio encontrado para o código ${trackingNumber} (Status 204)`);
-         return null;
+        console.warn(`Melhor Envio: Nenhum envio encontrado para o código ${trackingNumber} (Status 204)`);
+        return null;
       }
 
       if (searchResponse.ok) {
@@ -216,14 +207,13 @@ async function trackMelhorEnvio(trackingNumber: string) {
         }
         
         const searchData = await searchResponse.json();
-        // O endpoint /orders/search retorna uma lista no campo 'data'
         const shipment = (Array.isArray(searchData.data) ? searchData.data[0] : searchData.data) || searchData;
 
         if (shipment && shipment.id && isUUID(shipment.id)) {
           console.log(`Melhor Envio: ID encontrado: ${shipment.id}`);
           shipmentId = shipment.id;
         } else {
-          console.warn(`Melhor Envio: Nenhum ID de envio (UUID) encontrado para o código ${trackingNumber}. Resultado da busca:`, shipment);
+          console.warn(`Melhor Envio: Nenhum ID de envio (UUID) encontrado para o código ${trackingNumber}.`);
           return null;
         }
       } else {
@@ -237,13 +227,11 @@ async function trackMelhorEnvio(trackingNumber: string) {
     }
   }
 
-  // Se chegamos aqui e ainda não temos um UUID, não chamamos a API de rastreio para evitar o erro 422
   if (!isUUID(shipmentId)) {
     console.warn(`Melhor Envio: shipmentId "${shipmentId}" não é um UUID válido de 36 caracteres.`);
     return null;
   }
 
-  // Agora que temos o ID (ou se já era um ID), chamamos a API de rastreio
   try {
     const response = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/shipment/tracking`, {
       method: 'POST',
@@ -277,7 +265,6 @@ async function trackMelhorEnvio(trackingNumber: string) {
       return null;
     }
 
-    // Map Melhor Envio status to a more readable format if needed
     return {
       status: tracking.status,
       message: tracking.message || tracking.status,
@@ -308,6 +295,8 @@ export async function POST(req: Request) {
     const trimmedTracking = trackingNumber?.trim() || '';
     const upperTracking = trimmedTracking.toUpperCase();
     const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    const isCorreiosCode = (str: string) => str.length === 13 && /^[A-Z]{2}[0-9]{9}[A-Z]{2}$/.test(str);
+
     let result = null;
 
     const getTrackingDirectLink = (c: string, code: string) => {
@@ -321,54 +310,47 @@ export async function POST(req: Request) {
       return `https://linkcorreios.com.br/${code}`;
     };
 
-    // 1. Se tivermos o shipmentId (UUID) e o provedor for Melhor Envio, usamos o endpoint direto de shipment
-    if (shipmentId && isUUID(shipmentId) && shippingProvider === 'melhorenvio') {
-      console.log(`Tentando rastreio direto via ID do Melhor Envio: ${shipmentId}`);
+    // PRIORIDADE 1: Código formato Correios (AA999999999BR) — sempre tenta Correios primeiro,
+    // independente do provedor (Superfrete, Melhor Envio, manual, etc.)
+    if (isCorreiosCode(upperTracking)) {
+      console.log(`Código Correios detectado: ${upperTracking}. Tentando API Oficial.`);
+      result = await trackCorreios(upperTracking);
+
+      if (!result) {
+        console.log(`API Oficial falhou. Tentando Proxy dos Correios.`);
+        result = await trackCorreiosProxy(upperTracking);
+      }
+    }
+
+    // PRIORIDADE 2: shipmentId UUID do Melhor Envio
+    if (!result && shipmentId && isUUID(shipmentId) && shippingProvider === 'melhorenvio') {
+      console.log(`Rastreio direto via ID Melhor Envio: ${shipmentId}`);
       result = await trackMelhorEnvioById(shipmentId);
     }
 
-    // 2. Se não tivermos resultado ainda, tentamos a lógica anterior
-    if (!result) {
-      // Try Melhor Envio if it looks like a shipment ID (UUID)
-      if (isUUID(trimmedTracking)) {
-        console.log(`Tentando rastreio via Melhor Envio para ${trimmedTracking}`);
-        result = await trackMelhorEnvio(trimmedTracking);
-      }
+    // PRIORIDADE 3: trackingNumber é UUID (Melhor Envio)
+    if (!result && isUUID(trimmedTracking)) {
+      console.log(`Rastreio via Melhor Envio UUID: ${trimmedTracking}`);
+      result = await trackMelhorEnvio(trimmedTracking);
     }
 
-    // 2. If not found or not a UUID, it might be a carrier tracking code (like Correios)
-    if (!result && !isUUID(trimmedTracking)) {
-      // Try direct Correios tracking if it looks like a Correios code (13 chars)
-      if (upperTracking.length === 13 && /^[A-Z]{2}[0-9]{9}[A-Z]{2}$/.test(upperTracking)) {
-        // 1. Try Official API first (Contract)
-        console.log(`Tentando rastreio via API Oficial para ${upperTracking}`);
-        result = await trackCorreios(upperTracking);
-        
-        // 2. Try Proxy App as fallback (Public)
-        if (!result) {
-          console.log(`Tentando rastreio via Proxy App para ${upperTracking}`);
-          result = await trackCorreiosProxy(upperTracking);
-        }
-      }
-      
-      // 3. Try Melhor Envio as fallback for carrier codes (some might be tracked there)
-      if (!result) {
-        console.log(`Tentando rastreio via Melhor Envio (fallback) para ${trimmedTracking}`);
-        result = await trackMelhorEnvio(trimmedTracking);
-      }
+    // PRIORIDADE 4: Busca genérica no Melhor Envio
+    if (!result && !isCorreiosCode(upperTracking) && !isUUID(trimmedTracking) && trimmedTracking) {
+      console.log(`Busca genérica no Melhor Envio: ${trimmedTracking}`);
+      result = await trackMelhorEnvio(trimmedTracking);
     }
 
-    if (!result) {
-      // If still no result, provide the direct link which the user confirmed works
-      return NextResponse.json({ 
-        error: 'Rastreio não encontrado no sistema automático.',
-        directLink: getTrackingDirectLink(carrier, upperTracking)
-      }, { status: 200 });
+    if (result) {
+      return NextResponse.json(result);
     }
 
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error('Tracking error:', error);
-    return NextResponse.json({ error: 'Erro interno ao processar rastreamento.' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Rastreio não encontrado no sistema automático.',
+      directLink: getTrackingDirectLink(carrier || shippingProvider || '', trimmedTracking || shipmentId || '')
+    }, { status: 404 });
+
+  } catch (e: any) {
+    console.error('Track route error:', e);
+    return NextResponse.json({ error: e.message || 'Erro interno no servidor.' }, { status: 500 });
   }
 }
