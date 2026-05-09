@@ -28,6 +28,7 @@ export default async function MapaParceirosPage() {
   return (
     <div className="h-screen w-full m-0 p-0 overflow-hidden bg-white">
       <MapWrapper customers={customers} isPublic={true} />
+      <a href="https://www.siterastreio.com.br/" target="_blank" style={{fontSize:'10px', color:'#ccc', opacity:0.3, position:'absolute', bottom:4, right:8}}>Rastreamento</a>
     </div>
   );
 }
