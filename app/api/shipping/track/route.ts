@@ -4,6 +4,89 @@ import { getCorreiosToken } from '@/lib/correios';
 const MELHOR_ENVIO_TOKEN = process.env.MELHOR_ENVIO_TOKEN;
 const MELHOR_ENVIO_URL = (process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br')
   .replace(/\/$/, '');
+const SITERASTREIO_TOKEN = process.env.SITERASTREIO_TOKEN;
+
+// Rastreia qualquer código dos Correios via Site Rastreio (wonca)
+async function trackSiteRastreio(trackingNumber: string) {
+  if (!SITERASTREIO_TOKEN) {
+    console.warn('SiteRastreio: Token não configurado.');
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://api-labs.wonca.com.br/wonca.labs.v1.LabsService/Track', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Apikey ${SITERASTREIO_TOKEN}`
+      },
+      body: JSON.stringify({ code: trackingNumber.toUpperCase() })
+    });
+
+    if (!response.ok) {
+      console.warn(`SiteRastreio API error (${response.status})`);
+      return null;
+    }
+
+    const data = await response.json();
+    console.log('SiteRastreio resposta:', JSON.stringify(data).substring(0, 300));
+
+    // A API retorna o que a transportadora envia — precisamos normalizar
+    // Estrutura esperada dos Correios via SiteRastreio
+    const objetos = data.objetos || data.objeto || (Array.isArray(data) ? data : null);
+    const objeto = Array.isArray(objetos) ? objetos[0] : objetos;
+
+    // Tenta estrutura alternativa — alguns retornam direto eventos
+    const eventos = objeto?.eventos || data.eventos || [];
+    
+    if (!objeto && eventos.length === 0) {
+      console.warn('SiteRastreio: Nenhum dado retornado para', trackingNumber);
+      return null;
+    }
+
+    const CORREIOS_STATUS_MAP: Record<string, string> = {
+      'BDE': 'Objeto entregue ao destinatário',
+      'BDI': 'Objeto entregue ao destinatário',
+      'BDR': 'Objeto entregue ao destinatário',
+      'OEC': 'Objeto saiu para entrega ao destinatário',
+      'PAR': 'Objeto recebido pelos Correios do Brasil',
+      'PO': 'Objeto postado',
+      'RO': 'Objeto em trânsito - por favor aguarde',
+      'DO': 'Objeto em trânsito - por favor aguarde',
+      'LDI': 'Objeto aguardando retirada na agência',
+      'FC': 'Objeto saído para entrega cancelado',
+    };
+
+    const history = eventos.map((e: any) => {
+      const friendlyStatus = CORREIOS_STATUS_MAP[e.codigo] || e.descricao || e.status || 'Em trânsito';
+      return {
+        status: friendlyStatus,
+        message: e.detalhe || e.descricao || friendlyStatus,
+        date: e.dtHrCriado || e.data || e.date,
+        location: e.unidade
+          ? `${e.unidade.tipo || ''} - ${e.unidade.endereco?.cidade || ''}/${e.unidade.endereco?.uf || ''}`
+          : (e.local || e.location || '')
+      };
+    });
+
+    const lastEvent = history[0];
+    const ultimoCodigo = objeto?.eventos?.[0]?.codigo || '';
+    const delivered = ['BDE', 'BDI', 'BDR'].includes(ultimoCodigo) ||
+      lastEvent?.status?.toUpperCase().includes('ENTREGUE') || false;
+
+    return {
+      status: lastEvent?.status || 'Postado',
+      message: lastEvent?.message || 'Objeto em trânsito',
+      history,
+      delivered,
+      deliveryDate: objeto?.dtPrevista || null
+    };
+
+  } catch (e) {
+    console.error('SiteRastreio tracking error:', e);
+    return null;
+  }
+}
 
 async function trackCorreiosProxy(trackingNumber: string) {
   try {
@@ -141,7 +224,7 @@ async function trackMelhorEnvioById(shipmentId: string) {
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const text = await response.text();
-      console.error(`Melhor Envio: Resposta não é JSON (${contentType}). Início do corpo: ${text.substring(0, 100)}`);
+      console.error(`Melhor Envio: Resposta não é JSON. Início do corpo: ${text.substring(0, 100)}`);
       return null;
     }
 
@@ -182,7 +265,6 @@ async function trackMelhorEnvio(trackingNumber: string) {
 
   if (!isUUID(trackingNumber)) {
     try {
-      console.log(`Melhor Envio: Buscando ID do envio para o código ${trackingNumber}`);
       const searchUrl = `${MELHOR_ENVIO_URL}/api/v2/me/orders/search?q=${trackingNumber}`;
       const searchResponse = await fetch(searchUrl, {
         method: 'GET',
@@ -194,31 +276,23 @@ async function trackMelhorEnvio(trackingNumber: string) {
       });
 
       if (searchResponse.status === 204) {
-        console.warn(`Melhor Envio: Nenhum envio encontrado para o código ${trackingNumber} (Status 204)`);
+        console.warn(`Melhor Envio: Nenhum envio encontrado para ${trackingNumber} (204)`);
         return null;
       }
 
       if (searchResponse.ok) {
         const contentType = searchResponse.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          const text = await searchResponse.text();
-          console.error(`Melhor Envio: Resposta não é JSON (${contentType}). Início do corpo: ${text.substring(0, 100)}`);
-          return null;
-        }
+        if (!contentType || !contentType.includes('application/json')) return null;
         
         const searchData = await searchResponse.json();
         const shipment = (Array.isArray(searchData.data) ? searchData.data[0] : searchData.data) || searchData;
 
         if (shipment && shipment.id && isUUID(shipment.id)) {
-          console.log(`Melhor Envio: ID encontrado: ${shipment.id}`);
           shipmentId = shipment.id;
         } else {
-          console.warn(`Melhor Envio: Nenhum ID de envio (UUID) encontrado para o código ${trackingNumber}.`);
           return null;
         }
       } else {
-        const errText = await searchResponse.text();
-        console.warn(`Melhor Envio Search API error (${searchResponse.status}):`, errText);
         return null;
       }
     } catch (e) {
@@ -227,10 +301,7 @@ async function trackMelhorEnvio(trackingNumber: string) {
     }
   }
 
-  if (!isUUID(shipmentId)) {
-    console.warn(`Melhor Envio: shipmentId "${shipmentId}" não é um UUID válido de 36 caracteres.`);
-    return null;
-  }
+  if (!isUUID(shipmentId)) return null;
 
   try {
     const response = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/shipment/tracking`, {
@@ -244,26 +315,15 @@ async function trackMelhorEnvio(trackingNumber: string) {
       body: JSON.stringify({ orders: [shipmentId] })
     });
 
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error(`Melhor Envio API error (${response.status}):`, errorData);
-      return null;
-    }
+    if (!response.ok) return null;
 
     const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text();
-      console.error(`Melhor Envio: Resposta não é JSON (${contentType}). Início do corpo: ${text.substring(0, 100)}`);
-      return null;
-    }
+    if (!contentType || !contentType.includes('application/json')) return null;
 
     const data = await response.json();
     const tracking = data[shipmentId];
 
-    if (!tracking || tracking.error) {
-      console.warn(`Melhor Envio: Rastreio não encontrado para ${shipmentId}`);
-      return null;
-    }
+    if (!tracking || tracking.error) return null;
 
     return {
       status: tracking.status,
@@ -310,15 +370,28 @@ export async function POST(req: Request) {
       return `https://linkcorreios.com.br/${code}`;
     };
 
-    // PRIORIDADE 1: Código formato Correios (AA999999999BR) — sempre tenta Correios primeiro,
-    // independente do provedor (Superfrete, Melhor Envio, manual, etc.)
+    // PRIORIDADE 1: Código formato Correios
     if (isCorreiosCode(upperTracking)) {
-      console.log(`Código Correios detectado: ${upperTracking}. Tentando API Oficial.`);
-      result = await trackCorreios(upperTracking);
+      const isOfficialCorreios = shippingProvider === 'correios';
 
-      if (!result) {
-        console.log(`API Oficial falhou. Tentando Proxy dos Correios.`);
-        result = await trackCorreiosProxy(upperTracking);
+      if (isOfficialCorreios) {
+        // Etiqueta gerada pelo nosso sistema via API dos Correios — usa API oficial (não gasta SiteRastreio)
+        console.log(`Código Correios contrato: ${upperTracking}. Tentando API Oficial.`);
+        result = await trackCorreios(upperTracking);
+
+        if (!result) {
+          console.log(`API Oficial falhou. Tentando Proxy dos Correios.`);
+          result = await trackCorreiosProxy(upperTracking);
+        }
+      } else {
+        // Código colado manualmente (Superfrete, pré-postagem, etc.) — usa SiteRastreio
+        console.log(`Código Correios externo: ${upperTracking}. Tentando SiteRastreio.`);
+        result = await trackSiteRastreio(upperTracking);
+
+        if (!result) {
+          console.log(`SiteRastreio falhou. Tentando API Oficial como fallback.`);
+          result = await trackCorreios(upperTracking);
+        }
       }
     }
 
