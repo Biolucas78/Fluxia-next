@@ -151,7 +151,7 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
       if (name.toLowerCase().includes('torra media') || name.toLowerCase().includes('torra média')) {
         name = 'Catuaí';
       }
-      if (name.toLowerCase() === 'bourbom') {
+      if (name.toLowerCase() === 'bourbon') {
         name = 'Bourbon';
       }
 

@@ -46,7 +46,7 @@ export async function parseOrderWithGemini(text: string) {
        - Se for "DripCoffee", nome = "DripCoffee Cx", peso = "Cx", moagem = "N/A".
     5. MAPEAMENTO DE TIPOS:
        - "Torra media" ou "Torra média" -> "Catuaí".
-       - "Bourbom" ou "Bourbon" -> "Bourbon".
+       - "Bourbon" ou "Bourbon" -> "Bourbon".
        - "Torra intensa" -> "Torra Intensa".
     6. MOAGEM: Identifique "moído" ou "grãos".
     7. NOME DO PRODUTO: Não inclua a palavra "Café".

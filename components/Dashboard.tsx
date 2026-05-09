@@ -19,6 +19,7 @@ import { calculateWeightInKg, extractCityState } from '@/lib/parser';
 import { useInventory } from '@/lib/hooks';
 import { motion, AnimatePresence } from 'motion/react';
 import ShippingQuote from '@/components/ShippingQuote';
+import BulkCheckModal from '@/components/BulkCheckModal';
 import ProductMappingManager from '@/components/ProductMappingManager';
 import { X, MapPin, Globe, TrendingDown } from 'lucide-react';
 
@@ -44,6 +45,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   const [filter, setFilter] = useState<FilterType>('month');
   const [chartMetric, setChartMetric] = useState<'kg' | 'units' | 'clients'>('kg');
   const [showShippedModal, setShowShippedModal] = useState(false);
+  const [showSeparationModal, setShowSeparationModal] = useState(false);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
   
   // Global Date Filter
@@ -150,7 +152,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
 
   const ROAST_LOTS = {
     'Catuai':        { greenInput: 10, roastOutput: 8 },
-    'Bourbom':       { greenInput: 10, roastOutput: 8 },
+    'Bourbon':       { greenInput: 10, roastOutput: 8 },
     'Gourmet':       { greenInput: 10, roastOutput: 8 },
     'Torra Clara':   { greenInput: 8,  roastOutput: 6.4 },
     'Torra Intensa': { greenInput: 8,  roastOutput: 6.4 },
@@ -158,18 +160,18 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   };
   const getLot = (type: string) => (ROAST_LOTS as Record<string, {greenInput: number; roastOutput: number}>)[type] || { greenInput: 10, roastOutput: 8 };
   const mapType = (n: string): string | null => {
-    if (n.includes('catuai') || n.includes('catuaí')) return 'Catuáí';
+    if (n.includes('catuai') || n.includes('catuaí')) return 'Catuaí';
     if (n.includes('clara')) return 'Torra Clara';
     if (n.includes('intensa')) return 'Torra Intensa';
-    if (n.includes('bourbom') || n.includes('bourbon')) return 'Bourbom';
+    if (n.includes('bourbon') || n.includes('bourbon')) return 'Bourbon';
     if (n.includes('yellow')) return 'Yellow';
     if (n.includes('gourmet')) return 'Gourmet';
-    if (n.includes('drip')) return 'Catuáí';
+    if (n.includes('drip')) return 'Catuaí';
     return null;
   };
   const roastPlanning = useMemo(() => {
-    const needed: Record<string, number> = { 'Catuáí': 0, 'Torra Clara': 0, 'Torra Intensa': 0, 'Bourbom': 0, 'Yellow': 0, 'Gourmet': 0 };
-    const used: Record<string, number> = { 'Catuáí': 0, 'Torra Clara': 0, 'Torra Intensa': 0, 'Bourbom': 0, 'Yellow': 0, 'Gourmet': 0 };
+    const needed: Record<string, number> = { 'Catuaí': 0, 'Torra Clara': 0, 'Torra Intensa': 0, 'Bourbon': 0, 'Yellow': 0, 'Gourmet': 0 };
+    const used: Record<string, number> = { 'Catuaí': 0, 'Torra Clara': 0, 'Torra Intensa': 0, 'Bourbon': 0, 'Yellow': 0, 'Gourmet': 0 };
     orders.forEach(order => {
       const isEmb = order.status === 'embalagens_separadas';
       const isPed = order.status === 'pedidos';
@@ -180,10 +182,10 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         if (ln.includes('caneca') || ln.includes('filtro') || ln.includes('copo')) return;
         if (ln.includes('amostra')) {
           const t = (isEmb && checked) ? used : needed;
-          t['Catuáí'] += 0.25 * product.quantity;
+          t['Catuaí'] += 0.25 * product.quantity;
           t['Torra Clara'] += 0.04 * product.quantity;
           t['Torra Intensa'] += 0.04 * product.quantity;
-          t['Bourbom'] += 0.04 * product.quantity;
+          t['Bourbon'] += 0.04 * product.quantity;
           t['Yellow'] += 0.04 * product.quantity;
           t['Gourmet'] += 0.04 * product.quantity;
           return;
@@ -231,6 +233,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
       // Somente as que os pedidos estiverem na fase "Embalagens prontas"
       if (order.status === 'embalagens_prontas') {
         order.products.forEach(p => {
+          if (p.checked) return; // Saiu da prateleira para a caixa
           const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
           const key = `${p.name} ${p.weight}${grind}`;
           shelf[key] = (shelf[key] || 0) + p.quantity;
@@ -410,6 +413,26 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     }
   };
 
+  const getCoffeeCardStyle = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('catuai') || n.includes('catuaí')) return 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30';
+    if (n.includes('bourbom') || n.includes('bourbon')) return 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-900/30';
+    if (n.includes('gourmet')) return 'bg-amber-100 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900/30';
+    if (n.includes('clara')) return 'bg-pink-50 dark:bg-pink-900/10 border-pink-200 dark:border-pink-900/30';
+    if (n.includes('intensa')) return 'bg-slate-100 dark:bg-slate-800/50 border-slate-300 dark:border-slate-700';
+    if (n.includes('yellow')) return 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/30';
+    return 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700';
+  };
+  const getCoffeeQtyColor = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('catuai') || n.includes('catuaí')) return 'text-red-500 dark:text-red-400';
+    if (n.includes('bourbom') || n.includes('bourbon')) return 'text-yellow-600 dark:text-yellow-500';
+    if (n.includes('gourmet')) return 'text-amber-700 dark:text-amber-400';
+    if (n.includes('clara')) return 'text-pink-500 dark:text-pink-400';
+    if (n.includes('intensa')) return 'text-slate-500 dark:text-slate-400';
+    if (n.includes('yellow')) return 'text-orange-500 dark:text-orange-400';
+    return 'text-slate-700 dark:text-white';
+  };
   return (
     <div className="space-y-10 pb-10">
       {/* Global Date Filter */}
@@ -554,7 +577,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
       </AnimatePresence>
 
       {/* SECTION: PLANEJAMENTO (O que tem que ser feito) */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6 xl:items-stretch">
         {/* Planejamento de Torra */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
@@ -564,7 +587,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
               </div>
               <div>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Planejamento de Torra</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Estoque vivo · Verde p/ torrar · Drip=100g Catuáí</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Estoque vivo · Verde p/ torrar · Drip=100g Catuaí</p>
               </div>
             </div>
             <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-900/20 rounded-full">
@@ -627,61 +650,108 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
+        <div className="grid grid-cols-1 gap-6 h-full">
           {/* Demanda de Embalagens */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[220px]">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
-              <div className="flex items-center gap-3">
-                <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-xl">
-                  <Layers className="size-5 text-blue-600 dark:text-blue-400" />
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col flex-1 min-h-0">
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-2">
+                <div className="bg-blue-100 dark:bg-blue-900/30 p-1.5 rounded-xl">
+                  <Layers className="size-4 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">Demanda de Embalagens</h3>
-                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Itens a separar (Fase: Pedidos)</p>
+                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tight">Demanda de Embalagens</h3>
+                  <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Itens a separar (Pedidos)</p>
                 </div>
               </div>
+              {packagingDemand.length > 0 && (
+                <button
+                  onClick={() => setShowSeparationModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 bg-primary hover:bg-primary/90 text-white text-[9px] font-black rounded-lg transition-all"
+                >
+                  <Layers className="size-3" />
+                  Separar
+                </button>
+              )}
             </div>
-            <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {packagingDemand.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 truncate pr-2">{item.name}</span>
-                    <span className="bg-blue-500 text-white text-[9px] font-black px-2 py-0.5 rounded-lg">
-                      {item.qty} UN
-                    </span>
+            <div className="flex-1 p-3 overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-3 gap-1.5">
+                {[...packagingDemand].sort((a, b) => b.qty - a.qty).map((item) => {
+                  const parts = item.name.split(' ');
+                  const grind = item.name.includes('(') ? item.name.match(/\(([^)]+)\)/)?.[1] || '' : '';
+                  const cleanName = item.name.replace(/\s*\([^)]*\)/, '').trim();
+                  const weightMatch = cleanName.match(/(\d+g|\d+kg)/i);
+                  const weight = weightMatch ? weightMatch[0] : '';
+                  const coffeeName = cleanName.replace(weight, '').trim();
+                  return (
+                    <div key={item.name} className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] ${getCoffeeCardStyle(coffeeName || cleanName)}`}>
+                      <span className={`text-lg font-black leading-none ${getCoffeeQtyColor(coffeeName || cleanName)}`}>{item.qty}</span>
+                      <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">un</span>
+                      <span className="text-[10px] font-black text-slate-900 dark:text-white leading-tight">{coffeeName || cleanName} {weight}</span>
+                      {grind && <span className="text-[9px] font-bold text-primary uppercase">{grind}</span>}
+                    </div>
+                  );
+                })}
+                {packagingDemand.length === 0 && (
+                  <div className="col-span-2 py-8 text-center text-slate-400">
+                    <Package className="size-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-xs font-bold">Nenhuma embalagem pendente</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
 
           {/* Na Prateleira */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[220px]">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
-              <div className="flex items-center gap-3">
-                <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-xl">
-                  <Package className="size-5 text-emerald-600 dark:text-emerald-400" />
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col flex-1 min-h-0">
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-2">
+                <div className="bg-emerald-100 dark:bg-emerald-900/30 p-1.5 rounded-xl">
+                  <Package className="size-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">Na Prateleira</h3>
-                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Prontos aguardando caixa</p>
+                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tight">Na Prateleira</h3>
+                  <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Prontos aguardando caixa</p>
                 </div>
               </div>
             </div>
-            <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {onShelf.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between p-2 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-900/20">
-                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 truncate pr-2">{item.name}</span>
-                    <span className="bg-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded-lg">
-                      {item.qty} UN
-                    </span>
+            <div className="flex-1 p-3 overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-3 gap-1.5">
+                {[...onShelf].sort((a, b) => b.qty - a.qty).map((item) => {
+                  const grind = item.name.includes('(') ? item.name.match(/\(([^)]+)\)/)?.[1] || '' : '';
+                  const cleanName = item.name.replace(/\s*\([^)]*\)/, '').trim();
+                  const weightMatch = cleanName.match(/(\d+g|\d+kg)/i);
+                  const weight = weightMatch ? weightMatch[0] : '';
+                  const coffeeName = cleanName.replace(weight, '').trim();
+                  return (
+                    <div key={item.name} className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] ${getCoffeeCardStyle(coffeeName || cleanName)}`}>
+                      <span className={`text-lg font-black leading-none ${getCoffeeQtyColor(coffeeName || cleanName)}`}>{item.qty}</span>
+                      <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">un</span>
+                      <span className="text-[10px] font-black text-slate-900 dark:text-white leading-tight">{coffeeName || cleanName} {weight}</span>
+                      {grind && <span className="text-[9px] font-bold text-primary uppercase">{grind}</span>}
+                    </div>
+                  );
+                })}
+                {onShelf.length === 0 && (
+                  <div className="col-span-2 py-8 text-center text-slate-400">
+                    <Package className="size-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-xs font-bold">Nenhum item na prateleira</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Modal Separar Embalagens */}
+        {showSeparationModal && (
+          <BulkCheckModal
+            selectedOrders={orders.filter(o => o.status === 'pedidos')}
+            onClose={() => setShowSeparationModal(false)}
+            onUpdateOrder={onUpdateOrder!}
+            title="Separar Embalagens"
+            subtitle="Separação em Lote — Dashboard"
+          />
+        )}
       </div>
 
       {/* SECTION: MONITORAMENTO (O que está sendo feito) */}
