@@ -619,7 +619,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                     </div>
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-2">
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Estoque</p>
-                      <input type="number" step="0.1" min="0" value={rawStock || ''} onChange={(e) => updateStock(item.type, parseFloat(e.target.value) || 0)} placeholder="0.0" className="w-full bg-transparent text-base font-black text-center text-primary focus:outline-none border-none p-0" />
+                      <input type="number" step="0.1" min="0" value={rawStock ? Math.round(rawStock * 100) / 100 : ''} onChange={(e) => updateStock(item.type, Math.round((parseFloat(e.target.value) || 0) * 100) / 100)} placeholder="0.0" className="w-full bg-transparent text-base font-black text-center text-primary focus:outline-none border-none p-0" />
                       <p className="text-[9px] text-slate-400 -mt-0.5">kg</p>
                     </div>
                   </div>
@@ -631,10 +631,10 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                     </div>
                   )}
                   <div className="flex gap-2">
-                    <button onClick={() => updateStock(item.type, Math.max(0, rawStock - item.roastOutput))} className="flex-1 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-black transition-all">
+                    <button onClick={() => updateStock(item.type, Math.round(Math.max(0, rawStock - item.roastOutput) * 100) / 100)} className="flex-1 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-black transition-all">
                       − 1 torra ({item.roastOutput}kg)
                     </button>
-                    <button onClick={() => updateStock(item.type, rawStock + item.roastOutput)} className="flex-1 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black transition-all shadow-sm shadow-amber-500/20">
+                    <button onClick={() => updateStock(item.type, Math.round((rawStock + item.roastOutput) * 100) / 100)} className="flex-1 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black transition-all shadow-sm shadow-amber-500/20">
                       + 1 torra ({item.roastOutput}kg)
                     </button>
                   </div>
