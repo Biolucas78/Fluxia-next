@@ -469,7 +469,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     } else {
       msg = `https://www.siterastreio.com.br/${trackingNumber}`;
     }
-    return `https://wa.me/${myNumber}?text=${encodeURIComponent(msg)}`;
+    return `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(msg)}`;
   };
 
   const toggleAllProducts = () => {
