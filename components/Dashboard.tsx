@@ -96,6 +96,16 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         start.setFullYear(now.getFullYear() - 1, 0, 1);
         end.setFullYear(now.getFullYear() - 1, 11, 31);
         break;
+      default:
+        // Mês específico: formato "month_YYYY_MM"
+        if (preset.startsWith('month_')) {
+          const parts = preset.split('_');
+          const year = parseInt(parts[1]);
+          const month = parseInt(parts[2]) - 1; // 0-based
+          start = new Date(year, month, 1);
+          end = new Date(year, month + 1, 0); // último dia do mês
+        }
+        break;
     }
 
     // Format to YYYY-MM-DD
@@ -569,6 +579,49 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
             <option value="last_month">Mês Anterior</option>
             <option value="this_year">Ano Atual</option>
             <option value="last_year">Ano Anterior</option>
+          </select>
+          {/* Select de mês específico */}
+          <select
+            onChange={(e) => { if (e.target.value) handlePresetChange(e.target.value); }}
+            value={datePreset.startsWith('month_') ? datePreset : ''}
+            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium outline-none focus:border-primary transition-all text-slate-700 dark:text-slate-300"
+          >
+            <option value="">Mês específico...</option>
+            <optgroup label="2024">
+              <option value="month_2024_01">Janeiro 2024</option>
+              <option value="month_2024_02">Fevereiro 2024</option>
+              <option value="month_2024_03">Março 2024</option>
+              <option value="month_2024_04">Abril 2024</option>
+              <option value="month_2024_05">Maio 2024</option>
+              <option value="month_2024_06">Junho 2024</option>
+              <option value="month_2024_07">Julho 2024</option>
+              <option value="month_2024_08">Agosto 2024</option>
+              <option value="month_2024_09">Setembro 2024</option>
+              <option value="month_2024_10">Outubro 2024</option>
+              <option value="month_2024_11">Novembro 2024</option>
+              <option value="month_2024_12">Dezembro 2024</option>
+            </optgroup>
+            <optgroup label="2025">
+              <option value="month_2025_01">Janeiro 2025</option>
+              <option value="month_2025_02">Fevereiro 2025</option>
+              <option value="month_2025_03">Março 2025</option>
+              <option value="month_2025_04">Abril 2025</option>
+              <option value="month_2025_05">Maio 2025</option>
+              <option value="month_2025_06">Junho 2025</option>
+              <option value="month_2025_07">Julho 2025</option>
+              <option value="month_2025_08">Agosto 2025</option>
+              <option value="month_2025_09">Setembro 2025</option>
+              <option value="month_2025_10">Outubro 2025</option>
+              <option value="month_2025_11">Novembro 2025</option>
+              <option value="month_2025_12">Dezembro 2025</option>
+            </optgroup>
+            <optgroup label="2026">
+              <option value="month_2026_01">Janeiro 2026</option>
+              <option value="month_2026_02">Fevereiro 2026</option>
+              <option value="month_2026_03">Março 2026</option>
+              <option value="month_2026_04">Abril 2026</option>
+              <option value="month_2026_05">Maio 2026</option>
+            </optgroup>
           </select>
         </div>
         <div className="flex items-center gap-2">
