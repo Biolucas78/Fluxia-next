@@ -203,6 +203,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
 
   // Ranking de cafés produzidos (com normalização completa)
   const coffeeRanking = useMemo(() => {
+    // Apenas os 6 tipos canônicos — Gourmet Personalizado e DripCoffee somam nos pais
     const totals: Record<string, number> = {
       'Catuaí': 0,
       'Torra Clara': 0,
@@ -210,8 +211,6 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
       'Bourbon': 0,
       'Yellow': 0,
       'Gourmet': 0,
-      'Gourmet Personalizado': 0,
-      'DripCoffee': 0,
     };
     const producedStatuses = ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'];
     orders.forEach(order => {
@@ -220,16 +219,21 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         const tipo = normalizeTipo(product.name);
         if (!tipo) return;
         let kg = 0;
+        // DripCoffee → Catuaí (0,1kg por unidade)
         if (tipo === 'DripCoffee') {
           kg = 0.1 * product.quantity;
-        } else {
-          const weightMatch = product.weight.match(/(\d+)\s*(g|kg)/i);
-          if (!weightMatch) return;
-          const value = parseInt(weightMatch[1]);
-          const unit = weightMatch[2].toLowerCase();
-          kg = (unit === 'kg' ? value : value / 1000) * product.quantity;
+          totals['Catuaí'] += kg;
+          return;
         }
-        if (kg > 0 && totals[tipo] !== undefined) totals[tipo] += kg;
+        // Gourmet Personalizado → Gourmet
+        const tipoCanônico = tipo === 'Gourmet Personalizado' ? 'Gourmet' : tipo;
+        if (totals[tipoCanônico] === undefined) return;
+        const weightMatch = product.weight.match(/(\d+)\s*(g|kg)/i);
+        if (!weightMatch) return;
+        const value = parseInt(weightMatch[1]);
+        const unit = weightMatch[2].toLowerCase();
+        kg = (unit === 'kg' ? value : value / 1000) * product.quantity;
+        if (kg > 0) totals[tipoCanônico] += kg;
       });
     });
     const sorted = Object.entries(totals)
