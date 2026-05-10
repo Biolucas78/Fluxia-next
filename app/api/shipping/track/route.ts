@@ -374,7 +374,7 @@ export async function POST(req: Request) {
       if (lowerC.includes('total')) {
         return `https://totalconecta.totalexpress.com.br/rastreamento`;
       }
-      return `https://linkcorreios.com.br/${code}`;
+      return `https://www.siterastreio.com.br/${code}`;
     };
 
     // PRIORIDADE 1: Código formato Correios

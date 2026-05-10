@@ -445,7 +445,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     if (c.includes('total')) {
       return `https://totalconecta.totalexpress.com.br/rastreamento`;
     }
-    return `https://linkcorreios.com.br/${trackingNumber}`;
+    return `https://www.siterastreio.com.br/${trackingNumber}`;
   };
 
   const toggleAllProducts = () => {
