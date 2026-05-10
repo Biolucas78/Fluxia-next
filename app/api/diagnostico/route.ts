@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { adminDb } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,16 +29,10 @@ const calcKg = (weightStr: string, quantity: number): number => {
 
 export async function GET() {
   try {
-    if (!getApps().length) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}');
-      initializeApp({ credential: cert(serviceAccount) });
-    }
-    const db = getFirestore();
     const producedStatuses = ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'];
+    const snap = await adminDb.collection('orders').get();
 
-    const snap = await db.collection('orders').get();
-
-    const perdidos: Record<string, { kg: number; count: number }> = {};
+    const perdidos: Record<string, { kg: number; unidades: number }> = {};
     let totalKgProd = 0;
     let totalKgRanking = 0;
 
@@ -55,9 +48,9 @@ export async function GET() {
         const tipo = normalizeTipo(p.name || '');
         if (!tipo) {
           const key = p.name || '(sem nome)';
-          if (!perdidos[key]) perdidos[key] = { kg: 0, count: 0 };
+          if (!perdidos[key]) perdidos[key] = { kg: 0, unidades: 0 };
           perdidos[key].kg += kgTotal;
-          perdidos[key].count += p.quantity;
+          perdidos[key].unidades += p.quantity;
         } else {
           totalKgRanking += kgTotal;
         }
@@ -65,7 +58,7 @@ export async function GET() {
     });
 
     const perdidosOrdenados = Object.entries(perdidos)
-      .map(([nome, v]) => ({ nome, kg: parseFloat(v.kg.toFixed(3)), unidades: v.count }))
+      .map(([nome, v]) => ({ nome, kg: parseFloat(v.kg.toFixed(3)), unidades: v.unidades }))
       .sort((a, b) => b.kg - a.kg);
 
     return NextResponse.json({
