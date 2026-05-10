@@ -148,60 +148,79 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     };
   }, [orders]);
 
-  // Ranking de cafés produzidos (mesma regra do Produção Total)
+  // ─── Funções de normalização de produtos ───
+  const normalizeTipo = (name: string): string => {
+    const n = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (n.includes('amostra')) return '';
+    if (n.includes('caneca') || n.includes('filtro') || n.includes('copo') || n.includes('kit')) return '';
+    if (n.includes('drip')) return 'DripCoffee';
+    if (n.includes('gourmet') && (n.includes('personal') || n.includes('personaliz'))) return 'Gourmet Personalizado';
+    if (n.includes('gourmet')) return 'Gourmet';
+    if (n.includes('torra clara') || n.includes('torra cla') || (n.includes('clara') && !n.includes('bourbon'))) return 'Torra Clara';
+    if (n.includes('torra inten') || n.includes('intensa') || n.includes('torra inte')) return 'Torra Intensa';
+    if (n.includes('bourbon') || n.includes('bourbom')) return 'Bourbon';
+    if (n.includes('yellow')) return 'Yellow';
+    if (n.includes('catuai') || n.includes('vermelho') || n.includes('selecao') || n.includes('especial')) return 'Catuaí';
+    return '';
+  };
+
+  const normalizePeso = (weight: string): string => {
+    const w = weight.toLowerCase().trim().replace(/\s/g, '');
+    if (w === '40g' || w === '40') return '40g';
+    if (w === '100g' || w === '100') return '100g';
+    if (w === '120g' || w === '120') return '120g';
+    if (w === '250g' || w === '250') return '250g';
+    if (w === '500g' || w === '500') return '500g';
+    if (w === '1kg' || w === '1000g') return '1kg';
+    if (w === '5kg' || w === '5000g') return '5kg';
+    return weight;
+  };
+
+  const normalizeMoagem = (grindType: string): string => {
+    const g = (grindType || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (g.includes('grao') || g === 'graos') return 'Grãos';
+    if (g.includes('moido')) return 'Moído';
+    return '';
+  };
+
+  // Ranking de cafés produzidos (com normalização completa)
   const coffeeRanking = useMemo(() => {
     const totals: Record<string, number> = {
       'Catuaí': 0,
       'Torra Clara': 0,
       'Torra Intensa': 0,
-      'Bourbom': 0,
+      'Bourbon': 0,
       'Yellow': 0,
       'Gourmet': 0,
+      'Gourmet Personalizado': 0,
+      'DripCoffee': 0,
     };
-
     const producedStatuses = ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'];
-
     orders.forEach(order => {
       if (!producedStatuses.includes(order.status)) return;
-
       order.products.forEach(product => {
-        const lowerName = product.name.toLowerCase();
+        const tipo = normalizeTipo(product.name);
+        if (!tipo) return;
         let kg = 0;
-        let type = '';
-
-        if (lowerName.includes('amostra')) return;
-
-        if (lowerName.includes('dripcoffee') || lowerName.includes('drip coffee') || lowerName.includes('drip')) {
+        if (tipo === 'DripCoffee') {
           kg = 0.1 * product.quantity;
-          type = 'Catuaí';
-        } else if (lowerName.includes('caneca') || lowerName.includes('filtro') || lowerName.includes('copo')) {
-          return;
         } else {
-          const weightMatch = product.weight.match(/(d+)(g|kg)/i);
+          const weightMatch = product.weight.match(/(\d+)\s*(g|kg)/i);
           if (!weightMatch) return;
           const value = parseInt(weightMatch[1]);
           const unit = weightMatch[2].toLowerCase();
           kg = (unit === 'kg' ? value : value / 1000) * product.quantity;
-
-          if (lowerName.includes('catuai') || lowerName.includes('catuaí')) type = 'Catuaí';
-          else if (lowerName.includes('clara')) type = 'Torra Clara';
-          else if (lowerName.includes('intensa')) type = 'Torra Intensa';
-          else if (lowerName.includes('bourbom') || lowerName.includes('bourbon')) type = 'Bourbom';
-          else if (lowerName.includes('yellow')) type = 'Yellow';
-          else if (lowerName.includes('gourmet')) type = 'Gourmet';
-          else return;
         }
-
-        if (kg > 0 && type) totals[type] = (totals[type] || 0) + kg;
+        if (kg > 0 && totals[tipo] !== undefined) totals[tipo] += kg;
       });
     });
-
     const sorted = Object.entries(totals)
       .map(([name, kg]) => ({ name, kg }))
+      .filter(item => item.kg > 0)
       .sort((a, b) => b.kg - a.kg);
-
-    const maxKg = sorted[0]?.kg || 1;
-    return sorted.map((item, index) => ({
+    const base = sorted.length > 0 ? sorted : Object.keys(totals).map(name => ({ name, kg: 0 }));
+    const maxKg = base[0]?.kg || 1;
+    return base.map((item, index) => ({
       ...item,
       sacas: item.kg / 48,
       percent: (item.kg / maxKg) * 100,
@@ -209,26 +228,29 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     }));
   }, [orders]);
 
-  // Ranking de embalagens produzidas (volume por produto)
+  // Ranking de embalagens produzidas (volume por produto, normalizado)
   const packagingRanking = useMemo(() => {
     const totals: Record<string, number> = {};
     const producedStatuses = ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'];
-
     orders.forEach(order => {
       if (!producedStatuses.includes(order.status)) return;
       order.products.forEach(product => {
-        const lowerName = product.name.toLowerCase();
-        if (lowerName.includes('caneca') || lowerName.includes('filtro') || lowerName.includes('copo')) return;
-        const grind = product.grindType && product.grindType !== 'N/A' ? ` (${product.grindType})` : '';
-        const key = `${product.name} ${product.weight}${grind}`;
+        const tipo = normalizeTipo(product.name);
+        if (!tipo) return;
+        let key = '';
+        if (tipo === 'DripCoffee') {
+          key = 'DripCoffee 100g Moído';
+        } else {
+          const peso = normalizePeso(product.weight);
+          const moagem = normalizeMoagem(product.grindType || '');
+          key = moagem ? `${tipo} ${peso} ${moagem}` : `${tipo} ${peso}`;
+        }
         totals[key] = (totals[key] || 0) + product.quantity;
       });
     });
-
     const sorted = Object.entries(totals)
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => b.qty - a.qty);
-
     const maxQty = sorted[0]?.qty || 1;
     return sorted.map((item, index) => ({
       ...item,
