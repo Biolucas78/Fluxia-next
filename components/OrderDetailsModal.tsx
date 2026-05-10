@@ -102,6 +102,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [paymentCondition, setPaymentCondition] = useState(order.paymentCondition || 'A vista');
   const [originType, setOriginType] = useState(order.originType || 'CRV');
   const [isSyncingTracking, setIsSyncingTracking] = useState(false);
+  const [showWhatsAppMenu, setShowWhatsAppMenu] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -449,9 +450,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     return `https://www.siterastreio.com.br/${trackingNumber}`;
   };
 
-  const getWhatsAppTrackingLink = (carrier: string | undefined, trackingNumber: string | undefined, phone: string | undefined) => {
-    if (!trackingNumber || !phone) return null;
-    const cleanPhone = phone.replace(/\D/g, '');
+  // Meus dois WhatsApps para envio
+  const MY_WHATSAPP = {
+    pessoal: '5531987988629',
+    business: '5511915889584',
+  };
+
+  const getWhatsAppTrackingLink = (carrier: string | undefined, trackingNumber: string | undefined, clientPhone: string | undefined, myNumber: string) => {
+    if (!trackingNumber || !clientPhone) return null;
+    const cleanPhone = clientPhone.replace(/\D/g, '');
     if (!cleanPhone) return null;
     const c = (carrier || '').toLowerCase();
     let msg = '';
@@ -462,7 +469,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     } else {
       msg = `https://www.siterastreio.com.br/${trackingNumber}`;
     }
-    return `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(msg)}`;
+    return `https://wa.me/${myNumber}?text=${encodeURIComponent(msg)}`;
   };
 
   const toggleAllProducts = () => {
@@ -1640,17 +1647,44 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               >
                                 <ExternalLink className="size-3" />
                               </a>
-                              {getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone) && (
-                                <a
-                                  href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone)!}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                              <div className="relative">
+                                <button
+                                  onClick={() => {
+                                    if (!order.phone) {
+                                      toast.error('Telefone do cliente não cadastrado. Edite o cliente e adicione o telefone.');
+                                      return;
+                                    }
+                                    setShowWhatsAppMenu(prev => !prev);
+                                  }}
                                   className="p-1 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded text-emerald-500"
                                   title="Enviar rastreio por WhatsApp"
                                 >
                                   <MessageCircle className="size-3" />
-                                </a>
-                              )}
+                                </button>
+                                {showWhatsAppMenu && order.phone && (
+                                  <div className="absolute right-0 top-6 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-2 flex flex-col gap-1 min-w-[140px]">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase px-2 pb-1">Enviar de:</p>
+                                    <a
+                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, MY_WHATSAPP.pessoal)!}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => setShowWhatsAppMenu(false)}
+                                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold"
+                                    >
+                                      <MessageCircle className="size-3" /> Pessoal
+                                    </a>
+                                    <a
+                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, MY_WHATSAPP.business)!}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => setShowWhatsAppMenu(false)}
+                                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-bold"
+                                    >
+                                      <MessageCircle className="size-3" /> Business
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
