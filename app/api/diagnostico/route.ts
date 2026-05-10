@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,7 @@ export async function GET() {
     let totalKgProd = 0;
     let totalKgRanking = 0;
 
-    snap.forEach(doc => {
+    snap.forEach((doc: QueryDocumentSnapshot) => {
       const order = doc.data();
       if (!producedStatuses.includes(order.status)) return;
       if (order.isDeleted) return;
