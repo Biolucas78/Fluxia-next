@@ -34,7 +34,8 @@ import {
   RefreshCw,
   AlertTriangle,
   AlertCircle,
-  FastForward
+  FastForward,
+  MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProductItem, ShippingOption } from '@/lib/types';
@@ -446,6 +447,22 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       return `https://totalconecta.totalexpress.com.br/rastreamento`;
     }
     return `https://www.siterastreio.com.br/${trackingNumber}`;
+  };
+
+  const getWhatsAppTrackingLink = (carrier: string | undefined, trackingNumber: string | undefined, phone: string | undefined) => {
+    if (!trackingNumber || !phone) return null;
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone) return null;
+    const c = (carrier || '').toLowerCase();
+    let msg = '';
+    if (c.includes('melhor') || c.includes('envio')) {
+      msg = `https://melhorrastreio.com.br/rastreio/${trackingNumber}`;
+    } else if (c.includes('total')) {
+      msg = `https://totalconecta.totalexpress.com.br/rastreamento\nCódigo: ${trackingNumber}`;
+    } else {
+      msg = `https://www.siterastreio.com.br/${trackingNumber}`;
+    }
+    return `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(msg)}`;
   };
 
   const toggleAllProducts = () => {
@@ -1619,9 +1636,21 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-primary"
+                                title="Abrir rastreio"
                               >
                                 <ExternalLink className="size-3" />
                               </a>
+                              {getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone) && (
+                                <a
+                                  href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone)!}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded text-emerald-500"
+                                  title="Enviar rastreio por WhatsApp"
+                                >
+                                  <MessageCircle className="size-3" />
+                                </a>
+                              )}
                             </div>
                           </div>
                         </div>
