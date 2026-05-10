@@ -309,7 +309,7 @@ export default function RecorrenciaPage() {
     const msg = (messages as any)[selectedMessage].replace('{Nome}', firstName);
     const encoded = encodeURIComponent(msg);
     if (tipo === 'business') {
-      return `https://b.whatsapp.com/send?phone=${phone}&text=${encoded}`;
+      return `intent://send?phone=${phone}&text=${encoded}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
     }
     return `https://wa.me/${phone}?text=${encoded}`;
   };
