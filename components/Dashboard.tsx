@@ -415,51 +415,36 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   }, [orders]);
 
   const geographyData = useMemo(() => {
-    const states: Record<string, { kg: number; units: number; clients: Set<string>; orders: number }> = {};
-    const cities: Record<string, { kg: number; units: number; clients: Set<string>; orders: number }> = {};
-
+    const states: Record<string, { kg: number; orders: number }> = {};
+    const cities: Record<string, { kg: number; orders: number }> = {};
     orders.forEach(order => {
+      if (order.status !== 'entregue' && !order.archived) return;
       const { city, state } = extractCityState(order.address || '');
-      
       let kg = 0;
-      let units = 0;
       order.products.forEach(p => {
         kg += calculateWeightInKg(p.weight, p.quantity);
-        units += p.quantity;
       });
-
       if (state !== 'N/A') {
-        if (!states[state]) states[state] = { kg: 0, units: 0, clients: new Set(), orders: 0 };
+        if (!states[state]) states[state] = { kg: 0, orders: 0 };
         states[state].kg += kg;
-        states[state].units += units;
         states[state].orders += 1;
-        states[state].clients.add(order.clientName);
       }
-      
       if (city !== 'N/A') {
         const cityKey = `${city} (${state})`;
-        if (!cities[cityKey]) cities[cityKey] = { kg: 0, units: 0, clients: new Set(), orders: 0 };
+        if (!cities[cityKey]) cities[cityKey] = { kg: 0, orders: 0 };
         cities[cityKey].kg += kg;
-        cities[cityKey].units += units;
         cities[cityKey].orders += 1;
-        cities[cityKey].clients.add(order.clientName);
       }
     });
-
-    const getVal = (data: { kg: number; units: number; clients: Set<string>; orders: number }) => {
-      if (chartMetric === 'kg') return data.kg;
-      if (chartMetric === 'units') return data.units;
-      if (chartMetric === 'clients') return data.clients.size;
-      return data.orders;
-    };
-
-    const sortedStates = Object.entries(states).map(([name, data]) => ({ name, value: getVal(data) }))
-      .sort((a, b) => b.value - a.value);
-    const sortedCities = Object.entries(cities).map(([name, data]) => ({ name, value: getVal(data) }))
-      .sort((a, b) => b.value - a.value).slice(0, 5);
-
+    const sortedStates = Object.entries(states)
+      .map(([name, data]) => ({ name, kg: data.kg, orders: data.orders }))
+      .sort((a, b) => b.orders - a.orders);
+    const sortedCities = Object.entries(cities)
+      .map(([name, data]) => ({ name, kg: data.kg, orders: data.orders }))
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 6);
     return { states: sortedStates, cities: sortedCities };
-  }, [orders, chartMetric]);
+  }, [orders]);
 
   const shippedOrders = useMemo(() => {
     return orders.filter(o => o.status === 'enviado');
@@ -1152,36 +1137,42 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         </div>
 
         {/* 🌍 Geografia */}
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm h-[500px] overflow-y-auto custom-scrollbar">
-          <div className="flex items-center gap-3 mb-6">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm h-[500px] flex flex-col">
+          <div className="flex items-center gap-3 mb-4 flex-shrink-0">
             <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-xl">
               <Globe className="size-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Geografia</h3>
           </div>
-          <div className="space-y-6">
+          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-5">
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Principais Estados</p>
-              <div className="space-y-2">
-                {geographyData.states.slice(0, 5).map(state => (
-                  <div key={state.name} className="flex items-center justify-between">
+              <div className="grid grid-cols-3 mb-2">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Pedidos</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Kg</p>
+              </div>
+              <div className="space-y-1.5">
+                {geographyData.states.slice(0, 8).map(state => (
+                  <div key={state.name} className="grid grid-cols-3 items-center py-1.5 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{state.name}</span>
-                    <span className="text-xs font-black text-primary">
-                      {chartMetric === 'kg' ? `${state.value.toFixed(2)} kg` : chartMetric === 'units' ? `${state.value} unid` : chartMetric === 'clients' ? `${state.value} cls` : `${state.value} ped`}
-                    </span>
+                    <span className="text-xs font-black text-primary text-center">{state.orders} ped</span>
+                    <span className="text-xs font-black text-emerald-500 text-right">{state.kg.toFixed(2)} kg</span>
                   </div>
                 ))}
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Principais Cidades</p>
-              <div className="space-y-2">
+              <div className="grid grid-cols-3 mb-2 border-t border-slate-100 dark:border-slate-800 pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cidade</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Pedidos</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Kg</p>
+              </div>
+              <div className="space-y-1.5">
                 {geographyData.cities.map(city => (
-                  <div key={city.name} className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate pr-2">{city.name}</span>
-                    <span className="text-xs font-black text-emerald-500">
-                      {chartMetric === 'kg' ? `${city.value.toFixed(2)} kg` : chartMetric === 'units' ? `${city.value} unid` : chartMetric === 'clients' ? `${city.value} cls` : `${city.value} ped`}
-                    </span>
+                  <div key={city.name} className="grid grid-cols-3 items-center py-1.5 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{city.name}</span>
+                    <span className="text-xs font-black text-primary text-center">{city.orders} ped</span>
+                    <span className="text-xs font-black text-emerald-500 text-right">{city.kg.toFixed(2)} kg</span>
                   </div>
                 ))}
               </div>
