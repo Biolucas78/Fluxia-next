@@ -469,7 +469,11 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     } else {
       msg = `https://www.siterastreio.com.br/${trackingNumber}`;
     }
-    return `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(msg)}`;
+    const encoded = encodeURIComponent(msg);
+    if (tipo === 'business') {
+      return `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encoded}`;
+    }
+    return `https://wa.me/55${cleanPhone}?text=${encoded}`;
   };
 
   const toggleAllProducts = () => {
@@ -1665,7 +1669,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                   <div className="absolute right-0 top-6 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-2 flex flex-col gap-1 min-w-[140px]">
                                     <p className="text-[9px] font-black text-slate-400 uppercase px-2 pb-1">Enviar de:</p>
                                     <a
-                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, MY_WHATSAPP.pessoal)!}
+                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, 'pessoal')!}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       onClick={() => setShowWhatsAppMenu(false)}
@@ -1674,7 +1678,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                       <MessageCircle className="size-3" /> Pessoal
                                     </a>
                                     <a
-                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, MY_WHATSAPP.business)!}
+                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, 'business')!}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       onClick={() => setShowWhatsAppMenu(false)}

@@ -298,19 +298,20 @@ export default function RecorrenciaPage() {
     setClientToRemove(selectedClient);
   };
 
-  const generateWhatsappUrl = (myNumber: string) => {
+  const generateWhatsappUrl = (tipo: 'pessoal' | 'business') => {
     if (!selectedClient) return '#';
     let phone = editedPhone || selectedClient.phone;
     if (!phone) return '#';
-    
     phone = phone.replace(/\D/g, '');
     if (!phone.startsWith('55')) phone = '55' + phone;
-
     const nameToUse = editedContactName || editedName;
     const firstName = nameToUse.split(' ')[0] || 'Cliente';
     const msg = (messages as any)[selectedMessage].replace('{Nome}', firstName);
-    
-    return `https://wa.me/${myNumber}?text=${encodeURIComponent(msg)}`;
+    const encoded = encodeURIComponent(msg);
+    if (tipo === 'business') {
+      return `https://api.whatsapp.com/send?phone=${phone}&text=${encoded}`;
+    }
+    return `https://wa.me/${phone}?text=${encoded}`;
   };
 
   if (userLoading) {
@@ -631,7 +632,7 @@ export default function RecorrenciaPage() {
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Iniciar conversa via</p>
                   <div className="grid grid-cols-2 gap-3">
                     <a
-                      href={generateWhatsappUrl('5531987988629')}
+                      href={generateWhatsappUrl('pessoal')}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-colors shadow-lg shadow-emerald-500/20 text-center"
@@ -641,7 +642,7 @@ export default function RecorrenciaPage() {
                       <span className="text-[10px] opacity-75">DDD 31</span>
                     </a>
                     <a
-                      href={generateWhatsappUrl('5511915889584')}
+                      href={generateWhatsappUrl('business')}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-colors shadow-lg shadow-emerald-600/20 text-center"
