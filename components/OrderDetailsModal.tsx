@@ -471,7 +471,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     }
     const encoded = encodeURIComponent(msg);
     if (tipo === 'business') {
-      return `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encoded}`;
+      return `https://b.whatsapp.com/send?phone=55${cleanPhone}&text=${encoded}`;
     }
     return `https://wa.me/55${cleanPhone}?text=${encoded}`;
   };
