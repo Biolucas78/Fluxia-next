@@ -456,7 +456,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     business: '5511915889584',
   };
 
-  const getWhatsAppTrackingLink = (carrier: string | undefined, trackingNumber: string | undefined, clientPhone: string | undefined, myNumber: string) => {
+  const getWhatsAppTrackingLink = (carrier: string | undefined, trackingNumber: string | undefined, clientPhone: string | undefined, tipo: 'pessoal' | 'business') => {
     if (!trackingNumber || !clientPhone) return null;
     const cleanPhone = clientPhone.replace(/\D/g, '');
     if (!cleanPhone) return null;
