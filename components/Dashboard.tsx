@@ -148,6 +148,95 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     };
   }, [orders]);
 
+  // Ranking de cafés produzidos (mesma regra do Produção Total)
+  const coffeeRanking = useMemo(() => {
+    const totals: Record<string, number> = {
+      'Catuaí': 0,
+      'Torra Clara': 0,
+      'Torra Intensa': 0,
+      'Bourbom': 0,
+      'Yellow': 0,
+      'Gourmet': 0,
+    };
+
+    const producedStatuses = ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'];
+
+    orders.forEach(order => {
+      if (!producedStatuses.includes(order.status)) return;
+
+      order.products.forEach(product => {
+        const lowerName = product.name.toLowerCase();
+        let kg = 0;
+        let type = '';
+
+        if (lowerName.includes('amostra')) return;
+
+        if (lowerName.includes('dripcoffee') || lowerName.includes('drip coffee') || lowerName.includes('drip')) {
+          kg = 0.1 * product.quantity;
+          type = 'Catuaí';
+        } else if (lowerName.includes('caneca') || lowerName.includes('filtro') || lowerName.includes('copo')) {
+          return;
+        } else {
+          const weightMatch = product.weight.match(/(d+)(g|kg)/i);
+          if (!weightMatch) return;
+          const value = parseInt(weightMatch[1]);
+          const unit = weightMatch[2].toLowerCase();
+          kg = (unit === 'kg' ? value : value / 1000) * product.quantity;
+
+          if (lowerName.includes('catuai') || lowerName.includes('catuaí')) type = 'Catuaí';
+          else if (lowerName.includes('clara')) type = 'Torra Clara';
+          else if (lowerName.includes('intensa')) type = 'Torra Intensa';
+          else if (lowerName.includes('bourbom') || lowerName.includes('bourbon')) type = 'Bourbom';
+          else if (lowerName.includes('yellow')) type = 'Yellow';
+          else if (lowerName.includes('gourmet')) type = 'Gourmet';
+          else return;
+        }
+
+        if (kg > 0 && type) totals[type] = (totals[type] || 0) + kg;
+      });
+    });
+
+    const sorted = Object.entries(totals)
+      .map(([name, kg]) => ({ name, kg }))
+      .sort((a, b) => b.kg - a.kg);
+
+    const maxKg = sorted[0]?.kg || 1;
+    return sorted.map((item, index) => ({
+      ...item,
+      sacas: item.kg / 48,
+      percent: (item.kg / maxKg) * 100,
+      rank: index + 1,
+    }));
+  }, [orders]);
+
+  // Ranking de embalagens produzidas (volume por produto)
+  const packagingRanking = useMemo(() => {
+    const totals: Record<string, number> = {};
+    const producedStatuses = ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'];
+
+    orders.forEach(order => {
+      if (!producedStatuses.includes(order.status)) return;
+      order.products.forEach(product => {
+        const lowerName = product.name.toLowerCase();
+        if (lowerName.includes('caneca') || lowerName.includes('filtro') || lowerName.includes('copo')) return;
+        const grind = product.grindType && product.grindType !== 'N/A' ? ` (${product.grindType})` : '';
+        const key = `${product.name} ${product.weight}${grind}`;
+        totals[key] = (totals[key] || 0) + product.quantity;
+      });
+    });
+
+    const sorted = Object.entries(totals)
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => b.qty - a.qty);
+
+    const maxQty = sorted[0]?.qty || 1;
+    return sorted.map((item, index) => ({
+      ...item,
+      percent: (item.qty / maxQty) * 100,
+      rank: index + 1,
+    }));
+  }, [orders]);
+
   const { stocks: coffeeStocks, updateStock } = useInventory();
 
   const ROAST_LOTS = {
@@ -844,8 +933,8 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         </div>
       </div>
 
-      {/* SECTION: RESULTADOS (Dados de Performance) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
+      {/* LINHA 1: 3 cards de métricas */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
         {/* Produção Total */}
         <div className="flex flex-col gap-2 rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Produção Total</p>
@@ -887,10 +976,126 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         </div>
       </div>
 
-      {/* Histórico e Geografia */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* LINHA 2: Ranking Cafés | Volume Embalagens | Geografia — mesma altura */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
+        {/* 🏆 Ranking de Cafés */}
+        <div className="flex flex-col gap-3 rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">🏆 Ranking de Cafés</p>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">kg · sacas</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            {coffeeRanking.map((item) => {
+              const color =
+                item.rank <= 2
+                  ? { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20', rankBg: 'bg-emerald-500' }
+                  : item.rank <= 4
+                  ? { bar: 'bg-amber-400', text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20', rankBg: 'bg-amber-400' }
+                  : { bar: 'bg-rose-400', text: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/20', rankBg: 'bg-rose-400' };
+              return (
+                <div key={item.name} className={`flex flex-col gap-1.5 p-3 rounded-2xl ${color.bg}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`${color.rankBg} text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0`}>
+                        {item.rank}
+                      </span>
+                      <span className={`text-xs font-black ${color.text}`}>{item.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-slate-900 dark:text-slate-100 text-xs font-black">
+                        {item.kg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg
+                      </p>
+                      <p className={`text-[10px] font-bold ${color.text}`}>
+                        ☕ {item.sacas.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} sacas
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-full bg-white/50 dark:bg-slate-700/50 rounded-full h-1">
+                    <div className={`${color.bar} h-1 rounded-full transition-all duration-500`} style={{ width: `${item.percent}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 📦 Volume por Embalagem */}
+        <div className="flex flex-col rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden" style={{ maxHeight: '420px' }}>
+          <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">📦 Volume por Embalagem</p>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">unidades</p>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+            <div className="grid grid-cols-2 gap-2">
+              {packagingRanking.map((item) => {
+                const color =
+                  item.rank <= Math.ceil(packagingRanking.length * 0.33)
+                    ? { bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-700 dark:text-emerald-300', badge: 'bg-emerald-500' }
+                    : item.rank <= Math.ceil(packagingRanking.length * 0.66)
+                    ? { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-300', badge: 'bg-amber-400' }
+                    : { bg: 'bg-rose-50 dark:bg-rose-900/20', text: 'text-rose-700 dark:text-rose-300', badge: 'bg-rose-400' };
+                return (
+                  <div key={item.name} className={`flex flex-col gap-1 p-2.5 rounded-xl ${color.bg}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-wide ${color.text} leading-tight`}>{item.name}</p>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <div className="flex-1 bg-white/60 dark:bg-slate-700/40 rounded-full h-1 mr-2">
+                        <div className={`${color.badge} h-1 rounded-full`} style={{ width: `${item.percent}%` }} />
+                      </div>
+                      <span className={`${color.badge} text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg flex-shrink-0`}>
+                        {item.qty}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* 🌍 Geografia */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-xl">
+              <Globe className="size-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Geografia</h3>
+          </div>
+          <div className="space-y-6">
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Principais Estados</p>
+              <div className="space-y-2">
+                {geographyData.states.slice(0, 5).map(state => (
+                  <div key={state.name} className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{state.name}</span>
+                    <span className="text-xs font-black text-primary">
+                      {chartMetric === 'kg' ? `${state.value.toFixed(2)} kg` : chartMetric === 'units' ? `${state.value} unid` : chartMetric === 'clients' ? `${state.value} cls` : `${state.value} ped`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Principais Cidades</p>
+              <div className="space-y-2">
+                {geographyData.cities.map(city => (
+                  <div key={city.name} className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate pr-2">{city.name}</span>
+                    <span className="text-xs font-black text-emerald-500">
+                      {chartMetric === 'kg' ? `${city.value.toFixed(2)} kg` : chartMetric === 'units' ? `${city.value} unid` : chartMetric === 'clients' ? `${city.value} cls` : `${city.value} ped`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* LINHA 3: Histórico de Performance — largura total */}
+      <div className="grid grid-cols-1 gap-6">
         {/* Histórico Chart */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
             <div>
               <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Histórico de Performance</h3>
@@ -939,44 +1144,6 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
           </div>
         </div>
 
-        {/* Geografia de Vendas */}
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-xl">
-              <Globe className="size-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Geografia</h3>
-          </div>
-          
-          <div className="space-y-6">
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Principais Estados</p>
-              <div className="space-y-2">
-                {geographyData.states.slice(0, 5).map(state => (
-                  <div key={state.name} className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{state.name}</span>
-                    <span className="text-xs font-black text-primary">
-                      {chartMetric === 'kg' ? `${state.value.toFixed(2)} kg` : chartMetric === 'units' ? `${state.value} unid` : chartMetric === 'clients' ? `${state.value} cls` : `${state.value} ped`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Principais Cidades</p>
-              <div className="space-y-2">
-                {geographyData.cities.map(city => (
-                  <div key={city.name} className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate pr-2">{city.name}</span>
-                    <span className="text-xs font-black text-emerald-500">
-                      {chartMetric === 'kg' ? `${city.value.toFixed(2)} kg` : chartMetric === 'units' ? `${city.value} unid` : chartMetric === 'clients' ? `${city.value} cls` : `${city.value} ped`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
