@@ -1078,7 +1078,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
         {/* 🏆 Ranking de Cafés */}
-        <div className="flex flex-col gap-3 rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm h-[480px]">
+        <div className="flex flex-col gap-3 rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm h-[500px]">
           <div className="flex items-center justify-between">
             <p className="text-slate-500 text-xs font-black uppercase tracking-widest">🏆 Ranking de Cafés</p>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">kg · sacas</p>
@@ -1119,7 +1119,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         </div>
 
         {/* 📦 Volume por Embalagem */}
-        <div className="flex flex-col rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden h-[480px]">
+        <div className="flex flex-col rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden h-[500px]">
           <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
             <p className="text-slate-500 text-xs font-black uppercase tracking-widest">📦 Volume por Embalagem</p>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">unidades</p>
@@ -1152,7 +1152,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         </div>
 
         {/* 🌍 Geografia */}
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm h-[480px] overflow-y-auto custom-scrollbar">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm h-[500px] overflow-y-auto custom-scrollbar">
           <div className="flex items-center gap-3 mb-6">
             <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-xl">
               <Globe className="size-5 text-emerald-600 dark:text-emerald-400" />
