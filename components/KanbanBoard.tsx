@@ -179,52 +179,6 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
     setActiveOrder(null);
   };
 
-  useEffect(() => {
-    const syncAllTracking = async () => {
-      const ordersToSync = orders.filter(o => o.status === 'enviado' && o.trackingNumber);
-      if (ordersToSync.length === 0) return;
-
-      for (const order of ordersToSync) {
-        // Skip if updated in the last hour
-        const lastUpdate = order.lastTrackingUpdate ? new Date(order.lastTrackingUpdate).getTime() : 0;
-        const now = new Date().getTime();
-        if (now - lastUpdate < 3600000) continue; 
-
-        try {
-          const response = await fetch('/api/shipping/track', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              trackingNumber: order.trackingNumber, 
-              shipmentId: order.shipmentId,
-              shippingProvider: order.shippingProvider,
-              carrier: order.carrier 
-            })
-          });
-          if (response.ok) {
-            const data = await response.json();
-            const updatedOrder = {
-              ...order,
-              trackingStatus: data.status,
-              trackingHistory: data.history,
-              deliveryDate: data.deliveryDate,
-              lastTrackingUpdate: new Date().toISOString()
-            };
-            if (data.delivered && order.status !== 'entregue') {
-              updatedOrder.status = 'entregue';
-            }
-            onUpdateOrder(updatedOrder);
-          }
-        } catch (e) {
-          console.error('Error syncing tracking for order', order.id, e);
-        }
-      }
-    };
-
-    syncAllTracking();
-    const interval = setInterval(syncAllTracking, 3600000); // Every hour
-    return () => clearInterval(interval);
-  }, [orders, onUpdateOrder]);
 
   const handleManualSyncAll = async () => {
     setIsSyncingAll(true);
