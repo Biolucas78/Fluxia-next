@@ -129,18 +129,18 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   }, [initialOrders, globalStartDate, globalEndDate]);
 
   const filteredStats = useMemo(() => {
+    const producedStatuses = ['embalagens_prontas', 'caixa_montada', 'enviado', 'entregue'];
     let totalKg = 0;
     let totalUnits = 0;
     const clients = new Set<string>();
-
     orders.forEach(o => {
+      if (!producedStatuses.includes(o.status)) return;
       o.products.forEach(p => {
         totalKg += calculateWeightInKg(p.weight, p.quantity);
         totalUnits += p.quantity;
       });
       clients.add(o.clientName);
     });
-
     return {
       totalKg,
       totalUnits,
