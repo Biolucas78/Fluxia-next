@@ -143,18 +143,26 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     let totalKg = 0;
     let totalUnits = 0;
     const clients = new Set<string>();
+    let totalOrders = 0;
     orders.forEach(o => {
-      if (!producedStatuses.includes(o.status)) return;
-      o.products.forEach(p => {
-        totalKg += calculateWeightInKg(p.weight, p.quantity);
-        totalUnits += p.quantity;
-      });
-      clients.add(o.clientName);
+      // Kg e unidades: apenas fases de produção concluída
+      if (producedStatuses.includes(o.status)) {
+        o.products.forEach(p => {
+          totalKg += calculateWeightInKg(p.weight, p.quantity);
+          totalUnits += p.quantity;
+        });
+      }
+      // Clientes e pedidos: entregue ou arquivado
+      if (o.status === 'entregue' || o.archived) {
+        clients.add(o.clientName);
+        totalOrders += 1;
+      }
     });
     return {
       totalKg,
       totalUnits,
-      totalClients: clients.size
+      totalClients: clients.size,
+      totalOrders,
     };
   }, [orders]);
 
@@ -1040,12 +1048,23 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         {/* Clientes Atendidos */}
         <div className="flex flex-col gap-2 rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Clientes Atendidos</p>
-          <p className="text-slate-900 dark:text-slate-100 tracking-tight text-4xl font-black">
-            {filteredStats.totalClients}
-          </p>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-slate-900 dark:text-slate-100 tracking-tight text-4xl font-black">
+                {filteredStats.totalClients}
+              </p>
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">clientes únicos</p>
+            </div>
+            <div className="text-right">
+              <p className="text-primary tracking-tight text-4xl font-black">
+                {filteredStats.totalOrders}
+              </p>
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">pedidos entregues</p>
+            </div>
+          </div>
           {(globalStartDate || globalEndDate || datePreset !== 'custom') && (
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
-              Total Geral: {stats.totalClients}
+              Total Geral: {stats.totalClients} clientes
             </p>
           )}
         </div>
