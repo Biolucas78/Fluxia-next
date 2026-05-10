@@ -419,7 +419,17 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     const cities: Record<string, { kg: number; orders: number }> = {};
     orders.forEach(order => {
       if (order.status !== 'entregue' && !order.archived) return;
-      const { city, state } = extractCityState(order.address || '');
+      // Prioriza addressDetails estruturado; fallback para extração do texto
+      let city = 'N/A';
+      let state = 'N/A';
+      if (order.addressDetails?.city && order.addressDetails?.state) {
+        city = order.addressDetails.city.trim();
+        state = order.addressDetails.state.trim();
+      } else {
+        const extracted = extractCityState(order.address || '');
+        city = extracted.city;
+        state = extracted.state;
+      }
       let kg = 0;
       order.products.forEach(p => {
         kg += calculateWeightInKg(p.weight, p.quantity);
