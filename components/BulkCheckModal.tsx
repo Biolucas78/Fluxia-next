@@ -125,6 +125,7 @@ export default function BulkCheckModal({
           onUpdateOrder({
             ...order,
             status: nextStatus,
+            products: order.products.map(p => ({ ...p, checked: false })),
             statusHistory: [
               ...(order.statusHistory || []),
               { status: nextStatus, timestamp: new Date().toISOString() }
