@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive, Trash2, X } from 'lucide-react';
+import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive, Trash2, X, Sun, Moon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@/lib/hooks';
@@ -17,6 +17,24 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
   const router = useRouter();
   const { userProfile, loading, viewMode, changeViewMode, effectiveRole } = useUser();
   const [isOpenMobile, setIsOpenMobile] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('fluxia-theme');
+    setIsDark(saved === 'dark');
+  }, []);
+
+  const toggleTheme = () => {
+    const newDark = !isDark;
+    setIsDark(newDark);
+    if (newDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('fluxia-theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('fluxia-theme', 'light');
+    }
+  };
 
   useEffect(() => {
     const handleToggle = () => setIsOpenMobile((prev) => !prev);
@@ -105,6 +123,22 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
         })}
       </nav>
 
+      <div className="px-4 pb-3 pt-2">
+        <button
+          onClick={toggleTheme}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+        >
+          <div className="flex items-center gap-2">
+            {isDark ? <Moon className="size-4 text-primary" /> : <Sun className="size-4 text-amber-500" />}
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+              {isDark ? 'Modo Escuro' : 'Modo Claro'}
+            </span>
+          </div>
+          <div className={`w-8 h-4 rounded-full transition-all ${isDark ? 'bg-primary' : 'bg-slate-300'}`}>
+            <div className={`size-4 rounded-full bg-white shadow transition-all ${isDark ? 'translate-x-4' : 'translate-x-0'}`} />
+          </div>
+        </button>
+      </div>
       <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
         <div className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-100 dark:border-slate-800">
           <Image 
