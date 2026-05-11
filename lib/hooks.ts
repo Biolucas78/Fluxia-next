@@ -244,48 +244,10 @@ export function useOrders() {
 
   const handleUpdateOrder = async (updatedOrder: Order) => {
     try {
-      const oldOrder = orders.find(o => o.id === updatedOrder.id);
       const orderRef = doc(db, getCollectionName(), updatedOrder.id);
       const sanitizedOrder = sanitizeForFirestore(updatedOrder);
       const { id, ...updateData } = sanitizedOrder;
       await updateDoc(orderRef, updateData);
-
-      if (oldOrder) {
-        const isDev = process.env.NODE_ENV === 'development' || window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
-        const docId = isDev ? 'inventory_dev' : 'inventory_prod';
-        const ref = doc(db, 'settings', docId);
-        const docSnap = await getDoc(ref);
-        let currentStocks = docSnap.exists() ? docSnap.data().stocks || {} : {};
-        let stocksChanged = false;
-
-        // Só mexe no estoque se o card está em embalagens_separadas
-        // Marcar = café foi colocado na embalagem (deduz estoque)
-        // Desmarcar = café devolvido (devolve estoque)
-        // Outras fases não afetam o estoque
-        if (updatedOrder.status === 'embalagens_separadas') {
-          updatedOrder.products.forEach(newP => {
-            const oldP = oldOrder.products.find(p => p.id === newP.id);
-            if (oldP && newP.checked !== oldP.checked) {
-              let weight = calculateWeightInKg(newP.weight, newP.quantity);
-              let type = newP.name;
-              if (type.toLowerCase().includes('dripcoffee')) {
-                weight = 0.1 * newP.quantity;
-                type = 'Catuaí';
-              }
-              if (newP.checked) {
-                currentStocks[type] = Math.max(0, (currentStocks[type] || 0) - weight);
-              } else {
-                currentStocks[type] = (currentStocks[type] || 0) + weight;
-              }
-              stocksChanged = true;
-            }
-          });
-        }
-
-        if (stocksChanged) {
-          await setDoc(ref, { stocks: currentStocks }, { merge: true });
-        }
-      }
     } catch (e) {
       console.error("Failed to update in Firestore", e);
     }
