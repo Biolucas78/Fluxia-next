@@ -361,6 +361,10 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         // Auto move to delivered if status is delivered
         if (data.delivered && order.status !== 'entregue') {
           updatedOrder.status = 'entregue';
+          updatedOrder.statusHistory = [
+            ...(order.statusHistory || []),
+            { status: 'entregue', timestamp: data.deliveryDate || new Date().toISOString() }
+          ];
         }
 
         onUpdateOrder(updatedOrder);
