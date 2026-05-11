@@ -797,11 +797,17 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                       <p className="text-[9px] text-slate-400 -mt-0.5">kg</p>
                     </div>
                   </div>
-                  {item.greenNeeded > 0 && (
+                  {item.greenNeeded > 0 ? (
                     <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-2 text-center border border-amber-100 dark:border-amber-800/50">
                       <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Verde p/ Torrar</p>
                       <p className="text-lg font-black text-amber-700 dark:text-amber-400">{item.greenNeeded.toFixed(1)}<span className="text-[10px] font-bold ml-0.5">kg</span></p>
                       <p className="text-[9px] text-amber-600 mt-0.5">~{torras} torra{torras !== 1 ? 's' : ''} de {item.greenInput}kg verde</p>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-2 text-center border border-emerald-100 dark:border-emerald-800/50">
+                      <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Sobra no Estoque</p>
+                      <p className="text-lg font-black text-emerald-700 dark:text-emerald-400">{(item.stockKg - item.neededKg).toFixed(1)}<span className="text-[10px] font-bold ml-0.5">kg</span></p>
+                      <p className="text-[9px] text-emerald-600 mt-0.5">disponivel para novos pedidos</p>
                     </div>
                   )}
                   <div className="flex gap-2">
