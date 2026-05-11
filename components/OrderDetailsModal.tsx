@@ -733,6 +733,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
               currency: 'BRL',
               deliveryTime: q.deliveryTime,
               error: null,
+              company: { name: q.name, picture: "https://totalexpress.com.br/images/logo.png" },
             } as any));
           }
         } catch (_) {}
@@ -1874,8 +1875,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 >
                                   <div className="size-12 rounded-xl bg-white p-2 border border-slate-100 flex items-center justify-center relative overflow-hidden shrink-0">
                                     <Image 
-                                      src={quote.company.picture} 
-                                      alt={quote.company.name} 
+                                      src={quote.company?.picture || ""} 
+                                      alt={quote.company?.name || ""} 
                                       fill
                                       className="object-contain p-2"
                                       referrerPolicy="no-referrer"

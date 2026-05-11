@@ -193,7 +193,7 @@ export async function POST(req: Request) {
     }
 
     // Peso taxável
-    const pesoTaxavelKg = Math.max(pesoRealKg, pesoCubadoKg);
+    const pesoTaxavelKg = pesoRealKg;
 
     const capital = isCapital(cepNum, uf);
     const tabela = capital ? TABELA_CAPITAL[uf] : TABELA_INTERIOR[uf];
