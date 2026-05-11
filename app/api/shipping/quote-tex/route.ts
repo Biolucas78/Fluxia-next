@@ -222,7 +222,7 @@ export async function POST(req: Request) {
         delivery_time: capital ? 4 : 6,
         company: {
           name: 'Total Express',
-          picture: 'https://fluxia-next.vercel.app/images/total-express-logo.png',
+          picture: '/images/total-express-logo.png',
         },
         pesoTaxavel: parseFloat(pesoTaxavelKg.toFixed(2)),
         pesoReal: parseFloat(pesoRealKg.toFixed(2)),
@@ -243,7 +243,7 @@ export async function POST(req: Request) {
         delivery_time: 10,
         company: {
           name: 'Total Express',
-          picture: 'https://fluxia-next.vercel.app/images/total-express-logo.png',
+          picture: '/images/total-express-logo.png',
         },
         pesoTaxavel: parseFloat(pesoTaxavelKg.toFixed(2)),
         pesoReal: parseFloat(pesoRealKg.toFixed(2)),
