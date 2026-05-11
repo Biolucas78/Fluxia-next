@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { useOrders, useUser, useRecurrenceMessages, RecurrenceMessages } from '@/lib/hooks';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
-import { Loader2, Calendar, MessageSquare, AlertCircle, Filter, Search, Edit2, X, Send, EyeOff, Save, CheckCircle2, RefreshCw, Settings } from 'lucide-react';
+import { Loader2, Calendar, MessageSquare, AlertCircle, Filter, Search, Edit2, X, Send, EyeOff, Save, CheckCircle2, RefreshCw, Settings, Clock } from 'lucide-react';
 import Login from '@/components/Login';
 import { motion, AnimatePresence } from 'motion/react';
 import { Order } from '@/lib/types';
@@ -262,6 +262,24 @@ export default function RecorrenciaPage() {
     }
   };
 
+  const handleSnoozeClient = async (client: ClientRecurrence) => {
+    try {
+      const orderToUpdate = { ...client.latestOrder };
+      orderToUpdate.lastRecurrenceContact = new Date().toISOString();
+      orderToUpdate.statusHistory = [
+        ...(orderToUpdate.statusHistory || []),
+        {
+          action: 'Contato de Recorrência realizado (Não comprou)',
+          timestamp: new Date().toISOString()
+        }
+      ];
+      await handleUpdateOrder(orderToUpdate);
+      toast.success('Cliente retornará para a lista em 10 dias.');
+    } catch (e: any) {
+      toast.error('Erro ao registrar contato: ' + e.message);
+    }
+  };
+
   const [clientToRemove, setClientToRemove] = useState<typeof recurrenceData[0] | null>(null);
 
   const confirmRemove = async () => {
@@ -492,6 +510,13 @@ export default function RecorrenciaPage() {
                           title="Remover cliente da recorrência"
                         >
                           <EyeOff className="size-4" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleSnoozeClient(client); }}
+                          className="flex items-center justify-center p-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/40 text-amber-500 rounded-xl transition-all"
+                          title="Avisar em 10 dias"
+                        >
+                          <Clock className="size-4" />
                         </button>
                         <button 
                           onClick={() => handleOpenClient(client)}
