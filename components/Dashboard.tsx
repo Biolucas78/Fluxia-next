@@ -46,6 +46,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   const [chartMetric, setChartMetric] = useState<'kg' | 'units' | 'clients'>('kg');
   const [showShippedModal, setShowShippedModal] = useState(false);
   const [showSeparationModal, setShowSeparationModal] = useState(false);
+  const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; qty: number} | null>(null);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
   
   // Global Date Filter
@@ -856,12 +857,16 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                   const weight = weightMatch ? weightMatch[0] : '';
                   const coffeeName = cleanName.replace(weight, '').trim();
                   return (
-                    <div key={item.name} className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] ${getCoffeeCardStyle(coffeeName || cleanName)}`}>
+                    <button
+                      key={item.name}
+                      onClick={() => setSelectedPackagingItem(item)}
+                      className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] transition-all hover:scale-105 hover:shadow-md active:scale-95 cursor-pointer ${getCoffeeCardStyle(coffeeName || cleanName)}`}
+                    >
                       <span className={`text-lg font-black leading-none ${getCoffeeQtyColor(coffeeName || cleanName)}`}>{item.qty}</span>
                       <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">un</span>
                       <span className="text-[10px] font-black text-slate-900 dark:text-white leading-tight">{coffeeName || cleanName} {weight}</span>
                       {grind && <span className="text-[9px] font-bold text-primary uppercase">{grind}</span>}
-                    </div>
+                    </button>
                   );
                 })}
                 {packagingDemand.length === 0 && (
@@ -914,6 +919,72 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
             </div>
           </div>
         </div>
+
+        {/* Modal Confirmação Minicard Embalagem */}
+        {selectedPackagingItem && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+                    <Layers className="size-5 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900 dark:text-white">Confirmar separação</h2>
+                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Demanda de Embalagens</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-slate-700 dark:text-slate-300 font-medium mb-1">
+                  Marcar como separadas:
+                </p>
+                <p className="text-base font-black text-slate-900 dark:text-white mb-6">
+                  {selectedPackagingItem.qty}× {selectedPackagingItem.name}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSelectedPackagingItem(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const item = selectedPackagingItem;
+                      // Mesma lógica do BulkCheckModal handleToggleProduct
+                      // Monta a chave no formato nome-peso-moagem para comparar com produtos
+                      const pedidos = orders.filter(o => o.status === 'pedidos');
+                      pedidos.forEach(order => {
+                        let hasChange = false;
+                        const updatedProducts = order.products.map(p => {
+                          const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+                          const productKey = `${p.name} ${p.weight}${grind}`;
+                          if (productKey === item.name && !p.checked) {
+                            hasChange = true;
+                            return { ...p, checked: true };
+                          }
+                          return p;
+                        });
+                        if (hasChange) {
+                          onUpdateOrder!({ ...order, products: updatedProducts });
+                        }
+                      });
+                      setSelectedPackagingItem(null);
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-black transition-colors"
+                  >
+                    Confirmar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
 
         {/* Modal Separar Embalagens */}
         {showSeparationModal && (
