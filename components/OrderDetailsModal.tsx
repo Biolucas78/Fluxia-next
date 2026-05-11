@@ -692,25 +692,51 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
             return acc + w * p.quantity;
           }, 0);
 
-      const response = await fetch('/api/shipping/quote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          destinationCep,
-          weight: totalWeightG,
-          products: targetOrder.products,
-          boxDimensions: targetOrder.boxDimensions,
-          originType: originType, // Use local state
-          insuranceValue: targetOrder.insuranceValue || targetOrder.invoiceValue
+      // Buscar cotacoes em paralelo (transportadoras + TEX)
+      const [response, texResponse] = await Promise.all([
+        fetch('/api/shipping/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            destinationCep,
+            weight: totalWeightG,
+            products: targetOrder.products,
+            boxDimensions: targetOrder.boxDimensions,
+            originType: originType,
+            insuranceValue: targetOrder.insuranceValue || targetOrder.invoiceValue
+          })
+        }),
+        fetch('/api/shipping/quote-tex', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            destinationCep,
+            weight: totalWeightG,
+            boxDimensions: targetOrder.boxDimensions,
+          })
         })
-      });
-
+      ]);
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Erro ao buscar cotação.');
+        throw new Error(data.error || 'Erro ao buscar cotacao.');
       }
-
       const quotes: ShippingOption[] = await response.json();
+      if (texResponse.ok) {
+        try {
+          const texQuotes = await texResponse.json();
+          if (Array.isArray(texQuotes)) {
+            texQuotes.forEach((q: any) => quotes.push({
+              id: q.id,
+              provider: 'Total Express',
+              name: q.name,
+              price: q.price,
+              currency: 'BRL',
+              deliveryTime: q.deliveryTime,
+              error: null,
+            } as any));
+          }
+        } catch (_) {}
+      }
       onUpdateOrder({ ...order, shippingQuote: quotes });
     } catch (err: any) {
       setQuoteError(err.message);
