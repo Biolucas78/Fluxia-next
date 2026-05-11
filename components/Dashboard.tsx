@@ -329,7 +329,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
         const weight = ln.includes('drip') ? 0.1 * product.quantity : calculateWeightInKg(product.weight, product.quantity);
         if (weight === 0) return;
         if (isEmb && checked) { used[type] = (used[type]||0) + weight; }
-        else { needed[type] = (needed[type]||0) + weight; }
+        else if (isPed || (isEmb && !checked)) { needed[type] = (needed[type]||0) + weight; }
       });
     });
     return Object.entries(needed).map(([type, neededKg]) => {
@@ -971,7 +971,23 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                           return p;
                         });
                         if (hasChange) {
-                          onUpdateOrder!({ ...order, products: updatedProducts });
+                          // Verificar se todos os produtos ficaram marcados
+                          const allChecked = updatedProducts.every(p => p.checked);
+                          if (allChecked) {
+                            // Avança para embalagens_separadas e desmarca tudo
+                            onUpdateOrder!({
+                              ...order,
+                              status: 'embalagens_separadas',
+                              products: updatedProducts.map(p => ({ ...p, checked: false })),
+                              statusHistory: [
+                                ...(order.statusHistory || []),
+                                { status: 'embalagens_separadas', timestamp: new Date().toISOString() }
+                              ]
+                            });
+                          } else {
+                            // Nem todos marcados — só atualiza os produtos
+                            onUpdateOrder!({ ...order, products: updatedProducts });
+                          }
                         }
                       });
                       setSelectedPackagingItem(null);
