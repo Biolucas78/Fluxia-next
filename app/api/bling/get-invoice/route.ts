@@ -24,56 +24,63 @@ export async function POST(request: Request) {
     }
 
     // 2. Fallback: Buscar pelo Documento (CPF/CNPJ) ou Nome do Cliente
+    // Busca paginada: até 5 páginas × 100 notas = 500 notas mais recentes
     if (!invoiceFound && (document || clientName)) {
       console.log(`[Bling API] Fallback: Buscando nota fiscal por documento (${document}) ou nome (${clientName})`);
-      
-      const endpoints = [
-        'nfe',   // Notas Fiscais Eletrônicas
-        'nfce',  // Notas Fiscais de Consumidor Eletrônicas
-        'nfse'   // Notas Fiscais de Serviço Eletrônicas
-      ];
 
       foundEndpoint = 'nfe';
+      const MAX_PAGES = 5;
 
-      for (const endpoint of endpoints) {
+      for (let page = 1; page <= MAX_PAGES; page++) {
         if (invoiceFound) break;
-        console.log(`[Bling API] Busca abrangente em ${endpoint}...`);
-        
-        // A API v3 ignora filtros inválidos, então buscamos as últimas 100 notas e filtramos localmente
-        const listResponse = await fetchWithRetry(`https://api.bling.com.br/Api/v3/${endpoint}?limite=100`, { headers });
+        console.log(`[Bling API] Buscando em nfe — página ${page}/${MAX_PAGES}...`);
 
-        if (listResponse.ok) {
-          const listData = await listResponse.json();
-          const allInvoices = listData.data || [];
-          
-          // Filtrar localmente
-          invoiceFound = allInvoices.find((inv: any) => {
-            // 1. Tentar por ID do Pedido
-            if (blingOrderId && inv.pedido?.id == blingOrderId) return true;
-            
-            // 2. Tentar por Documento
-            if (document) {
-              const docClean = document.replace(/\D/g, '');
-              const invDoc = inv.contato?.numeroDocumento?.replace(/\D/g, '');
-              if (docClean && invDoc && docClean === invDoc) return true;
-            }
-            
-            // 3. Tentar por Nome
-            if (clientName) {
-              const searchName = clientName.toLowerCase().trim();
-              const invName = (inv.contato?.nome || inv.cliente?.nome || inv.nome)?.toLowerCase().trim();
-              if (invName && (invName.includes(searchName) || searchName.includes(invName))) return true;
-            }
-            
-            return false;
-          });
-          
-          if (invoiceFound) {
-            foundEndpoint = endpoint;
-            console.log(`[Bling API] Nota encontrada em ${endpoint}: ${invoiceFound.numero}`);
-          }
+        const listResponse = await fetchWithRetry(
+          `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${page}`,
+          { headers }
+        );
+
+        if (!listResponse.ok) {
+          console.log(`[Bling API] Página ${page} retornou status ${listResponse.status}, parando.`);
+          break;
         }
-        await new Promise(resolve => setTimeout(resolve, 200));
+
+        const listData = await listResponse.json();
+        const allInvoices = listData.data || [];
+
+        if (allInvoices.length === 0) {
+          console.log(`[Bling API] Página ${page} vazia, parando.`);
+          break;
+        }
+
+        // Filtrar localmente
+        invoiceFound = allInvoices.find((inv: any) => {
+          // 1. Tentar por ID do Pedido
+          if (blingOrderId && inv.pedido?.id == blingOrderId) return true;
+
+          // 2. Tentar por Documento
+          if (document) {
+            const docClean = document.replace(/\D/g, '');
+            const invDoc = inv.contato?.numeroDocumento?.replace(/\D/g, '');
+            if (docClean && invDoc && docClean === invDoc) return true;
+          }
+
+          // 3. Tentar por Nome
+          if (clientName) {
+            const searchName = clientName.toLowerCase().trim();
+            const invName = (inv.contato?.nome || inv.cliente?.nome || inv.nome)?.toLowerCase().trim();
+            if (invName && (invName.includes(searchName) || searchName.includes(invName))) return true;
+          }
+
+          return false;
+        });
+
+        if (invoiceFound) {
+          console.log(`[Bling API] Nota encontrada na página ${page}: ${invoiceFound.numero}`);
+        } else {
+          // Delay entre páginas para não tomar 429
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
       }
     }
 
