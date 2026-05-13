@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
         seuNumero: seuNumeroParcela,
         identificacaoEmissaoBoleto: 1,
         identificacaoDistribuicaoBoleto: 1,
+        numeroParcela: i + 1,
         valor: parseFloat(String(parcela.valor)),
         dataVencimento: parcela.dataVencimento,
         tipoJurosMora: 2,
