@@ -33,7 +33,7 @@ export async function POST() {
             {
               hostname: 'api.sicoob.com.br',
               port: 443,
-              path: '/cobranca-bancaria/v3/boletos?numeroCliente=' + numeroCliente + '&nossoNumero=' + nossoNumero.trim(),
+              path: '/cobranca-bancaria/v3/boletos?numeroCliente=' + numeroCliente + '&codigoModalidade=1&nossoNumero=' + nossoNumero.trim(),
               method: 'GET',
               headers: { 'Authorization': 'Bearer ' + token },
             },
@@ -42,12 +42,12 @@ export async function POST() {
             certPassword
           );
 
-          const boleto = result.body?.resultado?.[0] || result.body?.resultado;
+          const boleto = result.body?.resultado;
           if (!boleto) continue;
 
           // Verificar se foi pago (situacao 6 = liquidado, 9 = baixado)
-          const situacao = boleto.codigoSituacaoBoleto;
-          if (situacao === 6 || situacao === 9) {
+          const situacao = boleto.situacaoBoleto;
+          if (situacao === 'Liquidado' || situacao === 'Baixado' || situacao === 'Pago') {
             const statusHistory = [
               ...(order.statusHistory || []),
               {
