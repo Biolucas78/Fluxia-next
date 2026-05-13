@@ -35,7 +35,8 @@ import {
   AlertTriangle,
   AlertCircle,
   FastForward,
-  MessageCircle
+  MessageCircle,
+  Landmark
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProductItem, ShippingOption } from '@/lib/types';
@@ -118,6 +119,19 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [manualInvoiceNumber, setManualInvoiceNumber] = useState(order.invoiceNumber || '');
   const [manualInvoiceValue, setManualInvoiceValue] = useState<number | ''>(order.invoiceValue || '');
   const [blingSearchResults, setBlingSearchResults] = useState<any[]>([]);
+  const [showBoletoModal, setShowBoletoModal] = useState(false);
+  const [isEmittingBoleto, setIsEmittingBoleto] = useState(false);
+  const [boletoForm, setBoletoForm] = useState<{
+    valor: string;
+    dataVencimento: string;
+    parcelas: { valor: string; dataVencimento: string }[];
+    isParceled: boolean;
+  }>({
+    valor: '',
+    dataVencimento: '',
+    parcelas: [],
+    isParceled: false,
+  });
   const [showBlingResults, setShowBlingResults] = useState(false);
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [editedDate, setEditedDate] = useState(order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
@@ -198,6 +212,62 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     setShowBlingResults(false);
   };
   
+  const handleEmitirBoleto = async () => {
+    if (isEmittingBoleto) return;
+    setIsEmittingBoleto(true);
+    try {
+      const addr = order.addressDetails || { street: '', number: '', complement: '', district: '', city: '', state: '', zip: '' };
+      const parcelas = boletoForm.isParceled && boletoForm.parcelas.length > 0
+        ? boletoForm.parcelas
+        : null;
+      const body = {
+        cpfCnpj: order.cnpj || order.cpf || '',
+        nomePagador: order.clientName,
+        cep: addr.zip || '',
+        logradouro: addr.street || '',
+        numero: addr.number || 'S/N',
+        bairro: addr.district || '',
+        cidade: addr.city || '',
+        uf: addr.state || '',
+        email: '',
+        valor: boletoForm.isParceled ? undefined : parseFloat(boletoForm.valor),
+        dataVencimento: boletoForm.isParceled ? undefined : boletoForm.dataVencimento,
+        seuNumero: order.invoiceNumber || order.id,
+        dataEmissao: new Date().toISOString().split('T')[0],
+        parcelas: parcelas,
+        dataPedido: new Date().toLocaleDateString('pt-BR'),
+        numeroNF: order.invoiceNumber || '',
+      };
+      const res = await fetch('/api/sicoob/boleto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        toast.error('Erro ao emitir boleto: ' + (data.error || 'Erro desconhecido'));
+        return;
+      }
+      const nossoNumeros = data.boletos
+        .map((b: any) => b.resultado?.nossoNumero || b.nossoNumero)
+        .filter(Boolean);
+      onUpdateOrder({
+        ...order,
+        boletoNossoNumero: nossoNumeros.join(','),
+        statusHistory: [
+          ...(order.statusHistory || []),
+          { action: 'Boleto emitido no Sicoob', details: 'NossoNumero: ' + nossoNumeros.join(','), timestamp: new Date().toISOString() }
+        ]
+      });
+      toast.success('Boleto emitido com sucesso!');
+      setShowBoletoModal(false);
+    } catch (e: any) {
+      toast.error('Erro ao emitir boleto: ' + e.message);
+    } finally {
+      setIsEmittingBoleto(false);
+    }
+  };
+
   const handleCreateBlingOrder = async () => {
     if (isCreatingBlingOrder) return;
     setIsCreatingBlingOrder(true);
@@ -816,7 +886,168 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     }
   };
 
+  const BoletoModal = showBoletoModal ? (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+      >
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+              <Landmark className="size-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-slate-900 dark:text-white">Emitir Boleto</h2>
+              <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Sicoob Credivar</p>
+            </div>
+          </div>
+          <button onClick={() => setShowBoletoModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+            <X className="size-5 text-slate-400" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4 overflow-y-auto max-h-[70vh]">
+          {/* Cliente */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-3 space-y-1">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pagador</p>
+            <p className="text-sm font-bold text-slate-900 dark:text-white">{order.clientName}</p>
+            <p className="text-xs text-slate-500">{order.cnpj || order.cpf || 'Sem documento'}</p>
+            {order.addressDetails?.city && (
+              <p className="text-xs text-slate-500">{order.addressDetails.city} - {order.addressDetails.state}</p>
+            )}
+          </div>
+          {/* NF */}
+          {order.invoiceNumber && (
+            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-3 space-y-1">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nota Fiscal</p>
+              <p className="text-sm font-bold text-slate-900 dark:text-white">NF-e {order.invoiceNumber}</p>
+            </div>
+          )}
+          {/* Parcelado? */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setBoletoForm(f => ({ ...f, isParceled: false, parcelas: [] }))}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${!boletoForm.isParceled ? 'bg-primary text-white border-primary' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}
+            >
+              A Vista
+            </button>
+            <button
+              onClick={() => {
+                const venc1 = new Date(); venc1.setDate(venc1.getDate() + 30);
+                const venc2 = new Date(); venc2.setDate(venc2.getDate() + 60);
+                const metade = boletoForm.valor ? (parseFloat(boletoForm.valor) / 2).toFixed(2) : '';
+                setBoletoForm(f => ({
+                  ...f,
+                  isParceled: true,
+                  parcelas: [
+                    { valor: metade, dataVencimento: venc1.toISOString().split('T')[0] },
+                    { valor: metade, dataVencimento: venc2.toISOString().split('T')[0] },
+                  ]
+                }));
+              }}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${boletoForm.isParceled ? 'bg-primary text-white border-primary' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}
+            >
+              Parcelado
+            </button>
+          </div>
+          {/* A Vista */}
+          {!boletoForm.isParceled && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Valor (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={boletoForm.valor}
+                  onChange={e => setBoletoForm(f => ({ ...f, valor: e.target.value }))}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-primary"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Vencimento</label>
+                <input
+                  type="date"
+                  value={boletoForm.dataVencimento}
+                  onChange={e => setBoletoForm(f => ({ ...f, dataVencimento: e.target.value }))}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+          )}
+          {/* Parcelado */}
+          {boletoForm.isParceled && (
+            <div className="space-y-3">
+              {boletoForm.parcelas.map((p, i) => (
+                <div key={i} className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-3">
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Parcela {i + 1} — Valor</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={p.valor}
+                      onChange={e => {
+                        const novas = [...boletoForm.parcelas];
+                        novas[i] = { ...novas[i], valor: e.target.value };
+                        setBoletoForm(f => ({ ...f, parcelas: novas }));
+                      }}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-primary"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Vencimento</label>
+                    <input
+                      type="date"
+                      value={p.dataVencimento}
+                      onChange={e => {
+                        const novas = [...boletoForm.parcelas];
+                        novas[i] = { ...novas[i], dataVencimento: e.target.value };
+                        setBoletoForm(f => ({ ...f, parcelas: novas }));
+                      }}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={() => {
+                  const ultima = boletoForm.parcelas[boletoForm.parcelas.length - 1];
+                  const novaData = ultima ? new Date(ultima.dataVencimento) : new Date();
+                  novaData.setDate(novaData.getDate() + 30);
+                  setBoletoForm(f => ({ ...f, parcelas: [...f.parcelas, { valor: '', dataVencimento: novaData.toISOString().split('T')[0] }] }));
+                }}
+                className="w-full py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-bold text-slate-500 hover:border-primary hover:text-primary transition-all"
+              >
+                + Adicionar parcela
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="p-5 border-t border-slate-100 dark:border-slate-800 flex gap-3">
+          <button
+            onClick={() => setShowBoletoModal(false)}
+            className="flex-1 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleEmitirBoleto}
+            disabled={isEmittingBoleto}
+            className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isEmittingBoleto ? <Loader2 className="size-4 animate-spin" /> : <Landmark className="size-4" />}
+            {isEmittingBoleto ? 'Emitindo...' : 'Emitir Boleto'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  ) : null;
+
   return (
+    <>
+    {BoletoModal}
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -2538,5 +2769,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         )}
       </AnimatePresence>
     </motion.div>
+    </>
   );
 }

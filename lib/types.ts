@@ -173,6 +173,7 @@ export interface Order {
   insuranceValue?: string;
   invoiceKey?: string;
   invoiceNumber?: string;
+  boletoNossoNumero?: string;
   invoiceValue?: number;
   productDescription?: string;
   trackingStatus?: string;
