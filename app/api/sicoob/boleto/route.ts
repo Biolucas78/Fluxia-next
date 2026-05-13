@@ -50,10 +50,11 @@ export async function POST(request: NextRequest) {
         numeroParcela: i + 1,
         valor: parseFloat(String(parcela.valor)),
         dataVencimento: parcela.dataVencimento,
-        tipoJurosMora: 2,
+        tipoJurosMora: 1,
         valorJurosMora: 1.0,
         dataJurosMora: parcela.dataVencimento,
-        tipoMulta: 2,
+        tipoDesconto: 0,
+        tipoMulta: 1,
         valorMulta: 2.0,
         dataMulta: parcela.dataVencimento,
         mensagensInstrucao: [
