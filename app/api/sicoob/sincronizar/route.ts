@@ -8,70 +8,120 @@ export async function POST() {
     const token = await getSicoobToken('boletos_consulta');
     const numeroCliente = process.env.SICOOB_NUMERO_CLIENTE!;
 
-    // Buscar todos os pedidos com boleto emitido e não pagos
+    // Buscar todos os pedidos entregues nao pagos
     const snapshot = await adminDb.collection('orders')
-      .where('boletoNossoNumero', '!=', '')
+      .where('status', '==', 'entregue')
       .get();
 
     if (snapshot.empty) {
-      return NextResponse.json({ ok: true, updated: 0, message: 'Nenhum boleto encontrado' });
+      return NextResponse.json({ ok: true, updated: 0, message: 'Nenhum pedido entregue encontrado' });
     }
 
     let updated = 0;
+    let linked = 0;
     let errors = 0;
 
     for (const docSnap of snapshot.docs) {
       const order = docSnap.data();
-      if (order.paymentStatus === 'pago') continue; // Já pago, pula
+      if (order.paymentStatus === 'pago') continue;
 
-      const nossoNumeros = String(order.boletoNossoNumero).split(',');
+      const cpfCnpj = (order.cnpj || order.cpf || '').replace(/\D/g, '');
+      if (!cpfCnpj) continue;
 
-      for (const nossoNumero of nossoNumeros) {
-        if (!nossoNumero.trim()) continue;
-        try {
-          const result = await makeSicoobRequest(
-            {
-              hostname: 'api.sicoob.com.br',
-              port: 443,
-              path: '/cobranca-bancaria/v3/boletos?numeroCliente=' + numeroCliente + '&codigoModalidade=1&nossoNumero=' + nossoNumero.trim(),
-              method: 'GET',
-              headers: { 'Authorization': 'Bearer ' + token },
-            },
-            null,
-            pfxBuffer,
-            certPassword
-          );
-
-          const boleto = result.body?.resultado;
-          if (!boleto) continue;
-
-          // Verificar se foi pago (situacao 6 = liquidado, 9 = baixado)
-          const situacao = boleto.situacaoBoleto;
-          if (situacao === 'Liquidado' || situacao === 'Baixado' || situacao === 'Pago') {
-            const statusHistory = [
-              ...(order.statusHistory || []),
+      try {
+        // CASO 1: Já tem nossoNumero — consulta direta
+        if (order.boletoNossoNumero) {
+          const nossoNumeros = String(order.boletoNossoNumero).split(',');
+          for (const nossoNumero of nossoNumeros) {
+            if (!nossoNumero.trim()) continue;
+            const result = await makeSicoobRequest(
               {
-                action: 'Pagamento confirmado via sincronizacao Sicoob',
-                details: 'NossoNumero: ' + nossoNumero.trim(),
-                timestamp: new Date().toISOString()
-              }
-            ];
-            await docSnap.ref.update({
-              paymentStatus: 'pago',
-              paymentMethod: 'boleto',
-              paymentDate: boleto.dataPagamento || new Date().toISOString().split('T')[0],
-              statusHistory,
-              ...(order.status === 'entregue' ? { archived: true, archivedAt: new Date().toISOString() } : {}),
-            });
-            updated++;
+                hostname: 'api.sicoob.com.br',
+                port: 443,
+                path: '/cobranca-bancaria/v3/boletos?numeroCliente=' + numeroCliente + '&codigoModalidade=1&nossoNumero=' + nossoNumero.trim(),
+                method: 'GET',
+                headers: { 'Authorization': 'Bearer ' + token },
+              },
+              null, pfxBuffer, certPassword
+            );
+            const boleto = result.body?.resultado;
+            if (!boleto) continue;
+            const situacao = boleto.situacaoBoleto;
+            if (situacao === 'Liquidado' || situacao === 'Baixado' || situacao === 'Pago') {
+              await docSnap.ref.update({
+                paymentStatus: 'pago',
+                paymentMethod: 'boleto',
+                paymentDate: new Date().toISOString().split('T')[0],
+                statusHistory: [
+                  ...(order.statusHistory || []),
+                  { action: 'Pagamento confirmado via sincronizacao Sicoob', timestamp: new Date().toISOString() }
+                ],
+                ...(order.status === 'entregue' ? { archived: true, archivedAt: new Date().toISOString() } : {}),
+              });
+              updated++;
+            }
           }
-        } catch (e) {
-          errors++;
+          continue;
         }
+
+        // CASO 2: Tem NF mas nao tem nossoNumero — busca pelo CPF/CNPJ
+        if (!order.invoiceNumber) continue;
+
+        const result = await makeSicoobRequest(
+          {
+            hostname: 'api.sicoob.com.br',
+            port: 443,
+            path: '/cobranca-bancaria/v3/pagadores/' + cpfCnpj + '/boletos?numeroCliente=' + numeroCliente,
+            method: 'GET',
+            headers: { 'Authorization': 'Bearer ' + token },
+          },
+          null, pfxBuffer, certPassword
+        );
+
+        const boletos = result.body?.resultado || [];
+        if (!Array.isArray(boletos)) continue;
+
+        // Cruzar pelo seuNumero === invoiceNumber
+        const invoiceNum = String(order.invoiceNumber).replace(/^0+/, '');
+        const boletoEncontrado = boletos.find((b: any) => {
+          const seuNum = String(b.seuNumero || '').replace(/^0+/, '');
+          return seuNum === invoiceNum;
+        });
+
+        if (!boletoEncontrado) continue;
+
+        // Salvar nossoNumero no pedido
+        const nossoNumeroEncontrado = String(boletoEncontrado.nossoNumero);
+        const updates: any = {
+          boletoNossoNumero: nossoNumeroEncontrado,
+          statusHistory: [
+            ...(order.statusHistory || []),
+            { action: 'NossoNumero vinculado via sincronizacao Sicoob: ' + nossoNumeroEncontrado, timestamp: new Date().toISOString() }
+          ]
+        };
+
+        // Verificar se ja foi pago
+        const situacao = boletoEncontrado.situacaoBoleto;
+        if (situacao === 'Liquidado' || situacao === 'Baixado' || situacao === 'Pago') {
+          updates.paymentStatus = 'pago';
+          updates.paymentMethod = 'boleto';
+          updates.paymentDate = new Date().toISOString().split('T')[0];
+          if (order.status === 'entregue') {
+            updates.archived = true;
+            updates.archivedAt = new Date().toISOString();
+          }
+          updated++;
+        }
+
+        await docSnap.ref.update(updates);
+        linked++;
+
+      } catch (e) {
+        errors++;
       }
     }
 
-    return NextResponse.json({ ok: true, updated, errors, total: snapshot.size });
+    return NextResponse.json({ ok: true, updated, linked, errors, total: snapshot.size });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
