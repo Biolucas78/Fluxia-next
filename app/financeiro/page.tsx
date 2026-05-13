@@ -130,21 +130,35 @@ export default function FinanceiroPage() {
   const handleFetchNF = async (order: Order) => {
     setFetchingNFId(order.id);
     try {
-      const document = order.cnpj || order.cpf;
-      if (!document) { toast.error('Cliente sem CPF/CNPJ cadastrado'); return; }
-      const token = await fetch('/api/bling/token').then(r => r.json()).then(d => d.token).catch(() => null);
-      if (!token) { toast.error('Erro ao obter token do Bling'); return; }
-      const res = await fetch(`/api/bling/invoice?document=${document.replace(/\D/g,'')}&orderId=${order.blingOrderId || ''}`);
+      const res = await fetch('/api/bling/get-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blingOrderId: order.blingOrderId,
+          clientName: order.clientName,
+          document: order.cnpj || order.cpf,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao buscar nota fiscal');
+      }
       const data = await res.json();
-      if (data.invoiceNumber) {
-        await fetch('/api/orders/' + order.id, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ invoiceNumber: data.invoiceNumber, invoiceValue: data.invoiceValue, invoiceKey: data.invoiceKey, hasInvoice: true })
+      if (data.found) {
+        await handleUpdateOrder({
+          ...order,
+          hasInvoice: true,
+          invoiceKey: data.invoiceKey,
+          invoiceNumber: data.invoiceNumber,
+          invoiceValue: data.invoiceValue,
+          statusHistory: [
+            ...(order.statusHistory || []),
+            { action: 'Nota fiscal vinculada via Financeiro', details: `NF: ${data.invoiceNumber}, Valor: R$ ${data.invoiceValue}`, timestamp: new Date().toISOString() }
+          ]
         });
         toast.success('NF ' + data.invoiceNumber + ' vinculada!');
       } else {
-        toast.error('NF não encontrada no Bling');
+        toast(data.message || 'Nenhuma NF encontrada no Bling para este pedido.');
       }
     } catch (e: any) {
       toast.error('Erro ao buscar NF: ' + e.message);
