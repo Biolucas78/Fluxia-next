@@ -1617,16 +1617,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           />
                           <span className={`text-sm font-medium ${order.hasInvoice ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Nota Fiscal</span>
                         </label>
-                        {!order.hasInvoice && (
-                          <button
+                        <button
                             onClick={handleCheckInvoice}
                             disabled={isCheckingInvoice}
                             className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1 px-3"
                           >
                             {isCheckingInvoice ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
-                            Buscar Nota Fiscal no Bling
+                            {order.hasInvoice ? 'Atualizar Nota Fiscal' : 'Buscar Nota Fiscal no Bling'}
                           </button>
-                        )}
                         {order.hasInvoice && (
                           <div className="px-3 space-y-2">
                             <div className="flex justify-between items-center">

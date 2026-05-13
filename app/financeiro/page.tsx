@@ -7,7 +7,7 @@ import Login from '@/components/Login';
 import { Order } from '@/lib/types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  DollarSign, Clock, AlertTriangle, CheckCircle2, 
+  DollarSign, Clock, AlertTriangle, CheckCircle2, FileText, 
   Loader2, X, TrendingUp, Filter, Calendar,
   MessageSquare, Archive, CreditCard, Banknote,
   Smartphone, Building2, ChevronDown
@@ -66,6 +66,7 @@ export default function FinanceiroPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [fetchingNFId, setFetchingNFId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState({
     method: 'pix' as string,
     date: new Date().toISOString().split('T')[0],
@@ -123,6 +124,32 @@ export default function FinanceiroPage() {
       toast.error('Erro ao sincronizar: ' + e.message);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleFetchNF = async (order: Order) => {
+    setFetchingNFId(order.id);
+    try {
+      const document = order.cnpj || order.cpf;
+      if (!document) { toast.error('Cliente sem CPF/CNPJ cadastrado'); return; }
+      const token = await fetch('/api/bling/token').then(r => r.json()).then(d => d.token).catch(() => null);
+      if (!token) { toast.error('Erro ao obter token do Bling'); return; }
+      const res = await fetch(`/api/bling/invoice?document=${document.replace(/\D/g,'')}&orderId=${order.blingOrderId || ''}`);
+      const data = await res.json();
+      if (data.invoiceNumber) {
+        await fetch('/api/orders/' + order.id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceNumber: data.invoiceNumber, invoiceValue: data.invoiceValue, invoiceKey: data.invoiceKey, hasInvoice: true })
+        });
+        toast.success('NF ' + data.invoiceNumber + ' vinculada!');
+      } else {
+        toast.error('NF não encontrada no Bling');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao buscar NF: ' + e.message);
+    } finally {
+      setFetchingNFId(null);
     }
   };
 
@@ -311,10 +338,18 @@ export default function FinanceiroPage() {
                             <MessageSquare className="size-4" />
                           </button>
                           <button
+                            onClick={() => handleFetchNF(order)}
+                            disabled={fetchingNFId === order.id}
+                            className="p-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all"
+                            title="Buscar Nota Fiscal no Bling"
+                          >
+                            {fetchingNFId === order.id ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
+                          </button>
+                          <button
                             onClick={() => { setSelectedOrder(order); setPaymentForm({ method: 'pix', date: new Date().toISOString().split('T')[0] }); }}
                             className="px-3 py-2 rounded-xl bg-primary text-white text-xs font-black hover:bg-primary/90 transition-all"
                           >
-                            Confirmar
+                            Receber
                           </button>
                         </div>
                       </div>
@@ -386,10 +421,18 @@ export default function FinanceiroPage() {
                             <MessageSquare className="size-4" />
                           </button>
                           <button
+                            onClick={() => handleFetchNF(order)}
+                            disabled={fetchingNFId === order.id}
+                            className="p-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all"
+                            title="Buscar Nota Fiscal no Bling"
+                          >
+                            {fetchingNFId === order.id ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
+                          </button>
+                          <button
                             onClick={() => { setSelectedOrder(order); setPaymentForm({ method: 'pix', date: new Date().toISOString().split('T')[0] }); }}
                             className="px-3 py-2 rounded-xl bg-primary text-white text-xs font-black hover:bg-primary/90 transition-all"
                           >
-                            Confirmar
+                            Receber
                           </button>
                         </div>
                       </div>
