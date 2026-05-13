@@ -38,6 +38,12 @@ export async function POST(request: NextRequest) {
       const numeroParcela = boletosParaEmitir.length > 1 ? (i + 1) + '/' + boletosParaEmitir.length : '';
       const seuNumeroParcela = boletosParaEmitir.length > 1 ? seuNumero + '-' + (i + 1) : seuNumero;
 
+      const diaAposVencimento = (() => {
+        const d = new Date(parcela.dataVencimento + 'T00:00:00');
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().split('T')[0];
+      })();
+
       const boleto: Record<string, any> = {
         numeroCliente: parseInt(NUMERO_CLIENTE!),
         codigoModalidade: 1,
@@ -50,16 +56,15 @@ export async function POST(request: NextRequest) {
         numeroParcela: i + 1,
         valor: parseFloat(String(parcela.valor)),
         dataVencimento: parcela.dataVencimento,
-        tipoJurosMora: 3,
-        valorJurosMora: 1.0,
-        dataJurosMora: (() => { const d = new Date(parcela.dataVencimento + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })(),
-        tipoDesconto: 0,
-        tipoMulta: 3,
+        tipoMulta: 2,
+        dataMulta: diaAposVencimento,
         valorMulta: 2.0,
-        dataMulta: (() => { const d = new Date(parcela.dataVencimento + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })(),
+        tipoJurosMora: 2,
+        dataJurosMora: diaAposVencimento,
+        valorJurosMora: 1.0,
         mensagensInstrucao: [
-          'Nao cobrar encargos por atraso.',
-          'Nao conceder desconto.',
+          'Juros mora 1,0% ao mes apos vencimento.',
+          'Multa de 2,0% apos vencimento.',
           'Pedido faturado em ' + (dataPedido || new Date().toLocaleDateString('pt-BR')),
           'Referente a Nota Fiscal ' + (numeroNF || seuNumero) + (numeroParcela ? ' - Parcela ' + numeroParcela : ''),
         ],
