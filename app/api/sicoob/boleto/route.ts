@@ -66,7 +66,6 @@ export async function POST(request: NextRequest) {
           numeroCpfCnpj: cpfCnpj.replace(/\D/g, ''),
           nome: nomePagador,
           endereco: logradouro,
-          numero: numero || 'S/N',
           bairro,
           cidade,
           uf,
