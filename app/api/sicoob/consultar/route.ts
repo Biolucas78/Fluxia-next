@@ -1,40 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import https from 'https';
-import { getSicoobToken } from '@/app/api/sicoob/token/route';
-
-function makeHttpsRequest(options: https.RequestOptions, pfxBuffer: Buffer, certPassword: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      ...options,
-      pfx: pfxBuffer,
-      passphrase: certPassword,
-    }, (res) => {
-      let data = '';
-      res.on('data', (chunk: Buffer) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, body: JSON.parse(data) });
-        } catch {
-          resolve({ status: res.statusCode, body: data });
-        }
-      });
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
+import { getSicoobToken, makeSicoobRequest, getSicoobCert } from '@/lib/sicoob';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const nossoNumero = searchParams.get('nossoNumero');
     const cpfCnpj = searchParams.get('cpfCnpj');
-
-    const certBase64 = process.env.SICOOB_CERT_PFX_BASE64!;
-    const certPassword = process.env.SICOOB_CERT_PASSWORD!;
-    const pfxBuffer = Buffer.from(certBase64, 'base64');
     const numeroCliente = process.env.SICOOB_NUMERO_CLIENTE!;
 
+    const { pfxBuffer, certPassword } = getSicoobCert();
     const token = await getSicoobToken('boletos_consulta');
 
     let apiPath = '';
@@ -47,16 +21,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Informe nossoNumero ou cpfCnpj' }, { status: 400 });
     }
 
-    const result = await makeHttpsRequest(
+    const result = await makeSicoobRequest(
       {
         hostname: 'api.sicoob.com.br',
         port: 443,
         path: apiPath,
         method: 'GET',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-        },
+        headers: { 'Authorization': 'Bearer ' + token },
       },
+      null,
       pfxBuffer,
       certPassword
     );

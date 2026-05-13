@@ -1,32 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import https from 'https';
-import { getSicoobToken } from '@/app/api/sicoob/token/route';
+import { getSicoobToken, makeSicoobRequest, getSicoobCert } from '@/lib/sicoob';
 
 const NUMERO_CLIENTE = process.env.SICOOB_NUMERO_CLIENTE;
 const NUMERO_CONTA = process.env.SICOOB_NUMERO_CONTA;
-
-function makeHttpsRequest(options: https.RequestOptions, body: string, pfxBuffer: Buffer, certPassword: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      ...options,
-      pfx: pfxBuffer,
-      passphrase: certPassword,
-    }, (res) => {
-      let data = '';
-      res.on('data', (chunk: Buffer) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, body: JSON.parse(data) });
-        } catch {
-          resolve({ status: res.statusCode, body: data });
-        }
-      });
-    });
-    req.on('error', reject);
-    if (body) req.write(body);
-    req.end();
-  });
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,15 +25,11 @@ export async function POST(request: NextRequest) {
       numeroNF,
     } = await request.json();
 
-    const certBase64 = process.env.SICOOB_CERT_PFX_BASE64!;
-    const certPassword = process.env.SICOOB_CERT_PASSWORD!;
-    const pfxBuffer = Buffer.from(certBase64, 'base64');
-
+    const { pfxBuffer, certPassword } = getSicoobCert();
     const token = await getSicoobToken('boletos_inclusao');
 
-    const boletosParaEmitir = parcelas && parcelas.length > 0
-      ? parcelas
-      : [{ valor, dataVencimento }];
+    const boletosParaEmitir: { valor: number; dataVencimento: string }[] =
+      parcelas && parcelas.length > 0 ? parcelas : [{ valor, dataVencimento }];
 
     const resultados = [];
 
@@ -66,7 +38,7 @@ export async function POST(request: NextRequest) {
       const numeroParcela = boletosParaEmitir.length > 1 ? (i + 1) + '/' + boletosParaEmitir.length : '';
       const seuNumeroParcela = boletosParaEmitir.length > 1 ? seuNumero + '-' + (i + 1) : seuNumero;
 
-      const boleto: any = {
+      const boleto: Record<string, any> = {
         numeroCliente: parseInt(NUMERO_CLIENTE!),
         codigoModalidade: 1,
         numeroContaCorrente: parseInt(NUMERO_CONTA!),
@@ -75,7 +47,7 @@ export async function POST(request: NextRequest) {
         seuNumero: seuNumeroParcela,
         identificacaoEmissaoBoleto: 1,
         identificacaoDistribuicaoBoleto: 1,
-        valor: parseFloat(parcela.valor),
+        valor: parseFloat(String(parcela.valor)),
         dataVencimento: parcela.dataVencimento,
         codigoTipoJuro: 2,
         taxaJuro: 1.0,
@@ -101,7 +73,7 @@ export async function POST(request: NextRequest) {
       };
 
       const bodyStr = JSON.stringify(boleto);
-      const result = await makeHttpsRequest(
+      const result = await makeSicoobRequest(
         {
           hostname: 'api.sicoob.com.br',
           port: 443,
@@ -130,10 +102,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    return NextResponse.json({
-      ok: true,
-      boletos: resultados.map(r => r.body),
-    });
+    return NextResponse.json({ ok: true, boletos: resultados.map(r => r.body) });
 
   } catch (error: any) {
     console.error('Erro Sicoob emissao:', error);
