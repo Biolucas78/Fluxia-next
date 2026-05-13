@@ -175,6 +175,10 @@ export interface Order {
   invoiceNumber?: string;
   boletoNossoNumero?: string;
   invoiceValue?: number;
+  paymentMethod?: 'boleto' | 'pix' | 'transferencia' | 'dinheiro' | 'cartao';
+  paymentStatus?: 'pendente' | 'pago' | 'vencido';
+  paymentDate?: string;
+  paymentDueDate?: string;
   productDescription?: string;
   trackingStatus?: string;
   tags?: string[];

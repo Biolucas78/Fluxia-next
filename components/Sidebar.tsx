@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive, Trash2, X, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Plus, Factory, Truck, Settings, User, Package, Kanban, RefreshCcw, Loader2, Archive, Trash2, X, Sun, Moon, DollarSign } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@/lib/hooks';
@@ -52,6 +52,7 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
     { id: 'producao', title: 'Produção', icon: Factory, href: '/producao', roles: ['admin', 'user'] },
     { id: 'crm', title: 'CRM Leads', icon: Kanban, href: '/crm', roles: ['admin', 'gestor_vendas', 'gestor_trafego'] },
     { id: 'recorrencia', title: 'Recorrência', icon: RefreshCcw, href: '/recorrencia', roles: ['admin', 'gestor_vendas'] },
+    { id: 'financeiro', title: 'Financeiro', icon: DollarSign, href: '/financeiro', roles: ['admin'] },
     { id: 'logistica', title: 'Logística', icon: Truck, href: '/logistica', roles: ['admin', 'user'] },
     { id: 'clientes', title: 'Clientes', icon: User, href: '/clientes', roles: ['admin', 'user'] },
     { id: 'produtos', title: 'Produtos', icon: Package, href: '/produtos', roles: ['admin', 'user'] },
