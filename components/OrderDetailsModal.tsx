@@ -1573,7 +1573,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </div>
               </section>
 
-              {order.status === 'embalagens_prontas' && (
+              {['pedidos', 'embalagens_separadas', 'embalagens_prontas', 'caixa_montada'].includes(order.status) && (
                 <section className="space-y-6">
                   <div>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -1702,7 +1702,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             )}
                           </div>
                         )}
-                        {!order.hasInvoice && order.status === 'embalagens_prontas' && (
+                        {!order.hasInvoice && ['pedidos', 'embalagens_separadas', 'embalagens_prontas', 'caixa_montada'].includes(order.status) && (
                           <p className="text-[9px] text-amber-600 dark:text-amber-400 px-3 italic flex items-center gap-1">
                             <AlertCircle className="size-3" /> NF-e não detectada.
                           </p>
@@ -1995,7 +1995,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                   </div>
                 </section>
               )}
-              {order.status === 'embalagens_prontas' && (
+              {['pedidos', 'embalagens_separadas', 'embalagens_prontas', 'caixa_montada'].includes(order.status) && (
                 <section className="space-y-4">
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
                     <div className="space-y-4">
@@ -2156,7 +2156,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </section>
               )}
 
-              {order.status === 'caixa_montada' && (
+              {['pedidos', 'embalagens_separadas', 'embalagens_prontas', 'caixa_montada'].includes(order.status) && (
                 <section className="space-y-4">
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
                     <div className="space-y-4">
