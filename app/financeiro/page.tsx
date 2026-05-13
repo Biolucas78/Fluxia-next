@@ -64,6 +64,7 @@ export default function FinanceiroPage() {
   const [filterPeriod, setFilterPeriod] = useState<'month' | 'quarter' | 'year'>('month');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     method: 'pix' as string,
     date: new Date().toISOString().split('T')[0],
@@ -106,6 +107,23 @@ export default function FinanceiroPage() {
   const totalToReceive = useMemo(() => toReceive.reduce((s, o) => s + getOrderValue(o), 0), [toReceive]);
   const totalOverdue = useMemo(() => overdue.reduce((s, o) => s + getOrderValue(o), 0), [overdue]);
   const totalReceived = useMemo(() => received.reduce((s, o) => s + getOrderValue(o), 0), [received]);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/sicoob/sincronizar', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Sincronizado! ${data.updated} boleto(s) atualizado(s).`);
+      } else {
+        toast.error('Erro ao sincronizar: ' + data.error);
+      }
+    } catch (e: any) {
+      toast.error('Erro ao sincronizar: ' + e.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleConfirmPayment = async () => {
     if (!selectedOrder) return;
@@ -164,6 +182,19 @@ export default function FinanceiroPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header title="Financeiro" />
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          {/* Header com botão sync */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Atualizado em tempo real via Firestore</p>
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/90 transition-all disabled:opacity-50"
+            >
+              {isSyncing ? <Loader2 className="size-3 animate-spin" /> : <TrendingUp className="size-3" />}
+              {isSyncing ? 'Sincronizando...' : 'Sincronizar com Sicoob'}
+            </button>
+          </div>
 
           {/* Cards de Resumo */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
