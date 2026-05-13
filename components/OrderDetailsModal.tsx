@@ -2547,18 +2547,23 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
               {order.blingOrderId ? 'Enviado pro Bling' : 'Enviar para o Bling'}
             </button>
 
-            {order.blingOrderId && (
-              <a
-                href={`https://www.bling.com.br/b/vendas.php#edit/${order.blingOrderId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-6 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all flex items-center gap-2 shadow-sm"
-                title="Abrir pedido no Bling para imprimir"
-              >
-                <Printer className="size-4" />
-                Imprimir (Bling)
-              </a>
-            )}
+            <button
+              onClick={() => {
+                const venc = new Date();
+                venc.setDate(venc.getDate() + 30);
+                setBoletoForm({
+                  valor: order.invoiceValue ? String(order.invoiceValue) : '',
+                  dataVencimento: venc.toISOString().split('T')[0],
+                  parcelas: [],
+                  isParceled: false,
+                });
+                setShowBoletoModal(true);
+              }}
+              className="px-6 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all flex items-center gap-2 shadow-sm"
+            >
+              <Landmark className="size-4" />
+              Emitir Boleto
+            </button>
 
             {hasNextOrder && onNextOrder && (
               <button
