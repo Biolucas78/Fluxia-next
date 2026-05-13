@@ -249,8 +249,25 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         return;
       }
       const nossoNumeros = data.boletos
-        .map((b: any) => b.resultado?.nossoNumero || b.nossoNumero)
+        .map((b: any) => b.nossoNumero)
         .filter(Boolean);
+
+      // Download dos PDFs
+      data.boletos.forEach((b: any, i: number) => {
+        if (b.pdfBoleto) {
+          const link = document.createElement('a');
+          link.href = 'data:application/pdf;base64,' + b.pdfBoleto;
+          const nomeArquivo = order.clientName.replace(/[^a-zA-Z0-9]/g, '_')
+            + (order.invoiceNumber ? '_NF' + order.invoiceNumber : '')
+            + (data.boletos.length > 1 ? '_parcela' + (i + 1) : '')
+            + '.pdf';
+          link.download = nomeArquivo;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      });
+
       onUpdateOrder({
         ...order,
         boletoNossoNumero: nossoNumeros.join(','),
