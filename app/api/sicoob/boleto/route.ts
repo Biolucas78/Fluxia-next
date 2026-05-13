@@ -56,6 +56,8 @@ export async function POST(request: NextRequest) {
         numeroParcela: i + 1,
         valor: parseFloat(String(parcela.valor)),
         dataVencimento: parcela.dataVencimento,
+        tipoDesconto: 1,
+        valorPrimeiroDesconto: 0,
         tipoMulta: 2,
         dataMulta: diaAposVencimento,
         valorMulta: 2.0,
