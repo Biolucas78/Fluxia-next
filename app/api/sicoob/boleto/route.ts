@@ -50,11 +50,11 @@ export async function POST(request: NextRequest) {
         numeroParcela: i + 1,
         valor: parseFloat(String(parcela.valor)),
         dataVencimento: parcela.dataVencimento,
-        tipoJurosMora: 1,
+        tipoJurosMora: 3,
         valorJurosMora: 1.0,
         dataJurosMora: (() => { const d = new Date(parcela.dataVencimento + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })(),
         tipoDesconto: 0,
-        tipoMulta: 1,
+        tipoMulta: 3,
         valorMulta: 2.0,
         dataMulta: (() => { const d = new Date(parcela.dataVencimento + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })(),
         mensagensInstrucao: [
