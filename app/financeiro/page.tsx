@@ -58,7 +58,8 @@ function isOverdue(order: Order): boolean {
 }
 
 export default function FinanceiroPage() {
-  const { allOrders, isLoaded, handleUpdateOrder, handleArchiveOrder } = useOrders();
+  const { allOrders, archivedOrders, isLoaded, handleUpdateOrder, handleArchiveOrder } = useOrders();
+  const todosOsPedidos = useMemo(() => [...allOrders, ...archivedOrders], [allOrders, archivedOrders]);
   const { userProfile, loading: userLoading } = useUser();
   const [activeTab, setActiveTab] = useState<'receber' | 'recebidos' | 'vencidos'>('receber');
   const [filterPeriod, setFilterPeriod] = useState<'month' | 'quarter' | 'year'>('month');
@@ -96,7 +97,7 @@ export default function FinanceiroPage() {
     else if (filterPeriod === 'quarter') startDate.setMonth(now.getMonth() - 3);
     else startDate.setFullYear(now.getFullYear() - 1);
 
-    return allOrders.filter(o =>
+    return todosOsPedidos.filter(o =>
       o.paymentStatus === 'pago' &&
       o.paymentDate &&
       new Date(o.paymentDate) >= startDate
