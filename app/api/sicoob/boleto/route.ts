@@ -113,7 +113,15 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true, boletos: resultados.map(r => r.body) });
+    return NextResponse.json({ ok: true, boletos: resultados.map(r => ({
+      nossoNumero: r.body?.resultado?.nossoNumero,
+      seuNumero: r.body?.resultado?.seuNumero,
+      codigoBarras: r.body?.resultado?.codigoBarras,
+      linhaDigitavel: r.body?.resultado?.linhaDigitavel,
+      dataVencimento: r.body?.resultado?.dataVencimento,
+      valor: r.body?.resultado?.valor,
+      pdfBoleto: r.body?.resultado?.pdfBoleto,
+    })) });
 
   } catch (error: any) {
     console.error('Erro Sicoob emissao:', error);
