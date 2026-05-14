@@ -29,51 +29,80 @@ async function fetchBlingOrder(blingOrderId: string, headers: any) {
   }
 }
 
+// IDs de situação do Bling que indicam pedido cancelado/inativo
+const SITUACOES_CANCELADAS = [12, 11, 10]; // 12=cancelado, outros podem variar
+
 // Tenta encontrar o pedido no Fluxia correspondente ao pedido do Bling
-async function findFluxiaOrder(blingOrder: any, allFluxiaOrders: any[]) {
+// usedFluxiaIds: conjunto de IDs já pareados nesta rodada (evita duplicatas)
+async function findFluxiaOrder(blingOrder: any, allFluxiaOrders: any[], usedFluxiaIds: Set<string>) {
   const blingId = String(blingOrder.id);
+  const numeroLoja = blingOrder.numeroLoja || '';
   const doc = (blingOrder.contato?.numeroDocumento || '').replace(/\D/g, '');
   const valor = blingOrder.total;
   const dataBling = blingOrder.data; // 'YYYY-MM-DD'
 
-  // 1. Por blingOrderId
-  const byId = allFluxiaOrders.find(o => String(o.blingOrderId) === blingId);
-  if (byId) return { order: byId, matchType: 'blingOrderId' };
+  // Helper: só retorna se ainda não foi usado nesta rodada
+  const tryReturn = (order: any, matchType: string) => {
+    if (!order) return null;
+    if (usedFluxiaIds.has(order.id)) return null; // já pareado com outro pedido Bling
+    return { order, matchType };
+  };
 
-  // 2. Por CNPJ
+  // 1. Por numeroLoja = fluxiaId (pedidos criados pelo Fluxia têm isso)
+  if (numeroLoja) {
+    const byLoja = allFluxiaOrders.find(o => o.id === numeroLoja);
+    const result = tryReturn(byLoja, 'numeroLoja');
+    if (result) return result;
+  }
+
+  // 2. Por blingOrderId salvo no Fluxia
+  const byId = allFluxiaOrders.find(o => String(o.blingOrderId) === blingId);
+  const resultId = tryReturn(byId, 'blingOrderId');
+  if (resultId) return resultId;
+
+  // 3. Por CNPJ + valor + data (obrigatório os 3 para evitar match errado)
   if (doc.length === 14) {
     const byCnpj = allFluxiaOrders.filter(o => {
+      if (usedFluxiaIds.has(o.id)) return false;
       const cnpj = (o.cnpj || '').replace(/\D/g, '');
       return cnpj === doc;
     });
-    if (byCnpj.length === 1) return { order: byCnpj[0], matchType: 'cnpj' };
-    // Se mais de um, refina por valor e data
+    if (byCnpj.length === 1) {
+      const result = tryReturn(byCnpj[0], 'cnpj');
+      if (result) return result;
+    }
     if (byCnpj.length > 1) {
       const byValor = byCnpj.find(o => {
         const diff = Math.abs((o.invoiceValue || o.totalValue || 0) - valor);
         const orderDate = (o.createdAt || '').substring(0, 10);
         const dateDiff = Math.abs(new Date(orderDate).getTime() - new Date(dataBling).getTime());
-        return diff < 1 && dateDiff < 7 * 24 * 60 * 60 * 1000; // mesmo valor, ±7 dias
+        return diff < 1 && dateDiff < 5 * 24 * 60 * 60 * 1000; // ±5 dias
       });
-      if (byValor) return { order: byValor, matchType: 'cnpj+valor+data' };
+      const result = tryReturn(byValor, 'cnpj+valor+data');
+      if (result) return result;
     }
   }
 
-  // 3. Por CPF
+  // 4. Por CPF + valor + data
   if (doc.length === 11) {
     const byCpf = allFluxiaOrders.filter(o => {
+      if (usedFluxiaIds.has(o.id)) return false;
       const cpf = (o.cpf || '').replace(/\D/g, '');
       return cpf === doc;
     });
-    if (byCpf.length === 1) return { order: byCpf[0], matchType: 'cpf' };
+    if (byCpf.length === 1) {
+      const result = tryReturn(byCpf[0], 'cpf');
+      if (result) return result;
+    }
     if (byCpf.length > 1) {
       const byValor = byCpf.find(o => {
         const diff = Math.abs((o.invoiceValue || o.totalValue || 0) - valor);
         const orderDate = (o.createdAt || '').substring(0, 10);
         const dateDiff = Math.abs(new Date(orderDate).getTime() - new Date(dataBling).getTime());
-        return diff < 1 && dateDiff < 7 * 24 * 60 * 60 * 1000;
+        return diff < 1 && dateDiff < 5 * 24 * 60 * 60 * 1000;
       });
-      if (byValor) return { order: byValor, matchType: 'cpf+valor+data' };
+      const result = tryReturn(byValor, 'cpf+valor+data');
+      if (result) return result;
     }
   }
 
@@ -120,6 +149,13 @@ export async function POST(request: Request) {
     console.log(`[Sync Bling] ${allBlingOrders.length} pedidos no Bling desde ${dataInicial}`);
 
     // 3. Para cada pedido do Bling, tentar parear com Fluxia e sincronizar
+    // Filtrar pedidos cancelados do Bling antes de processar
+    const blingOrdersAtivos = allBlingOrders.filter(o => {
+      const situacaoId = o.situacao?.id;
+      return !SITUACOES_CANCELADAS.includes(situacaoId);
+    });
+    console.log(`[Sync Bling] ${allBlingOrders.length - blingOrdersAtivos.length} pedidos cancelados ignorados`);
+
     const results = {
       matched: [] as any[],
       unmatched: [] as any[],
@@ -127,9 +163,12 @@ export async function POST(request: Request) {
       errors: [] as any[],
     };
 
-    for (const blingOrder of allBlingOrders) {
+    // Rastrear quais fluxiaIds já foram pareados nesta rodada
+    const usedFluxiaIds = new Set<string>();
+
+    for (const blingOrder of blingOrdersAtivos) {
       try {
-        const match = await findFluxiaOrder(blingOrder, allFluxiaOrders);
+        const match = await findFluxiaOrder(blingOrder, allFluxiaOrders, usedFluxiaIds);
 
         if (!match) {
           results.unmatched.push({
@@ -181,6 +220,9 @@ export async function POST(request: Request) {
           updates.invoiceValue = blingOrder.total;
         }
 
+        // Marcar como usado para evitar que outro pedido Bling pegue o mesmo
+        usedFluxiaIds.add(fluxiaOrder.id);
+
         const matchInfo = {
           fluxiaId: fluxiaOrder.id,
           blingId: blingOrder.id,
@@ -225,6 +267,7 @@ export async function POST(request: Request) {
       dryRun,
       resumo: {
         blingOrders: allBlingOrders.length,
+        blingCancelados: allBlingOrders.length - blingOrdersAtivos.length,
         fluxiaOrders: allFluxiaOrders.length,
         matched: results.matched.length,
         unmatched: results.unmatched.length,
