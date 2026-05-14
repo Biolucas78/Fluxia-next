@@ -15,12 +15,27 @@ export async function POST(request: Request) {
     let foundEndpoint = 'notas/vendas';
     const headers = { 'Authorization': `Bearer ${token}` };
 
-    // 1. Tentar buscar pelo ID do Pedido (se existir)
+    // 1. Busca direta pelo ID do Pedido no Bling (mais precisa — evita pegar NF errada)
     if (blingOrderId) {
       console.log(`[Bling API] Buscando nota fiscal pelo ID do pedido: ${blingOrderId}`);
-      // Na API v3, não há filtro direto por pedido na listagem de NFe.
-      // Vamos buscar as últimas notas e filtrar localmente, ou usar o endpoint correto se existir.
-      // Mas como fallback, vamos direto para a busca abrangente.
+      try {
+        // A API v3 suporta filtro por idPedidoVenda na listagem de NFe
+        const nfeByOrderResponse = await fetchWithRetry(
+          `https://api.bling.com.br/Api/v3/nfe?idPedidoVenda=${blingOrderId}&limite=5`,
+          { headers }
+        );
+        if (nfeByOrderResponse.ok) {
+          const nfeByOrderData = await nfeByOrderResponse.json();
+          const nfes = nfeByOrderData.data || [];
+          if (nfes.length > 0) {
+            invoiceFound = nfes[0];
+            foundEndpoint = 'nfe';
+            console.log(`[Bling API] Nota encontrada diretamente pelo pedido ${blingOrderId}: NF ${invoiceFound.numero}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[Bling API] Erro na busca por idPedidoVenda, caindo no fallback:`, e);
+      }
     }
 
     // 2. Fallback: Buscar pelo Documento (CPF/CNPJ) ou Nome do Cliente
