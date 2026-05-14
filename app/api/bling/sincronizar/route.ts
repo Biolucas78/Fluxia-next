@@ -93,7 +93,7 @@ export async function POST(request: Request) {
 
     // 1. Buscar todos os pedidos do Fluxia (março/abril/maio)
     const snapshot = await adminDb.collection('orders').get();
-    const allFluxiaOrders = snapshot.docs.map(doc => ({ _ref: doc.ref, id: doc.id, ...doc.data() }));
+    const allFluxiaOrders = snapshot.docs.map((doc: any) => ({ _ref: doc.ref, id: doc.id, ...doc.data() }));
     console.log(`[Sync Bling] ${allFluxiaOrders.length} pedidos no Fluxia`);
 
     // 2. Buscar pedidos do Bling de março a hoje (paginado)
