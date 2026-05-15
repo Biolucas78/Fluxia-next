@@ -268,7 +268,7 @@ export async function POST(request: Request) {
             blingOrderNumero: blingOrder.numero,
           };
 
-          if (!fluxiaOrder.phone && contato.celular) updates.phone = contato.celular.replace(/\D/g, '');
+          if (!fluxiaOrder.phone && contato.celular || contato.fone || contato.telefone) updates.phone = (contato.celular || contato.fone || contato.telefone).replace(/\D/g, '');
           if (!fluxiaOrder.email && contato.email) updates.email = contato.email;
           if (!fluxiaOrder.cpf && doc.length === 11) updates.cpf = doc;
           if (!fluxiaOrder.cnpj && doc.length === 14) updates.cnpj = doc;
@@ -308,7 +308,7 @@ export async function POST(request: Request) {
           const novoPedido: any = {
             id: novoId,
             clientName: contato.nome || 'Cliente Bling',
-            phone: (contato.celular || '').replace(/\D/g, '') || undefined,
+            phone: (contato.celular || contato.fone || contato.telefone || '').replace(/\D/g, '') || undefined,
             email: contato.email || undefined,
             cpf: doc.length === 11 ? doc : undefined,
             cnpj: doc.length === 14 ? doc : undefined,
