@@ -25,6 +25,15 @@ async function fetchBlingOrderDetails(blingOrderId: string, headers: any) {
   } catch { return null; }
 }
 
+
+async function fetchContatoCompleto(contatoId: string, headers: any) {
+  try {
+    const res = await fetchWithRetry(`${BLING_BASE}/contatos/${contatoId}`, { headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.data || null;
+  } catch { return null; }
+}
 async function fetchNFDetails(nfeId: string, headers: any) {
   try {
     const res = await fetchWithRetry(`${BLING_BASE}/nfe/${nfeId}`, { headers });
@@ -94,6 +103,8 @@ function mapBlingItensToProducts(itens: any[], productMapping: any[]) {
 }
 
 function detectarOrigem(blingOrder: any): string {
+  const servico = normalize(blingOrder.transporte?.volumes?.[0]?.servico || '');
+  if (servico.includes('amazon')) return 'Amazon';
   const loja = blingOrder.loja?.descricao || blingOrder.loja?.nome || '';
   const canal = normalize(loja);
   if (canal.includes('amazon')) return 'Amazon';
@@ -110,12 +121,11 @@ function detectarFormaPagamento(blingOrder: any, origem: string): string {
   return 'pix';
 }
 
-function montarEndereco(contato: any) {
-  if (!contato) return undefined;
-  const end = contato.endereco || {};
-  if (!end.logradouro && !end.municipio) return undefined;
+function montarEndereco(etiqueta: any, contatoGeral?: any) {
+  const end = etiqueta || contatoGeral?.endereco?.geral || {};
+  if (!end || (!end.endereco && !end.logradouro && !end.municipio)) return undefined;
   return {
-    street: end.logradouro || '',
+    street: end.endereco || end.logradouro || '',
     number: end.numero || '',
     complement: end.complemento || '',
     district: end.bairro || '',
@@ -247,7 +257,17 @@ export async function POST(request: Request) {
         const formaPagamento = detectarFormaPagamento(blingOrder, origem);
         const contato = blingOrder.contato || {};
         const doc = (contato.numeroDocumento || '').replace(/\D/g, '');
-        const addressDetails = montarEndereco(contato);
+        // Buscar contato completo para pegar telefone
+        let contatoCompleto: any = null;
+        if (contato.id) {
+          await new Promise(r => setTimeout(r, 150));
+          contatoCompleto = await fetchContatoCompleto(String(contato.id), headers);
+        }
+        const telefone = (contatoCompleto?.telefone || contatoCompleto?.celular || '').replace(/\D/g, '') || undefined;
+        const email = contatoCompleto?.email || undefined;
+        // Endereço de entrega via transporte.etiqueta, fallback no contato completo
+        const etiqueta = blingOrder.transporte?.etiqueta;
+        const addressDetails = montarEndereco(etiqueta, contatoCompleto);
         const itens = blingOrder.itens || [];
         const products = mapBlingItensToProducts(itens, productMapping);
 
@@ -268,8 +288,8 @@ export async function POST(request: Request) {
             blingOrderNumero: blingOrder.numero,
           };
 
-          if (!fluxiaOrder.phone && contato.celular || contato.fone || contato.telefone) updates.phone = (contato.celular || contato.fone || contato.telefone).replace(/\D/g, '');
-          if (!fluxiaOrder.email && contato.email) updates.email = contato.email;
+          if (!fluxiaOrder.phone && telefone) updates.phone = telefone;
+          if (!fluxiaOrder.email && email) updates.email = email;
           if (!fluxiaOrder.cpf && doc.length === 11) updates.cpf = doc;
           if (!fluxiaOrder.cnpj && doc.length === 14) updates.cnpj = doc;
           if (!fluxiaOrder.addressDetails && addressDetails) updates.addressDetails = addressDetails;
@@ -308,8 +328,8 @@ export async function POST(request: Request) {
           const novoPedido: any = {
             id: novoId,
             clientName: contato.nome || 'Cliente Bling',
-            phone: (contato.celular || contato.fone || contato.telefone || '').replace(/\D/g, '') || undefined,
-            email: contato.email || undefined,
+            phone: telefone,
+            email: email,
             cpf: doc.length === 11 ? doc : undefined,
             cnpj: doc.length === 14 ? doc : undefined,
             address: addressDetails ? `${addressDetails.street}, ${addressDetails.number} - ${addressDetails.city}/${addressDetails.state}` : undefined,
