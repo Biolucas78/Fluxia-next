@@ -350,7 +350,8 @@ export async function POST(request: Request) {
           });
 
           if (!dryRun) {
-            await adminDb.collection('orders').doc(novoId).set(novoPedido);
+            const pedidoLimpo = Object.fromEntries(Object.entries(novoPedido).filter(([_, v]) => v !== undefined));
+            await adminDb.collection('orders').doc(novoId).set(pedidoLimpo);
           }
         }
 
