@@ -7,17 +7,17 @@ export async function POST(request: Request) {
 
   const snap = await adminDb.collection('orders').where('archived', '==', true).get();
   const total = snap.docs.length;
-  const comBling = snap.docs.filter(d => d.data().blingOrderId).length;
-  const semBling = snap.docs.filter(d => !d.data().blingOrderId).length;
+  const comBling = snap.docs.filter((d: any) => d.data().blingOrderId).length;
+  const semBling = snap.docs.filter((d: any) => !d.data().blingOrderId).length;
 
   if (dryRun) {
     return NextResponse.json({ dryRun: true, total, comBling, semBling,
-      semBlingIds: snap.docs.filter(d => !d.data().blingOrderId).map(d => ({ id: d.id, nome: d.data().clientName }))
+      semBlingIds: snap.docs.filter((d: any) => !d.data().blingOrderId).map((d: any) => ({ id: d.id, nome: d.data().clientName }))
     });
   }
 
   const batch = adminDb.batch();
-  snap.docs.filter(d => d.data().blingOrderId).forEach(d => batch.delete(d.ref));
+  snap.docs.filter((d: any) => d.data().blingOrderId).forEach((d: any) => batch.delete(d.ref));
   await batch.commit();
   return NextResponse.json({ ok: true, deletados: comBling, mantidos: semBling });
 }
