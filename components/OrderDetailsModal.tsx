@@ -1385,7 +1385,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                   </h3>
                   {!isEditingAddress ? (
                     <button
-                      onClick={() => setIsEditingAddress(true)}
+                      onClick={() => { setEditedAddress(order.whatsappText || ''); setIsEditingAddress(true); }}
                       className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
                     >
                       <Edit2 className="size-3" /> Editar
