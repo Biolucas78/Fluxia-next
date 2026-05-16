@@ -1619,54 +1619,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         )}
                       </div>
 
-                      <div className="flex flex-col gap-2">
-                        <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasOrderDocument ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
-                          <input 
-                            type="checkbox"
-                            checked={order.hasOrderDocument}
-                            onChange={() => onUpdateOrder({
-                              ...order,
-                              hasOrderDocument: !order.hasOrderDocument,
-                              statusHistory: [
-                                ...(order.statusHistory || []),
-                                {
-                                  action: `${!order.hasOrderDocument ? 'Marcou' : 'Desmarcou'} Declaração de Conteúdo`,
-                                  timestamp: new Date().toISOString()
-                                }
-                              ]
-                            })}
-                            className="rounded border-slate-300 text-primary focus:ring-primary size-4"
-                          />
-                          <span className={`text-sm font-medium ${order.hasOrderDocument ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Declaração de Conteúdo</span>
-                        </label>
-                        {!order.hasInvoice && !order.hasOrderDocument && (
-                          <button
-                            onClick={() => {
-                              onUpdateOrder({
-                                ...order,
-                                hasOrderDocument: true,
-                                statusHistory: [
-                                  ...(order.statusHistory || []),
-                                  {
-                                    action: 'Emitiu Declaração de Conteúdo (Melhor Envio)',
-                                    timestamp: new Date().toISOString()
-                                  }
-                                ]
-                              });
-                              toast.success('DC-e selecionada para este envio.');
-                            }}
-                            className="text-[10px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 px-3"
-                          >
-                            <FileText className="size-3" /> Emitir DC-e (Melhor Envio)
-                          </button>
-                        )}
-                        {order.hasOrderDocument && (
-                          <p className="text-[9px] text-emerald-600 dark:text-emerald-400 px-3 italic">
-                            Será gerada DC-e automática pelo Melhor Envio.
-                          </p>
-                        )}
-                      </div>
-
                       <div className="flex flex-col gap-1">
                       <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasBoleto ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
                         <input 
@@ -1725,6 +1677,54 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         {isFetchingBoleto ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
                         {order.hasBoleto ? 'Atualizar Boleto' : 'Buscar Boleto no Sicoob'}
                       </button>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasOrderDocument ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
+                          <input 
+                            type="checkbox"
+                            checked={order.hasOrderDocument}
+                            onChange={() => onUpdateOrder({
+                              ...order,
+                              hasOrderDocument: !order.hasOrderDocument,
+                              statusHistory: [
+                                ...(order.statusHistory || []),
+                                {
+                                  action: `${!order.hasOrderDocument ? 'Marcou' : 'Desmarcou'} Declaração de Conteúdo`,
+                                  timestamp: new Date().toISOString()
+                                }
+                              ]
+                            })}
+                            className="rounded border-slate-300 text-primary focus:ring-primary size-4"
+                          />
+                          <span className={`text-sm font-medium ${order.hasOrderDocument ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Declaração de Conteúdo</span>
+                        </label>
+                        {!order.hasInvoice && !order.hasOrderDocument && (
+                          <button
+                            onClick={() => {
+                              onUpdateOrder({
+                                ...order,
+                                hasOrderDocument: true,
+                                statusHistory: [
+                                  ...(order.statusHistory || []),
+                                  {
+                                    action: 'Emitiu Declaração de Conteúdo (Melhor Envio)',
+                                    timestamp: new Date().toISOString()
+                                  }
+                                ]
+                              });
+                              toast.success('DC-e selecionada para este envio.');
+                            }}
+                            className="text-[10px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 px-3"
+                          >
+                            <FileText className="size-3" /> Emitir DC-e (Melhor Envio)
+                          </button>
+                        )}
+                        {order.hasOrderDocument && (
+                          <p className="text-[9px] text-emerald-600 dark:text-emerald-400 px-3 italic">
+                            Será gerada DC-e automática pelo Melhor Envio.
+                          </p>
+                        )}
                       </div>
                       {(boletoData || order.boletoNossoNumero) && (
                         <div className="px-3 space-y-2 mt-1">
