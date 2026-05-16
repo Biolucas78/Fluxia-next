@@ -1684,6 +1684,39 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         />
                         <span className={`text-sm font-medium ${order.hasBoleto ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Boleto</span>
                       </label>
+                      {(order.cnpj || order.cpf) && (
+                        <button
+                          onClick={async () => {
+                            const cpfCnpj = (order.cnpj || order.cpf || '').replace(/\D/g, '');
+                            if (!cpfCnpj) { toast.error('Cliente sem CPF/CNPJ cadastrado'); return; }
+                            toast.loading('Buscando boleto no Sicoob...', { id: 'buscar-boleto' });
+                            try {
+                              const res = await fetch(`/api/sicoob/consultar?cpfCnpj=${cpfCnpj}`);
+                              const data = await res.json();
+                              toast.dismiss('buscar-boleto');
+                              if (!data.ok || !data.data) { toast.error('Nenhum boleto encontrado'); return; }
+                              const boletos = Array.isArray(data.data) ? data.data : (data.data.items || data.data.boletos || []);
+                              if (boletos.length === 0) { toast.error('Nenhum boleto encontrado para este cliente'); return; }
+                              // Pegar o boleto mais recente
+                              const boleto = boletos.sort((a: any, b: any) => new Date(b.dataEmissao || b.dataVencimento || 0).getTime() - new Date(a.dataEmissao || a.dataVencimento || 0).getTime())[0];
+                              const updates: any = { hasBoleto: true };
+                              if (boleto.nossoNumero) updates.boletoNossoNumero = String(boleto.nossoNumero);
+                              if (boleto.valorNominal || boleto.valor) updates.invoiceValue = boleto.valorNominal || boleto.valor;
+                              if (boleto.dataVencimento) updates.paymentDueDate = boleto.dataVencimento;
+                              if (boleto.dataEmissao) updates.paymentDate = boleto.dataEmissao;
+                              if (boleto.situacao === 'LIQUIDADO' || boleto.situacao === 'Liquidado') updates.paymentStatus = 'pago';
+                              onUpdateOrder({ ...order, ...updates, statusHistory: [...(order.statusHistory || []), { action: 'Boleto encontrado no Sicoob', details: `NossoNumero: ${boleto.nossoNumero || 'N/A'}`, timestamp: new Date().toISOString() }] });
+                              toast.success(`Boleto encontrado! Vencimento: ${boleto.dataVencimento || 'N/A'}`);
+                            } catch (e: any) {
+                              toast.dismiss('buscar-boleto');
+                              toast.error('Erro ao buscar boleto: ' + e.message);
+                            }
+                          }}
+                          className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-400 hover:border-primary hover:text-primary transition-all bg-white dark:bg-slate-900"
+                        >
+                          <Landmark className="size-3" /> Buscar Boleto no Sicoob
+                        </button>
+                      )}
                     </div>
                   </div>
 
