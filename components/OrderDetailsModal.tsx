@@ -6,7 +6,8 @@ import { toast } from 'react-hot-toast';
 import { Order, OrderStatus } from '@/lib/types';
 import { 
   X, 
-  MapPin, 
+  MapPin,
+  MessageSquare,
   Hash, 
   CheckCircle2, 
   Truck, 
@@ -1380,196 +1381,40 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
               <section>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <MapPin className="size-4" /> Informações
+                    <MessageSquare className="size-4" /> Texto Original do Pedido
                   </h3>
                   {!isEditingAddress ? (
-                    <button 
-                      onClick={() => {
-                        setEditedAddress(order.address || '');
-                        setEditedAddressDetails(order.addressDetails || {
-                          street: '', number: '', complement: '', district: '', city: '', state: '', zip: ''
-                        });
-                        setIsEditingAddress(true);
-                      }}
+                    <button
+                      onClick={() => setIsEditingAddress(true)}
                       className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
                     >
                       <Edit2 className="size-3" /> Editar
                     </button>
                   ) : (
                     <div className="flex gap-2">
-                      <button 
-                        onClick={() => setIsEditingAddress(false)}
-                        className="text-[10px] font-bold text-slate-400 hover:text-slate-600"
-                      >
-                        Cancelar
-                      </button>
-                      <button 
+                      <button onClick={() => setIsEditingAddress(false)} className="text-[10px] font-bold text-slate-400 hover:text-slate-600">Cancelar</button>
+                      <button
                         onClick={() => {
-                          onUpdateOrder({ 
-                            ...order, 
-                            address: editedAddress,
-                            addressDetails: editedAddressDetails
-                          });
+                          onUpdateOrder({ ...order, whatsappText: editedAddress });
                           setIsEditingAddress(false);
                         }}
                         className="text-[10px] font-bold text-emerald-500 hover:text-emerald-600"
-                      >
-                        Salvar
-                      </button>
+                      >Salvar</button>
                     </div>
                   )}
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-3">
+                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
                   {isEditingAddress ? (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Endereço Completo (Texto)</label>
-                        <textarea 
-                          value={editedAddress}
-                          onChange={(e) => setEditedAddress(e.target.value)}
-                          className="w-full h-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none resize-none focus:border-primary"
-                        />
-                      </div>
-                      <div className="pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3">
-                        <div className="col-span-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                            Logradouro <span className="text-red-500">*</span>
-                          </label>
-                          <input 
-                            type="text" 
-                            value={editedAddressDetails.street} 
-                            onChange={e => setEditedAddressDetails({...editedAddressDetails, street: e.target.value})}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                            Número <span className="text-red-500">*</span>
-                          </label>
-                          <input 
-                            type="text" 
-                            value={editedAddressDetails.number} 
-                            onChange={e => setEditedAddressDetails({...editedAddressDetails, number: e.target.value})}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Complemento</label>
-                          <input 
-                            type="text" 
-                            value={editedAddressDetails.complement} 
-                            onChange={e => setEditedAddressDetails({...editedAddressDetails, complement: e.target.value})}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                            Bairro <span className="text-red-500">*</span>
-                          </label>
-                          <input 
-                            type="text" 
-                            value={editedAddressDetails.district} 
-                            onChange={e => setEditedAddressDetails({...editedAddressDetails, district: e.target.value})}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                            CEP <span className="text-red-500">*</span>
-                          </label>
-                          <input 
-                            type="text" 
-                            value={editedAddressDetails.zip} 
-                            onChange={async (e) => {
-                              const newZip = e.target.value.replace(/\D/g, '');
-                              setEditedAddressDetails({...editedAddressDetails, zip: newZip});
-                              if (newZip.length === 8) {
-                                try {
-                                  const response = await fetch(`https://viacep.com.br/ws/${newZip}/json/`);
-                                  const data = await response.json();
-                                  if (!data.erro) {
-                                    setEditedAddressDetails(prev => ({
-                                      ...prev,
-                                      street: data.logradouro || prev.street,
-                                      district: data.bairro || prev.district,
-                                      city: data.localidade || prev.city,
-                                      state: data.uf || prev.state
-                                    }));
-                                  } else {
-                                    toast.error('CEP não encontrado.');
-                                  }
-                                } catch (error) {
-                                  console.error('Erro ao buscar CEP:', error);
-                                  toast.error('Erro ao buscar CEP.');
-                                }
-                              }
-                            }}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                            Cidade <span className="text-red-500">*</span>
-                          </label>
-                          <input 
-                            type="text" 
-                            value={editedAddressDetails.city} 
-                            onChange={e => setEditedAddressDetails({...editedAddressDetails, city: e.target.value})}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                            Estado <span className="text-red-500">*</span>
-                          </label>
-                          <input 
-                            type="text" 
-                            value={editedAddressDetails.state} 
-                            onChange={e => setEditedAddressDetails({...editedAddressDetails, state: e.target.value})}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    <textarea
+                      value={editedAddress}
+                      onChange={e => setEditedAddress(e.target.value)}
+                      placeholder="Cole aqui o texto original do pedido do WhatsApp..."
+                      className="w-full h-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none resize-none focus:border-primary"
+                    />
                   ) : (
-                    <>
-                      <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic">
-                        {order.address || 'Endereço não informado'}
-                      </p>
-                      {order.addressDetails?.warning && (
-                        <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-xs text-yellow-800 dark:text-yellow-300 flex items-start gap-2">
-                          <AlertTriangle className="size-4 shrink-0 mt-0.5" />
-                          <span>{order.addressDetails.warning}</span>
-                        </div>
-                      )}
-                      {order.addressDetails && (
-                        <div className="pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-x-4 gap-y-2">
-                          <div className="col-span-2">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Logradouro</span>
-                            <span className="text-sm text-slate-600 dark:text-slate-400">
-                              {order.addressDetails.street}{order.addressDetails.number ? `, ${order.addressDetails.number}` : ''}
-                              {order.addressDetails.complement ? ` - ${order.addressDetails.complement}` : ''}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Bairro</span>
-                            <span className="text-sm text-slate-600 dark:text-slate-400">{order.addressDetails.district || '-'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">CEP</span>
-                            <span className="text-sm text-slate-600 dark:text-slate-400">{order.addressDetails.zip || '-'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Cidade</span>
-                            <span className="text-sm text-slate-600 dark:text-slate-400">{order.addressDetails.city || '-'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Estado</span>
-                            <span className="text-sm text-slate-600 dark:text-slate-400">{order.addressDetails.state || '-'}</span>
-                          </div>
-                        </div>
-                      )}
-                    </>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                      {order.whatsappText || <span className="text-slate-400 italic">Nenhum texto de pedido registrado.</span>}
+                    </p>
                   )}
                 </div>
               </section>
