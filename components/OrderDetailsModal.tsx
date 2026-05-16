@@ -1639,8 +1639,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </div>
               </section>
 
-              {['pedidos', 'embalagens_separadas', 'embalagens_prontas', 'caixa_montada'].includes(order.status) && (
-                <section className="space-y-6">
+              <section className="space-y-6">
                   <div>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                       <FileText className="size-4" /> Documentação
@@ -1887,9 +1886,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     </div>
                   </div>
                 </section>
-              )}
 
-              {(order.status === 'enviado' || order.status === 'entregue') && (
                 <section className="space-y-4">
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-4">
                     <div className="flex items-center justify-between">
@@ -2058,9 +2055,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     )}
                   </div>
                 </section>
-              )}
-              {['pedidos', 'embalagens_separadas', 'embalagens_prontas', 'caixa_montada'].includes(order.status) && (
-                <section className="space-y-4">
+              <section className="space-y-4">
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
@@ -2218,10 +2213,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     )}
                   </div>
                 </section>
-              )}
 
-              {['pedidos', 'embalagens_separadas', 'embalagens_prontas', 'caixa_montada'].includes(order.status) && (
-                <section className="space-y-4">
+              <section className="space-y-4">
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
                     <div className="space-y-4">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -2286,9 +2279,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     </div>
                   </div>
                 </section>
-              )}
 
-              {['enviado', 'entregue'].includes(order.status) && order.carrier && (
+              {order.carrier && (
                 <section className="space-y-4">
                   <div>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">

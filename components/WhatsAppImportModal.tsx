@@ -178,6 +178,7 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose, existin
             status: 'pedidos' as OrderStatus,
             timestamp: getSafeDate(po.orderDate)
           }],
+          whatsappText: text,
           products: po.products.map((p: any) => ({
             id: Math.random().toString(36).substr(2, 9),
             quantity: p.quantity,

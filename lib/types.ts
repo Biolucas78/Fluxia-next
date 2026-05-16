@@ -169,6 +169,7 @@ export interface Order {
   };
   boxWeight?: number;
   observations?: string;
+  whatsappText?: string;
   paymentCondition?: 'A vista' | '15 dias' | '21 dias' | '30 dias' | '2x';
   insuranceValue?: string;
   invoiceKey?: string;
