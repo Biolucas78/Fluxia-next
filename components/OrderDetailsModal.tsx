@@ -1187,6 +1187,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           cpf: order.cpf || '',
                           phone: order.phone || ''
                         });
+                        setEditedAddressDetails(order.addressDetails || {
+                          street: '', number: '', complement: '', district: '', city: '', state: '', zip: ''
+                        });
                         setIsEditingCustomer(true);
                       }}
                       className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
@@ -1210,6 +1213,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             cnpj: editedCustomer.cnpj,
                             cpf: editedCustomer.cpf,
                             phone: editedCustomer.phone,
+                            address: editedAddressDetails.street ? `${editedAddressDetails.street}, ${editedAddressDetails.number} - ${editedAddressDetails.city}/${editedAddressDetails.state}` : order.address,
                             addressDetails: editedAddressDetails,
                             statusHistory: [
                               ...(order.statusHistory || []),
@@ -1298,6 +1302,43 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
                         />
                       </div>
+                      <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-2">Endereço</label>
+                        <div className="space-y-2">
+                          <input type="text" placeholder="Rua" value={editedAddressDetails.street}
+                            onChange={e => setEditedAddressDetails({...editedAddressDetails, street: e.target.value})}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="text" placeholder="Número" value={editedAddressDetails.number}
+                              onChange={e => setEditedAddressDetails({...editedAddressDetails, number: e.target.value})}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                            />
+                            <input type="text" placeholder="Complemento" value={editedAddressDetails.complement}
+                              onChange={e => setEditedAddressDetails({...editedAddressDetails, complement: e.target.value})}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                            />
+                          </div>
+                          <input type="text" placeholder="Bairro" value={editedAddressDetails.district}
+                            onChange={e => setEditedAddressDetails({...editedAddressDetails, district: e.target.value})}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                          />
+                          <div className="grid grid-cols-3 gap-2">
+                            <input type="text" placeholder="Cidade" value={editedAddressDetails.city}
+                              onChange={e => setEditedAddressDetails({...editedAddressDetails, city: e.target.value})}
+                              className="col-span-2 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                            />
+                            <input type="text" placeholder="UF" value={editedAddressDetails.state}
+                              onChange={e => setEditedAddressDetails({...editedAddressDetails, state: e.target.value})}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                            />
+                          </div>
+                          <input type="text" placeholder="CEP" value={editedAddressDetails.zip}
+                            onChange={e => setEditedAddressDetails({...editedAddressDetails, zip: e.target.value})}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -1321,6 +1362,18 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         <div className="flex justify-between text-sm">
                           <span className="text-slate-500 font-medium">Telefone:</span>
                           <span className="text-slate-900 dark:text-white font-bold">{order.phone}</span>
+                        </div>
+                      )}
+                      {order.addressDetails?.street && (
+                        <div className="text-sm pt-1 border-t border-slate-100 dark:border-slate-700">
+                          <span className="text-slate-500 font-medium block mb-1">Endereço:</span>
+                          <span className="text-slate-900 dark:text-white font-bold text-xs">
+                            {order.addressDetails.street}{order.addressDetails.number ? `, ${order.addressDetails.number}` : ''}
+                            {order.addressDetails.complement ? ` - ${order.addressDetails.complement}` : ''}<br/>
+                            {order.addressDetails.district && `${order.addressDetails.district} · `}
+                            {order.addressDetails.city}/{order.addressDetails.state}
+                            {order.addressDetails.zip && ` · CEP ${order.addressDetails.zip}`}
+                          </span>
                         </div>
                       )}
                     </>
