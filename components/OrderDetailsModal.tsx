@@ -1726,7 +1726,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           </p>
                         )}
                       </div>
-                      {(boletoData || order.boletoNossoNumero) && (
+                      {(boletoData || order.boletoNossoNumero || order.paymentDueDate) && (
                         <div className="px-3 space-y-2 mt-1">
                           <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
@@ -1749,10 +1749,10 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/')}</p>
                               </div>
                             )}
-                            {boletoData?.dataEmissao && (
+                            {(boletoData?.dataEmissao || order.paymentDate) && (
                               <div>
                                 <p className="text-[9px] text-slate-400 uppercase">Emissão</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData.dataEmissao.split('-').reverse().join('/')}</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataEmissao || order.paymentDate || '').split('-').reverse().join('/')}</p>
                               </div>
                             )}
                             {boletoData?.situacao && (
