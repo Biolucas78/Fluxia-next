@@ -1695,18 +1695,25 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               const data = await res.json();
                               toast.dismiss('buscar-boleto');
                               if (!data.ok || !data.data) { toast.error('Nenhum boleto encontrado'); return; }
-                              const boletos = Array.isArray(data.data) ? data.data : (data.data.items || data.data.boletos || []);
+                              const boletos: any[] = data.data.resultado || data.data.items || (Array.isArray(data.data) ? data.data : []);
                               if (boletos.length === 0) { toast.error('Nenhum boleto encontrado para este cliente'); return; }
-                              // Pegar o boleto mais recente
-                              const boleto = boletos.sort((a: any, b: any) => new Date(b.dataEmissao || b.dataVencimento || 0).getTime() - new Date(a.dataEmissao || a.dataVencimento || 0).getTime())[0];
+                              // Filtrar pelo seuNumero = invoiceNumber se disponível
+                              let boleto = boletos[0];
+                              if (order.invoiceNumber) {
+                                const match = boletos.find((b: any) => String(b.seuNumero).trim() === String(order.invoiceNumber).trim());
+                                if (match) boleto = match;
+                              } else {
+                                // Pegar o mais recente
+                                boleto = boletos.sort((a: any, b: any) => new Date(b.dataEmissao || 0).getTime() - new Date(a.dataEmissao || 0).getTime())[0];
+                              }
                               const updates: any = { hasBoleto: true };
                               if (boleto.nossoNumero) updates.boletoNossoNumero = String(boleto.nossoNumero);
-                              if (boleto.valorNominal || boleto.valor) updates.invoiceValue = boleto.valorNominal || boleto.valor;
+                              if (boleto.valor) updates.invoiceValue = boleto.valor;
                               if (boleto.dataVencimento) updates.paymentDueDate = boleto.dataVencimento;
                               if (boleto.dataEmissao) updates.paymentDate = boleto.dataEmissao;
-                              if (boleto.situacao === 'LIQUIDADO' || boleto.situacao === 'Liquidado') updates.paymentStatus = 'pago';
-                              onUpdateOrder({ ...order, ...updates, statusHistory: [...(order.statusHistory || []), { action: 'Boleto encontrado no Sicoob', details: `NossoNumero: ${boleto.nossoNumero || 'N/A'}`, timestamp: new Date().toISOString() }] });
-                              toast.success(`Boleto encontrado! Vencimento: ${boleto.dataVencimento || 'N/A'}`);
+                              if (boleto.situacaoBoleto === 'LIQUIDADO') updates.paymentStatus = 'pago';
+                              onUpdateOrder({ ...order, ...updates, statusHistory: [...(order.statusHistory || []), { action: 'Boleto encontrado no Sicoob', details: `NF: ${boleto.seuNumero || 'N/A'} | NossoNumero: ${boleto.nossoNumero || 'N/A'}`, timestamp: new Date().toISOString() }] });
+                              toast.success(`Boleto NF ${boleto.seuNumero} encontrado! Vencimento: ${boleto.dataVencimento || 'N/A'}`);
                             } catch (e: any) {
                               toast.dismiss('buscar-boleto');
                               toast.error('Erro ao buscar boleto: ' + e.message);
