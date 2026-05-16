@@ -119,6 +119,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [manualInvoiceKey, setManualInvoiceKey] = useState(order.invoiceKey || '');
   const [manualInvoiceNumber, setManualInvoiceNumber] = useState(order.invoiceNumber || '');
   const [manualInvoiceValue, setManualInvoiceValue] = useState<number | ''>(order.invoiceValue || '');
+  const [isFetchingBoleto, setIsFetchingBoleto] = useState(false);
+  const [boletoData, setBoletoData] = useState<{nossoNumero: string; seuNumero: string; valor: number; dataEmissao: string; dataVencimento: string; situacao: string} | null>(null);
   const [blingSearchResults, setBlingSearchResults] = useState<any[]>([]);
   const [showBoletoModal, setShowBoletoModal] = useState(false);
   const [isEmittingBoleto, setIsEmittingBoleto] = useState(false);
@@ -1684,45 +1686,100 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         />
                         <span className={`text-sm font-medium ${order.hasBoleto ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>Boleto</span>
                       </label>
-                      {(order.cnpj || order.cpf) && (
-                        <button
-                          onClick={async () => {
-                            const cpfCnpj = (order.cnpj || order.cpf || '').replace(/\D/g, '');
-                            if (!cpfCnpj) { toast.error('Cliente sem CPF/CNPJ cadastrado'); return; }
-                            toast.loading('Buscando boleto no Sicoob...', { id: 'buscar-boleto' });
-                            try {
-                              const res = await fetch(`/api/sicoob/consultar?cpfCnpj=${cpfCnpj}`);
-                              const data = await res.json();
-                              toast.dismiss('buscar-boleto');
-                              if (!data.ok || !data.data) { toast.error('Nenhum boleto encontrado'); return; }
-                              const boletos: any[] = data.data.resultado || data.data.items || (Array.isArray(data.data) ? data.data : []);
-                              if (boletos.length === 0) { toast.error('Nenhum boleto encontrado para este cliente'); return; }
-                              // Filtrar pelo seuNumero = invoiceNumber se disponível
-                              let boleto = boletos[0];
-                              if (order.invoiceNumber) {
-                                const match = boletos.find((b: any) => String(b.seuNumero).trim() === String(order.invoiceNumber).trim());
-                                if (match) boleto = match;
-                              } else {
-                                // Pegar o mais recente
-                                boleto = boletos.sort((a: any, b: any) => new Date(b.dataEmissao || 0).getTime() - new Date(a.dataEmissao || 0).getTime())[0];
-                              }
-                              const updates: any = { hasBoleto: true };
-                              if (boleto.nossoNumero) updates.boletoNossoNumero = String(boleto.nossoNumero);
-                              if (boleto.valor) updates.invoiceValue = boleto.valor;
-                              if (boleto.dataVencimento) updates.paymentDueDate = boleto.dataVencimento;
-                              if (boleto.dataEmissao) updates.paymentDate = boleto.dataEmissao;
-                              if (boleto.situacaoBoleto === 'LIQUIDADO') updates.paymentStatus = 'pago';
-                              onUpdateOrder({ ...order, ...updates, statusHistory: [...(order.statusHistory || []), { action: 'Boleto encontrado no Sicoob', details: `NF: ${boleto.seuNumero || 'N/A'} | NossoNumero: ${boleto.nossoNumero || 'N/A'}`, timestamp: new Date().toISOString() }] });
-                              toast.success(`Boleto NF ${boleto.seuNumero} encontrado! Vencimento: ${boleto.dataVencimento || 'N/A'}`);
-                            } catch (e: any) {
-                              toast.dismiss('buscar-boleto');
-                              toast.error('Erro ao buscar boleto: ' + e.message);
+                      <button
+                        onClick={async () => {
+                          const cpfCnpj = (order.cnpj || order.cpf || '').replace(/\D/g, '');
+                          if (!cpfCnpj) { toast.error('Cliente sem CPF/CNPJ cadastrado'); return; }
+                          setIsFetchingBoleto(true);
+                          try {
+                            const res = await fetch(`/api/sicoob/consultar?cpfCnpj=${cpfCnpj}`);
+                            const data = await res.json();
+                            if (!data.ok || !data.data) { toast.error('Nenhum boleto encontrado'); return; }
+                            const boletos: any[] = data.data.resultado || data.data.items || (Array.isArray(data.data) ? data.data : []);
+                            if (boletos.length === 0) { toast.error('Nenhum boleto encontrado para este cliente'); return; }
+                            let boleto = boletos[0];
+                            if (order.invoiceNumber) {
+                              const match = boletos.find((b: any) => String(b.seuNumero).trim() === String(order.invoiceNumber).trim());
+                              if (match) boleto = match;
+                            } else {
+                              boleto = boletos.sort((a: any, b: any) => new Date(b.dataEmissao || 0).getTime() - new Date(a.dataEmissao || 0).getTime())[0];
                             }
-                          }}
-                          className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-400 hover:border-primary hover:text-primary transition-all bg-white dark:bg-slate-900"
-                        >
-                          <Landmark className="size-3" /> Buscar Boleto no Sicoob
-                        </button>
+                            const updates: any = { hasBoleto: true };
+                            if (boleto.nossoNumero) updates.boletoNossoNumero = String(boleto.nossoNumero);
+                            if (boleto.valor) updates.invoiceValue = boleto.valor;
+                            if (boleto.dataVencimento) updates.paymentDueDate = boleto.dataVencimento;
+                            if (boleto.dataEmissao) updates.paymentDate = boleto.dataEmissao;
+                            if (boleto.situacaoBoleto === 'LIQUIDADO') updates.paymentStatus = 'pago';
+                            onUpdateOrder({ ...order, ...updates, statusHistory: [...(order.statusHistory || []), { action: 'Boleto encontrado no Sicoob', details: `NF: ${boleto.seuNumero || 'N/A'} | NossoNumero: ${boleto.nossoNumero || 'N/A'}`, timestamp: new Date().toISOString() }] });
+                            setBoletoData({ nossoNumero: String(boleto.nossoNumero || ''), seuNumero: String(boleto.seuNumero || ''), valor: boleto.valor || 0, dataEmissao: boleto.dataEmissao || '', dataVencimento: boleto.dataVencimento || '', situacao: boleto.situacaoBoleto || '' });
+                            toast.success(`Boleto NF ${boleto.seuNumero} encontrado`);
+                          } catch (e: any) {
+                            toast.error('Erro ao buscar boleto: ' + e.message);
+                          } finally {
+                            setIsFetchingBoleto(false);
+                          }
+                        }}
+                        className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1 px-3 mt-1"
+                      >
+                        {isFetchingBoleto ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+                        {order.hasBoleto ? 'Atualizar Boleto' : 'Buscar Boleto no Sicoob'}
+                      </button>
+                      {(boletoData || order.boletoNossoNumero) && (
+                        <div className="px-3 space-y-2 mt-1">
+                          <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                            {(boletoData?.seuNumero || order.invoiceNumber) && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">NF / Seu Número</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData?.seuNumero || order.invoiceNumber}</p>
+                              </div>
+                            )}
+                            {(boletoData?.nossoNumero || order.boletoNossoNumero) && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">Nosso Número</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData?.nossoNumero || order.boletoNossoNumero}</p>
+                              </div>
+                            )}
+                            {(boletoData?.valor || order.invoiceValue) && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">Valor</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boletoData?.valor || order.invoiceValue || 0)}</p>
+                              </div>
+                            )}
+                            {(boletoData?.dataVencimento || order.paymentDueDate) && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">Vencimento</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/')}</p>
+                              </div>
+                            )}
+                            {boletoData?.dataEmissao && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">Emissão</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData.dataEmissao.split('-').reverse().join('/')}</p>
+                              </div>
+                            )}
+                            {boletoData?.situacao && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">Situação</p>
+                                <p className={`text-xs font-bold ${boletoData.situacao === 'LIQUIDADO' ? 'text-emerald-600' : 'text-amber-600'}`}>{boletoData.situacao}</p>
+                              </div>
+                            )}
+                          </div>
+                          {order.phone && (
+                            <button
+                              onClick={() => {
+                                const phone = order.phone?.replace(/\D/g, '');
+                                const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boletoData?.valor || order.invoiceValue || 0);
+                                const venc = (boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/');
+                                const msg = encodeURIComponent(`Olá ${order.tradeName || order.clientName}, tudo bem? Segue o boleto referente ao seu pedido no valor de ${valor}${venc ? ` com vencimento em ${venc}` : ''}. Qualquer dúvida estou à disposição!`);
+                                window.open(`https://wa.me/55${phone}?text=${msg}`, '_blank');
+                              }}
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold transition-all mt-2"
+                            >
+                              <MessageSquare className="size-3" /> Enviar Cobrança WhatsApp
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
