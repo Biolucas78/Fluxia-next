@@ -183,13 +183,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   };
 
   const handleSelectBlingCustomer = (blingCustomer: any) => {
-    // Prioriza Nome Fantasia conforme solicitado pelo usuário
-    const clientName = blingCustomer.fantasia && blingCustomer.fantasia !== blingCustomer.nome 
-      ? `${blingCustomer.fantasia} (${blingCustomer.nome})` 
-      : blingCustomer.nome;
-
+    // clientName = razão social, tradeName = fantasia (card mostra fantasia se tiver)
     setEditedCustomer({
-      clientName,
+      clientName: blingCustomer.nome || '',
       tradeName: blingCustomer.fantasia || '',
       cnpj: blingCustomer.tipo === 'J' ? blingCustomer.numeroDocumento : '',
       cpf: blingCustomer.tipo === 'F' ? blingCustomer.numeroDocumento : '',
