@@ -197,15 +197,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     });
     
     // Also update address if available
-    if (blingCustomer.endereco) {
+    if (blingCustomer.endereco?.geral || blingCustomer.endereco) {
       setEditedAddressDetails({
-        street: blingCustomer.endereco.endereco || '',
-        number: blingCustomer.endereco.numero || '',
-        complement: blingCustomer.endereco.complemento || '',
-        district: blingCustomer.endereco.bairro || '',
-        city: blingCustomer.endereco.municipio || '',
-        state: blingCustomer.endereco.uf || '',
-        zip: blingCustomer.endereco.cep || ''
+        street: blingCustomer.endereco?.geral?.endereco || blingCustomer.endereco?.endereco || '',
+        number: blingCustomer.endereco?.geral?.numero || blingCustomer.endereco?.numero || '',
+        complement: blingCustomer.endereco?.geral?.complemento || blingCustomer.endereco?.complemento || '',
+        district: blingCustomer.endereco?.geral?.bairro || blingCustomer.endereco?.bairro || '',
+        city: blingCustomer.endereco?.geral?.municipio || blingCustomer.endereco?.municipio || '',
+        state: blingCustomer.endereco?.geral?.uf || blingCustomer.endereco?.uf || '',
+        zip: blingCustomer.endereco?.geral?.cep || blingCustomer.endereco?.cep || ''
       });
     }
     
