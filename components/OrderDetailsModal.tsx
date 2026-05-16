@@ -1667,6 +1667,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         )}
                       </div>
 
+                      <div className="flex flex-col gap-1">
                       <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${order.hasBoleto ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
                         <input 
                           type="checkbox"
@@ -1724,6 +1725,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         {isFetchingBoleto ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
                         {order.hasBoleto ? 'Atualizar Boleto' : 'Buscar Boleto no Sicoob'}
                       </button>
+                      </div>
                       {(boletoData || order.boletoNossoNumero) && (
                         <div className="px-3 space-y-2 mt-1">
                           <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
@@ -1734,12 +1736,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData?.seuNumero || order.invoiceNumber}</p>
                               </div>
                             )}
-                            {(boletoData?.nossoNumero || order.boletoNossoNumero) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">Nosso Número</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData?.nossoNumero || order.boletoNossoNumero}</p>
-                              </div>
-                            )}
+
                             {(boletoData?.valor || order.invoiceValue) && (
                               <div>
                                 <p className="text-[9px] text-slate-400 uppercase">Valor</p>
@@ -1765,10 +1762,11 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               </div>
                             )}
                           </div>
-                          {order.phone && (
+                          {(
                             <button
                               onClick={() => {
-                                const phone = order.phone?.replace(/\D/g, '');
+                                const phone = (order.phone || '').replace(/\D/g, '');
+                                if (!phone) { alert('Cliente sem telefone cadastrado'); return; }
                                 const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boletoData?.valor || order.invoiceValue || 0);
                                 const venc = (boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/');
                                 const msg = encodeURIComponent(`Olá ${order.tradeName || order.clientName}, tudo bem? Segue o boleto referente ao seu pedido no valor de ${valor}${venc ? ` com vencimento em ${venc}` : ''}. Qualquer dúvida estou à disposição!`);
