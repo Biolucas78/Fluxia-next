@@ -1785,477 +1785,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                     </div>
                   </div>
 
-                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-4">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Package className="size-4" /> Dimensões da Caixa (cm)
-                    </h3>
-                    <div className="grid grid-cols-4 gap-4">
-                      <div className="space-y-1">
-                        <p className="text-[10px] text-slate-400 uppercase font-bold">Largura</p>
-                        <input 
-                          type="number"
-                          value={order.boxDimensions?.width || suggestedBox.w}
-                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), width: parseInt(e.target.value) || 0 } })}
-                          className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[10px] text-slate-400 uppercase font-bold">Altura</p>
-                        <input 
-                          type="number"
-                          value={order.boxDimensions?.height || suggestedBox.h}
-                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), height: parseInt(e.target.value) || 0 } })}
-                          className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[10px] text-slate-400 uppercase font-bold">Comprimento</p>
-                        <input 
-                          type="number"
-                          value={order.boxDimensions?.length || suggestedBox.l}
-                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), length: parseInt(e.target.value) || 0 } })}
-                          className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[10px] text-slate-400 uppercase font-bold">Peso (g)</p>
-                        <input 
-                          type="number"
-                          value={order.boxWeight || totalWeightG}
-                          onChange={(e) => onUpdateOrder({ ...order, boxWeight: parseInt(e.target.value) || 0 })}
-                          className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
-                        />
-                      </div>
-                    </div>
-                  </div>
                 </section>
-
-                <section className="space-y-4">
-                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Truck className="size-4" /> {order.status === 'entregue' ? 'Informações de Entrega' : 'Rastreamento em Tempo Real'}
-                      </h3>
-                      {order.status === 'enviado' && (
-                        <button 
-                          onClick={handleSyncTracking}
-                          disabled={isSyncingTracking || !order.trackingNumber}
-                          className="flex items-center gap-2 text-[10px] font-bold text-primary hover:text-primary/80 disabled:opacity-50"
-                        >
-                          <RefreshCw className={`size-3 ${isSyncingTracking ? 'animate-spin' : ''}`} />
-                          Sincronizar Agora
-                        </button>
-                      )}
-                    </div>
-
-                    {order.status === 'entregue' && (
-                      <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl flex items-center gap-3">
-                        <div className="size-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-                          <CheckCircle2 className="size-6" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-bold text-emerald-900 dark:text-emerald-400">Pedido Entregue</p>
-                          {order.deliveryDate ? (
-                            <p className="text-xs text-emerald-700 dark:text-emerald-500">
-                              Entregue em: {new Date(order.deliveryDate).toLocaleString('pt-BR')}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-emerald-700 dark:text-emerald-500 italic">Data de entrega não registrada.</p>
-                          )}
-                        </div>
-                        <div className="shrink-0 flex items-center gap-2">
-                          <input 
-                            type="date"
-                            className="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 text-xs rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-emerald-500"
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                const newDate = new Date(e.target.value).toISOString();
-                                onUpdateOrder({
-                                  ...order, 
-                                  deliveryDate: newDate,
-                                  statusHistory: [
-                                    ...(order.statusHistory || []),
-                                    {
-                                      action: `Definiu data de entrega manualmente para ${new Date(newDate).toLocaleDateString('pt-BR')}`,
-                                      timestamp: new Date().toISOString()
-                                    }
-                                  ]
-                                });
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {!order.trackingNumber ? (
-                      <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-xl">
-                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                          Código de rastreio não informado. Adicione o código para monitorar o envio.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-700">
-                          <div>
-                            <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Status Atual</p>
-                            <p className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                              {order.trackingStatus || 'Aguardando sincronização...'}
-                              {order.deliveryDate && <CheckCircle2 className="size-4 text-emerald-500" />}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Código</p>
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-mono font-bold text-slate-900 dark:text-white">{order.trackingNumber}</p>
-                              <a 
-                                href={getTrackingLink(order.carrier, order.trackingNumber)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-primary"
-                                title="Abrir rastreio"
-                              >
-                                <ExternalLink className="size-3" />
-                              </a>
-                              <div className="relative">
-                                <button
-                                  onClick={() => {
-                                    if (!order.phone) {
-                                      toast.error('Telefone do cliente não cadastrado. Edite o cliente e adicione o telefone.');
-                                      return;
-                                    }
-                                    setShowWhatsAppMenu(prev => !prev);
-                                  }}
-                                  className="p-1 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded text-emerald-500"
-                                  title="Enviar rastreio por WhatsApp"
-                                >
-                                  <MessageCircle className="size-3" />
-                                </button>
-                                {showWhatsAppMenu && order.phone && (
-                                  <div className="absolute right-0 top-6 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-2 flex flex-col gap-1 min-w-[140px]">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase px-2 pb-1">Enviar de:</p>
-                                    <a
-                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, 'pessoal')!}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={() => setShowWhatsAppMenu(false)}
-                                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold"
-                                    >
-                                      <MessageCircle className="size-3" /> Pessoal
-                                    </a>
-                                    <a
-                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, 'business')!}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={() => setShowWhatsAppMenu(false)}
-                                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-bold"
-                                    >
-                                      <MessageCircle className="size-3" /> Business
-                                    </a>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {order.trackingHistory && order.trackingHistory.length > 0 && (
-                          <div className="space-y-3">
-                            <p className="text-[10px] text-slate-400 uppercase font-bold">Histórico de Movimentação</p>
-                            <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                              {order.trackingHistory.map((step, idx) => (
-                                <div key={idx} className="flex gap-3 relative">
-                                  {idx !== order.trackingHistory!.length - 1 && (
-                                    <div className="absolute left-[7px] top-4 bottom-0 w-px bg-slate-200 dark:bg-slate-700" />
-                                  )}
-                                  <div className={`size-4 rounded-full border-2 bg-white dark:bg-slate-900 z-10 shrink-0 mt-1 ${idx === 0 ? 'border-primary' : 'border-slate-300 dark:border-slate-600'}`} />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className={`text-xs font-bold ${idx === 0 ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-                                        {step.status}
-                                      </p>
-                                      <p className="text-[9px] text-slate-400 shrink-0">
-                                        {new Date(step.date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                      </p>
-                                    </div>
-                                    <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
-                                      {step.message}
-                                      {step.location && <span className="block italic opacity-80">{step.location}</span>}
-                                    </p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {order.lastTrackingUpdate && (
-                          <p className="text-[9px] text-slate-400 italic text-center">
-                            Última atualização: {new Date(order.lastTrackingUpdate).toLocaleString('pt-BR')}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </section>
-              <section className="space-y-4">
-                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                          <Truck className="size-4" /> Frete e Envio
-                        </h3>
-                        <button 
-                          onClick={() => setIsReviewModalOpen(true)}
-                          disabled={isQuoting}
-                          className="px-6 py-3 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary/90 transition-all shadow-xl shadow-primary/30 flex items-center gap-2 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
-                        >
-                          {isQuoting ? <Loader2 className="size-4 animate-spin" /> : <Calculator className="size-4" />}
-                          {order.shippingQuote ? 'Recalcular Cotação' : 'Adicionar ao Carrinho'}
-                        </button>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Remetente</label>
-                            <select 
-                              value={originType}
-                              onChange={(e) => setOriginType(e.target.value as 'BH' | 'CRV')}
-                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-                            >
-                              <option value="CRV">Remetente CRV</option>
-                              <option value="BH">Remetente BH</option>
-                            </select>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Transportadora Preferencial</label>
-                            <select 
-                              value={order.carrier || ''}
-                              onChange={(e) => onUpdateOrder({
-                                ...order,
-                                carrier: e.target.value,
-                                statusHistory: [
-                                  ...(order.statusHistory || []),
-                                  {
-                                    action: `Alterou transportadora preferencial para: ${e.target.value || 'Nenhuma'}`,
-                                    timestamp: new Date().toISOString()
-                                  }
-                                ]
-                              })}
-                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-                            >
-                              <option value="">Selecionar Manualmente...</option>
-                              {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {order.shippingQuote && (
-                      <div className="space-y-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-                        <div className="grid grid-cols-2 gap-3">
-                          <button
-                            onClick={handleGenerateLabel}
-                            disabled={isGeneratingLabel || !order.selectedShippingOption}
-                            className={`py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
-                              !order.selectedShippingOption 
-                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-                                : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
-                            }`}
-                          >
-                            {isGeneratingLabel ? (
-                              <>
-                                <Loader2 className="size-5 animate-spin" />
-                                Gerando...
-                              </>
-                            ) : (
-                              <>
-                                <Printer className="size-5" />
-                                Gerar Etiqueta
-                              </>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => {
-                              try {
-                                localStorage.setItem('last_declaration_order', JSON.stringify(order));
-                                const orderData = btoa(encodeURIComponent(JSON.stringify(order)));
-                                window.open(`/declaracao/${order.id}?format=10x15`, '_blank');
-                              } catch (e) {
-                                console.error("Erro ao abrir declaração", e);
-                                window.open(`/declaracao/${order.id}?format=10x15`, '_blank');
-                              }
-                            }}
-                            className="py-4 bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-amber-200 dark:hover:bg-amber-900/30 transition-all"
-                          >
-                            <FileText className="size-5" />
-                            Declaração
-                          </button>
-                        </div>
-
-                        <div className="space-y-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Opções Disponíveis (Ordenadas por Preço)</p>
-                          <div className="space-y-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-                            {[...(order.shippingQuote || [])].sort((a, b) => a.price - b.price).map((quote) => {
-                              const isSelected = order.selectedShippingOption?.id === quote.id;
-                              return (
-                                <div 
-                                  key={quote.id}
-                                  onClick={() => handleSelectQuote(quote)}
-                                  className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-4 ${
-                                    isSelected
-                                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-900'
-                                  }`}
-                                >
-                                  <div className="size-12 rounded-xl bg-white p-2 border border-slate-100 flex items-center justify-center relative overflow-hidden shrink-0">
-                                    <Image 
-                                      src={quote.company?.picture || ""} 
-                                      alt={quote.company?.name || ""} 
-                                      fill
-                                      className="object-contain p-2"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <p className={`text-sm font-bold truncate ${quote.error ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
-                                        {quote.name}
-                                      </p>
-                                      {isSelected && (
-                                        <span className="text-[8px] px-1.5 py-0.5 bg-primary text-white rounded font-bold uppercase tracking-wider">
-                                          Selecionado
-                                        </span>
-                                      )}
-                                    </div>
-                                    {quote.error ? (
-                                      <p className="text-[10px] text-red-400 font-medium">{quote.error}</p>
-                                    ) : (
-                                      <p className="text-xs text-slate-500">{quote.delivery_time} dias úteis</p>
-                                    )}
-                                  </div>
-                                  {!quote.error && (
-                                    <div className="text-right">
-                                      <p className="text-sm font-bold text-primary">R$ {quote.price.toFixed(2)}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {quoteError && (
-                      <p className="text-xs text-red-500 font-medium bg-red-50 dark:bg-red-900/20 p-3 rounded-xl border border-red-100 dark:border-red-800/50">
-                        {quoteError}
-                      </p>
-                    )}
-                  </div>
-                </section>
-
-              <section className="space-y-4">
-                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
-                    <div className="space-y-4">
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Truck className="size-4" /> Informações de Envio
-                      </h3>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Transportadora</label>
-                          <select 
-                            value={order.carrier || ''}
-                            onChange={(e) => onUpdateOrder({
-                              ...order,
-                              carrier: e.target.value,
-                              statusHistory: [
-                                ...(order.statusHistory || []),
-                                {
-                                  action: `Alterou transportadora para: ${e.target.value || 'Nenhuma'}`,
-                                  timestamp: new Date().toISOString()
-                                }
-                              ]
-                            })}
-                            className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-                          >
-                            <option value="">Selecionar Manualmente...</option>
-                            {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Código de Rastreio</label>
-                          <div className="flex gap-2">
-                            <input 
-                              type="text"
-                              value={order.trackingNumber || ''}
-                              onChange={(e) => onUpdateOrder({
-                                ...order,
-                                trackingNumber: e.target.value,
-                                statusHistory: [
-                                  ...(order.statusHistory || []),
-                                  {
-                                    action: `Alterou código de rastreio para: ${e.target.value || 'Vazio'}`,
-                                    timestamp: new Date().toISOString()
-                                  }
-                                ]
-                              })}
-                              placeholder="Ex: BR123456789"
-                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-                            />
-                            {order.trackingNumber && (
-                              <a 
-                                href={getTrackingLink(order.carrier, order.trackingNumber)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center justify-center bg-primary text-white rounded-xl px-4 hover:bg-primary/90 transition-colors"
-                                title="Rastrear no site da transportadora"
-                              >
-                                <ExternalLink className="size-5" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-              {order.carrier && (
-                <section className="space-y-4">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                      <Truck className="size-4" /> Transportadora
-                    </h3>
-                    <span className={`text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider border inline-block ${getCarrierColor(order.carrier)}`}>
-                      {order.carrier}
-                    </span>
-                  </div>
-                  {order.trackingNumber && (
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <Hash className="size-4" /> Código de Rastreio
-                      </h3>
-                      <div className="flex gap-2">
-                        <p className="flex-1 text-sm font-mono text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 select-all">
-                          {order.trackingNumber}
-                        </p>
-                        <a 
-                          href={getTrackingLink(order.carrier, order.trackingNumber)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center bg-primary text-white rounded-xl px-4 hover:bg-primary/90 transition-colors"
-                          title="Rastrear no site da transportadora"
-                        >
-                          <ExternalLink className="size-5" />
-                        </a>
-                      </div>
-                    </div>
-                  )}
-                </section>
-              )}
 
               {order.statusHistory && order.statusHistory.length > 0 && (
                 <section className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
@@ -2285,7 +1815,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </section>
               )}
             </div>
-
             {/* Right Column: Products Checklist */}
             <section>
               <div className="flex justify-between items-center mb-3">
@@ -2769,6 +2298,478 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </button>
               </div>
             </motion.div>
+                <section className="space-y-4">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-4">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Package className="size-4" /> Dimensões da Caixa (cm)
+                    </h3>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Largura</p>
+                        <input 
+                          type="number"
+                          value={order.boxDimensions?.width || suggestedBox.w}
+                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), width: parseInt(e.target.value) || 0 } })}
+                          className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Altura</p>
+                        <input 
+                          type="number"
+                          value={order.boxDimensions?.height || suggestedBox.h}
+                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), height: parseInt(e.target.value) || 0 } })}
+                          className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Comprimento</p>
+                        <input 
+                          type="number"
+                          value={order.boxDimensions?.length || suggestedBox.l}
+                          onChange={(e) => onUpdateOrder({ ...order, boxDimensions: { ... (order.boxDimensions || { width: suggestedBox.w, height: suggestedBox.h, length: suggestedBox.l }), length: parseInt(e.target.value) || 0 } })}
+                          className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Peso (g)</p>
+                        <input 
+                          type="number"
+                          value={order.boxWeight || totalWeightG}
+                          onChange={(e) => onUpdateOrder({ ...order, boxWeight: parseInt(e.target.value) || 0 })}
+                          className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+                <section className="space-y-4">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Truck className="size-4" /> {order.status === 'entregue' ? 'Informações de Entrega' : 'Rastreamento em Tempo Real'}
+                      </h3>
+                      {order.status === 'enviado' && (
+                        <button 
+                          onClick={handleSyncTracking}
+                          disabled={isSyncingTracking || !order.trackingNumber}
+                          className="flex items-center gap-2 text-[10px] font-bold text-primary hover:text-primary/80 disabled:opacity-50"
+                        >
+                          <RefreshCw className={`size-3 ${isSyncingTracking ? 'animate-spin' : ''}`} />
+                          Sincronizar Agora
+                        </button>
+                      )}
+                    </div>
+
+                    {order.status === 'entregue' && (
+                      <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl flex items-center gap-3">
+                        <div className="size-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                          <CheckCircle2 className="size-6" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-emerald-900 dark:text-emerald-400">Pedido Entregue</p>
+                          {order.deliveryDate ? (
+                            <p className="text-xs text-emerald-700 dark:text-emerald-500">
+                              Entregue em: {new Date(order.deliveryDate).toLocaleString('pt-BR')}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-emerald-700 dark:text-emerald-500 italic">Data de entrega não registrada.</p>
+                          )}
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          <input 
+                            type="date"
+                            className="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 text-xs rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-emerald-500"
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                const newDate = new Date(e.target.value).toISOString();
+                                onUpdateOrder({
+                                  ...order, 
+                                  deliveryDate: newDate,
+                                  statusHistory: [
+                                    ...(order.statusHistory || []),
+                                    {
+                                      action: `Definiu data de entrega manualmente para ${new Date(newDate).toLocaleDateString('pt-BR')}`,
+                                      timestamp: new Date().toISOString()
+                                    }
+                                  ]
+                                });
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {!order.trackingNumber ? (
+                      <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-xl">
+                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                          Código de rastreio não informado. Adicione o código para monitorar o envio.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-700">
+                          <div>
+                            <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Status Atual</p>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                              {order.trackingStatus || 'Aguardando sincronização...'}
+                              {order.deliveryDate && <CheckCircle2 className="size-4 text-emerald-500" />}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Código</p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-mono font-bold text-slate-900 dark:text-white">{order.trackingNumber}</p>
+                              <a 
+                                href={getTrackingLink(order.carrier, order.trackingNumber)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-primary"
+                                title="Abrir rastreio"
+                              >
+                                <ExternalLink className="size-3" />
+                              </a>
+                              <div className="relative">
+                                <button
+                                  onClick={() => {
+                                    if (!order.phone) {
+                                      toast.error('Telefone do cliente não cadastrado. Edite o cliente e adicione o telefone.');
+                                      return;
+                                    }
+                                    setShowWhatsAppMenu(prev => !prev);
+                                  }}
+                                  className="p-1 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded text-emerald-500"
+                                  title="Enviar rastreio por WhatsApp"
+                                >
+                                  <MessageCircle className="size-3" />
+                                </button>
+                                {showWhatsAppMenu && order.phone && (
+                                  <div className="absolute right-0 top-6 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-2 flex flex-col gap-1 min-w-[140px]">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase px-2 pb-1">Enviar de:</p>
+                                    <a
+                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, 'pessoal')!}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => setShowWhatsAppMenu(false)}
+                                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold"
+                                    >
+                                      <MessageCircle className="size-3" /> Pessoal
+                                    </a>
+                                    <a
+                                      href={getWhatsAppTrackingLink(order.carrier, order.trackingNumber, order.phone, 'business')!}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => setShowWhatsAppMenu(false)}
+                                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-bold"
+                                    >
+                                      <MessageCircle className="size-3" /> Business
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {order.trackingHistory && order.trackingHistory.length > 0 && (
+                          <div className="space-y-3">
+                            <p className="text-[10px] text-slate-400 uppercase font-bold">Histórico de Movimentação</p>
+                            <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                              {order.trackingHistory.map((step, idx) => (
+                                <div key={idx} className="flex gap-3 relative">
+                                  {idx !== order.trackingHistory!.length - 1 && (
+                                    <div className="absolute left-[7px] top-4 bottom-0 w-px bg-slate-200 dark:bg-slate-700" />
+                                  )}
+                                  <div className={`size-4 rounded-full border-2 bg-white dark:bg-slate-900 z-10 shrink-0 mt-1 ${idx === 0 ? 'border-primary' : 'border-slate-300 dark:border-slate-600'}`} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className={`text-xs font-bold ${idx === 0 ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+                                        {step.status}
+                                      </p>
+                                      <p className="text-[9px] text-slate-400 shrink-0">
+                                        {new Date(step.date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                      </p>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                                      {step.message}
+                                      {step.location && <span className="block italic opacity-80">{step.location}</span>}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {order.lastTrackingUpdate && (
+                          <p className="text-[9px] text-slate-400 italic text-center">
+                            Última atualização: {new Date(order.lastTrackingUpdate).toLocaleString('pt-BR')}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              <section className="space-y-4">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                          <Truck className="size-4" /> Frete e Envio
+                        </h3>
+                        <button 
+                          onClick={() => setIsReviewModalOpen(true)}
+                          disabled={isQuoting}
+                          className="px-6 py-3 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary/90 transition-all shadow-xl shadow-primary/30 flex items-center gap-2 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                          {isQuoting ? <Loader2 className="size-4 animate-spin" /> : <Calculator className="size-4" />}
+                          {order.shippingQuote ? 'Recalcular Cotação' : 'Adicionar ao Carrinho'}
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Remetente</label>
+                            <select 
+                              value={originType}
+                              onChange={(e) => setOriginType(e.target.value as 'BH' | 'CRV')}
+                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+                            >
+                              <option value="CRV">Remetente CRV</option>
+                              <option value="BH">Remetente BH</option>
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Transportadora Preferencial</label>
+                            <select 
+                              value={order.carrier || ''}
+                              onChange={(e) => onUpdateOrder({
+                                ...order,
+                                carrier: e.target.value,
+                                statusHistory: [
+                                  ...(order.statusHistory || []),
+                                  {
+                                    action: `Alterou transportadora preferencial para: ${e.target.value || 'Nenhuma'}`,
+                                    timestamp: new Date().toISOString()
+                                  }
+                                ]
+                              })}
+                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+                            >
+                              <option value="">Selecionar Manualmente...</option>
+                              {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {order.shippingQuote && (
+                      <div className="space-y-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            onClick={handleGenerateLabel}
+                            disabled={isGeneratingLabel || !order.selectedShippingOption}
+                            className={`py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                              !order.selectedShippingOption 
+                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                                : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
+                            }`}
+                          >
+                            {isGeneratingLabel ? (
+                              <>
+                                <Loader2 className="size-5 animate-spin" />
+                                Gerando...
+                              </>
+                            ) : (
+                              <>
+                                <Printer className="size-5" />
+                                Gerar Etiqueta
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              try {
+                                localStorage.setItem('last_declaration_order', JSON.stringify(order));
+                                const orderData = btoa(encodeURIComponent(JSON.stringify(order)));
+                                window.open(`/declaracao/${order.id}?format=10x15`, '_blank');
+                              } catch (e) {
+                                console.error("Erro ao abrir declaração", e);
+                                window.open(`/declaracao/${order.id}?format=10x15`, '_blank');
+                              }
+                            }}
+                            className="py-4 bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-amber-200 dark:hover:bg-amber-900/30 transition-all"
+                          >
+                            <FileText className="size-5" />
+                            Declaração
+                          </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Opções Disponíveis (Ordenadas por Preço)</p>
+                          <div className="space-y-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                            {[...(order.shippingQuote || [])].sort((a, b) => a.price - b.price).map((quote) => {
+                              const isSelected = order.selectedShippingOption?.id === quote.id;
+                              return (
+                                <div 
+                                  key={quote.id}
+                                  onClick={() => handleSelectQuote(quote)}
+                                  className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-4 ${
+                                    isSelected
+                                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-900'
+                                  }`}
+                                >
+                                  <div className="size-12 rounded-xl bg-white p-2 border border-slate-100 flex items-center justify-center relative overflow-hidden shrink-0">
+                                    <Image 
+                                      src={quote.company?.picture || ""} 
+                                      alt={quote.company?.name || ""} 
+                                      fill
+                                      className="object-contain p-2"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className={`text-sm font-bold truncate ${quote.error ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
+                                        {quote.name}
+                                      </p>
+                                      {isSelected && (
+                                        <span className="text-[8px] px-1.5 py-0.5 bg-primary text-white rounded font-bold uppercase tracking-wider">
+                                          Selecionado
+                                        </span>
+                                      )}
+                                    </div>
+                                    {quote.error ? (
+                                      <p className="text-[10px] text-red-400 font-medium">{quote.error}</p>
+                                    ) : (
+                                      <p className="text-xs text-slate-500">{quote.delivery_time} dias úteis</p>
+                                    )}
+                                  </div>
+                                  {!quote.error && (
+                                    <div className="text-right">
+                                      <p className="text-sm font-bold text-primary">R$ {quote.price.toFixed(2)}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {quoteError && (
+                      <p className="text-xs text-red-500 font-medium bg-red-50 dark:bg-red-900/20 p-3 rounded-xl border border-red-100 dark:border-red-800/50">
+                        {quoteError}
+                      </p>
+                    )}
+                  </div>
+                </section>
+
+              <section className="space-y-4">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-6">
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Truck className="size-4" /> Informações de Envio
+                      </h3>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Transportadora</label>
+                          <select 
+                            value={order.carrier || ''}
+                            onChange={(e) => onUpdateOrder({
+                              ...order,
+                              carrier: e.target.value,
+                              statusHistory: [
+                                ...(order.statusHistory || []),
+                                {
+                                  action: `Alterou transportadora para: ${e.target.value || 'Nenhuma'}`,
+                                  timestamp: new Date().toISOString()
+                                }
+                              ]
+                            })}
+                            className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+                          >
+                            <option value="">Selecionar Manualmente...</option>
+                            {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Código de Rastreio</label>
+                          <div className="flex gap-2">
+                            <input 
+                              type="text"
+                              value={order.trackingNumber || ''}
+                              onChange={(e) => onUpdateOrder({
+                                ...order,
+                                trackingNumber: e.target.value,
+                                statusHistory: [
+                                  ...(order.statusHistory || []),
+                                  {
+                                    action: `Alterou código de rastreio para: ${e.target.value || 'Vazio'}`,
+                                    timestamp: new Date().toISOString()
+                                  }
+                                ]
+                              })}
+                              placeholder="Ex: BR123456789"
+                              className="w-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+                            />
+                            {order.trackingNumber && (
+                              <a 
+                                href={getTrackingLink(order.carrier, order.trackingNumber)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-center bg-primary text-white rounded-xl px-4 hover:bg-primary/90 transition-colors"
+                                title="Rastrear no site da transportadora"
+                              >
+                                <ExternalLink className="size-5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+              {order.carrier && (
+                <section className="space-y-4">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <Truck className="size-4" /> Transportadora
+                    </h3>
+                    <span className={`text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider border inline-block ${getCarrierColor(order.carrier)}`}>
+                      {order.carrier}
+                    </span>
+                  </div>
+                  {order.trackingNumber && (
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <Hash className="size-4" /> Código de Rastreio
+                      </h3>
+                      <div className="flex gap-2">
+                        <p className="flex-1 text-sm font-mono text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 select-all">
+                          {order.trackingNumber}
+                        </p>
+                        <a 
+                          href={getTrackingLink(order.carrier, order.trackingNumber)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center bg-primary text-white rounded-xl px-4 hover:bg-primary/90 transition-colors"
+                          title="Rastrear no site da transportadora"
+                        >
+                          <ExternalLink className="size-5" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
           </div>
         )}
       </AnimatePresence>
