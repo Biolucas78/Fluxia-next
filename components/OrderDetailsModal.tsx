@@ -2104,7 +2104,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             className="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 text-xs rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-emerald-500"
                             onChange={(e) => {
                               if (e.target.value) {
-                                const newDate = new Date(e.target.value).toISOString();
+                                const [y,m,d] = e.target.value.split('-'); const newDate = new Date(parseInt(y), parseInt(m)-1, parseInt(d), 12, 0, 0).toISOString();
                                 onUpdateOrder({
                                   ...order, 
                                   deliveryDate: newDate,
