@@ -1708,7 +1708,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             {(boletoData?.situacao || (order as any).boletSituacao) && (
                               <div className="col-span-2">
                                 <p className="text-[9px] text-slate-400 uppercase">Situação</p>
-                                {(()=>{ const sit=boletoData?.situacao||(order as any).boletSituacao||''; const color=sit==='LIQUIDADO'?'text-emerald-600':sit==='VENCIDO'?'text-red-500':'text-amber-600'; const label=sit==='LIQUIDADO'?'Pago':sit==='VENCIDO'?'Vencido':(sit==='EMABERTO'||sit==='EM_ABERTO')?'A Receber':sit; return <p className={color+' text-xs font-bold'}>{label}</p>; })()}
+                                {(()=>{ const sit=boletoData?.situacao||(order as any).boletSituacao||''; const color=sit==='LIQUIDADO'?'text-emerald-600':sit==='VENCIDO'?'text-red-500':'text-amber-600'; const label=sit==='LIQUIDADO'?'Pago':sit==='VENCIDO'?'Vencido':(sit==='EMABERTO'||sit==='EM_ABERTO'||sit==='ENTRADA NORMAL')?'A Receber':sit; return <p className={color+' text-xs font-bold'}>{label}</p>; })()}
                               </div>
                             )}
                           </div>
