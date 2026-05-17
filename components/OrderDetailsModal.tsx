@@ -1677,6 +1677,62 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         {isFetchingBoleto ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
                         {order.hasBoleto ? 'Atualizar Boleto' : 'Buscar Boleto no Sicoob'}
                       </button>
+                                            {(boletoData || order.boletoNossoNumero || order.paymentDueDate) && (
+                        <div className="mt-2 space-y-2">
+                          <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                            {(boletoData?.seuNumero || order.invoiceNumber) && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">NF / Seu Número</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData?.seuNumero || order.invoiceNumber}</p>
+                              </div>
+                            )}
+                            {(boletoData?.valor || order.invoiceValue) && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">Valor</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boletoData?.valor || order.invoiceValue || 0)}</p>
+                              </div>
+                            )}
+                            {(boletoData?.dataEmissao || order.paymentDate) && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">Emissão</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataEmissao || order.paymentDate || '').split('-').reverse().join('/')}</p>
+                              </div>
+                            )}
+                            {(boletoData?.dataVencimento || order.paymentDueDate) && (
+                              <div>
+                                <p className="text-[9px] text-slate-400 uppercase">Vencimento</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/')}</p>
+                              </div>
+                            )}
+                            {boletoData?.situacao && (
+                              <div className="col-span-2">
+                                <p className="text-[9px] text-slate-400 uppercase">Situação</p>
+                                <p className={`text-xs font-bold ${boletoData.situacao === 'LIQUIDADO' ? 'text-emerald-600' : 'text-amber-600'}`}>{boletoData.situacao}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-1 mt-1">
+                            <p className="text-[9px] text-slate-400 font-bold uppercase text-center">Enviar cobrança via</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <a href={`https://wa.me/5531987988629?text=${encodeURIComponent('Pedido faturado em ' + (boletoData?.dataEmissao || order.paymentDate || '').split('-').reverse().join('/') + ', referente a nota fiscal ' + (boletoData?.seuNumero || order.invoiceNumber || '') + ', no valor de ' + new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(boletoData?.valor||order.invoiceValue||0) + ', vencido em ' + (boletoData?.dataVencimento||order.paymentDueDate||'').split('-').reverse().join('/') + '.')}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-0.5 transition-colors text-center">
+                                <MessageSquare className="size-3" />
+                                <span className="text-[10px]">Pessoal</span>
+                                <span className="text-[9px] opacity-75">DDD 31</span>
+                              </a>
+                              <a href={`intent://send?phone=5511915889584&text=${encodeURIComponent('Pedido faturado em ' + (boletoData?.dataEmissao || order.paymentDate || '').split('-').reverse().join('/') + ', referente a nota fiscal ' + (boletoData?.seuNumero || order.invoiceNumber || '') + ', no valor de ' + new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(boletoData?.valor||order.invoiceValue||0) + ', vencido em ' + (boletoData?.dataVencimento||order.paymentDueDate||'').split('-').reverse().join('/') + '.')}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-0.5 transition-colors text-center">
+                                <MessageSquare className="size-3" />
+                                <span className="text-[10px]">Business</span>
+                                <span className="text-[9px] opacity-75">DDD 11</span>
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       </div>
 
                       <div className="flex flex-col gap-2">
@@ -1726,59 +1782,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           </p>
                         )}
                       </div>
-                      {(boletoData || order.boletoNossoNumero || order.paymentDueDate) && (
-                        <div className="px-3 space-y-2 mt-1">
-                          <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                            {(boletoData?.seuNumero || order.invoiceNumber) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">NF / Seu Número</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData?.seuNumero || order.invoiceNumber}</p>
-                              </div>
-                            )}
-
-                            {(boletoData?.valor || order.invoiceValue) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">Valor</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boletoData?.valor || order.invoiceValue || 0)}</p>
-                              </div>
-                            )}
-                            {(boletoData?.dataVencimento || order.paymentDueDate) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">Vencimento</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/')}</p>
-                              </div>
-                            )}
-                            {(boletoData?.dataEmissao || order.paymentDate) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">Emissão</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataEmissao || order.paymentDate || '').split('-').reverse().join('/')}</p>
-                              </div>
-                            )}
-                            {boletoData?.situacao && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">Situação</p>
-                                <p className={`text-xs font-bold ${boletoData.situacao === 'LIQUIDADO' ? 'text-emerald-600' : 'text-amber-600'}`}>{boletoData.situacao}</p>
-                              </div>
-                            )}
-                          </div>
-                          {(
-                            <button
-                              onClick={() => {
-                                const phone = (order.phone || '').replace(/\D/g, '');
-                                if (!phone) { alert('Cliente sem telefone cadastrado'); return; }
-                                const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boletoData?.valor || order.invoiceValue || 0);
-                                const venc = (boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/');
-                                const msg = encodeURIComponent(`Olá ${order.tradeName || order.clientName}, tudo bem? Segue o boleto referente ao seu pedido no valor de ${valor}${venc ? ` com vencimento em ${venc}` : ''}. Qualquer dúvida estou à disposição!`);
-                                window.open(`https://wa.me/55${phone}?text=${msg}`, '_blank');
-                              }}
-                              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold transition-all mt-2"
-                            >
-                              <MessageSquare className="size-3" /> Enviar Cobrança WhatsApp
-                            </button>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
 
