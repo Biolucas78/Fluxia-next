@@ -204,17 +204,17 @@ export default function FinanceiroPage() {
     const emissao = (order.paymentDate || '').split('-').reverse().join('/');
     const vencimento = due ? (typeof due === 'string' ? due.split('-').reverse().join('/') : new Date(due).toLocaleDateString('pt-BR')) : '';
     const nf = order.invoiceNumber || '';
-    return encodeURIComponent(`Pedido faturado em ${emissao}, referente a nota fiscal ${nf}, no valor de ${value}, vencido em ${vencimento}.`);
+    return `Pedido faturado em ${emissao}, referente a nota fiscal ${nf}, no valor de ${value}, vencido em ${vencimento}.`;
   };
   const getCobrancaUrlPessoal = (order: Order) => {
     const phone = order.phone?.replace(/\D/g, '');
     if (!phone) return null;
-    return `https://wa.me/55${phone}?text=${getCobrancaMsg(order)}`;
+    return `https://wa.me/55${phone}?text=${encodeURIComponent(getCobrancaMsg(order))}`;
   };
   const getCobrancaUrlBusiness = (order: Order) => {
     const phone = order.phone?.replace(/\D/g, '');
     if (!phone) return null;
-    return `intent://send?phone=55${phone}&text=${getCobrancaMsg(order)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
+    return `intent://send?phone=55${phone}&text=${encodeURIComponent(getCobrancaMsg(order))}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
   };
 
   if (userLoading) return null;
