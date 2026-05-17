@@ -198,15 +198,23 @@ export default function FinanceiroPage() {
     }
   };
 
-  const handleSendWhatsApp = (order: Order) => {
-    const phone = order.phone?.replace(/\D/g, '');
-    if (!phone) { toast.error('Cliente sem telefone cadastrado'); return; }
+  const getCobrancaMsg = (order: Order) => {
     const due = getDueDate(order);
-    const value = formatCurrency(getOrderValue(order));
-    const msg = encodeURIComponent(
-      `Olá ${order.clientName}, tudo bem? Passando para informar que o boleto referente ao seu pedido no valor de ${value}${due ? ` com vencimento em ${formatDate(due)}` : ''} ainda está em aberto. Podemos regularizar?`
-    );
-    window.open(`https://wa.me/55${phone}?text=${msg}`, '_blank');
+    const value = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getOrderValue(order));
+    const emissao = (order.paymentDate || '').split('-').reverse().join('/');
+    const vencimento = due ? (typeof due === 'string' ? due.split('-').reverse().join('/') : new Date(due).toLocaleDateString('pt-BR')) : '';
+    const nf = order.invoiceNumber || '';
+    return encodeURIComponent(`Pedido faturado em ${emissao}, referente a nota fiscal ${nf}, no valor de ${value}, vencido em ${vencimento}.`);
+  };
+  const getCobrancaUrlPessoal = (order: Order) => {
+    const phone = order.phone?.replace(/\D/g, '');
+    if (!phone) return null;
+    return `https://wa.me/55${phone}?text=${getCobrancaMsg(order)}`;
+  };
+  const getCobrancaUrlBusiness = (order: Order) => {
+    const phone = order.phone?.replace(/\D/g, '');
+    if (!phone) return null;
+    return `intent://send?phone=55${phone}&text=${getCobrancaMsg(order)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
   };
 
   if (userLoading) return null;
@@ -344,13 +352,22 @@ export default function FinanceiroPage() {
                           <p className="text-sm font-black text-slate-900 dark:text-white">{formatCurrency(getOrderValue(order))}</p>
                         </div>
                         <div className="flex gap-2 shrink-0">
-                          <button
-                            onClick={() => handleSendWhatsApp(order)}
-                            className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all"
-                            title="Cobrar via WhatsApp"
+                          <a
+                            href={getCobrancaUrlPessoal(order) || '#'}
+                            target="_blank" rel="noopener noreferrer"
+                            className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all flex items-center justify-center"
+                            title="Cobrar via WhatsApp Pessoal (DDD 31)"
                           >
                             <MessageSquare className="size-4" />
-                          </button>
+                          </a>
+                          <a
+                            href={getCobrancaUrlBusiness(order) || '#'}
+                            target="_blank" rel="noopener noreferrer"
+                            className="p-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-all flex items-center justify-center"
+                            title="Cobrar via WhatsApp Business (DDD 11)"
+                          >
+                            <MessageSquare className="size-4" />
+                          </a>
                           <button
                             onClick={() => handleFetchNF(order)}
                             disabled={fetchingNFId === order.id}
@@ -427,13 +444,22 @@ export default function FinanceiroPage() {
                         </div>
                         <p className="text-sm font-black text-red-600 dark:text-red-400 shrink-0">{formatCurrency(getOrderValue(order))}</p>
                         <div className="flex gap-2 shrink-0">
-                          <button
-                            onClick={() => handleSendWhatsApp(order)}
-                            className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 transition-all"
-                            title="Cobrar via WhatsApp"
+                          <a
+                            href={getCobrancaUrlPessoal(order) || '#'}
+                            target="_blank" rel="noopener noreferrer"
+                            className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 transition-all flex items-center justify-center"
+                            title="Cobrar via WhatsApp Pessoal (DDD 31)"
                           >
                             <MessageSquare className="size-4" />
-                          </button>
+                          </a>
+                          <a
+                            href={getCobrancaUrlBusiness(order) || '#'}
+                            target="_blank" rel="noopener noreferrer"
+                            className="p-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-all flex items-center justify-center"
+                            title="Cobrar via WhatsApp Business (DDD 11)"
+                          >
+                            <MessageSquare className="size-4" />
+                          </a>
                           <button
                             onClick={() => handleFetchNF(order)}
                             disabled={fetchingNFId === order.id}
