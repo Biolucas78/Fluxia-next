@@ -1815,6 +1815,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </section>
               )}
             </div>
+
             {/* Right Column: Products Checklist */}
             <section>
               <div className="flex justify-between items-center mb-3">
@@ -2019,285 +2020,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                   </div>
                 </div>
               </div>
-            </section>
-          </div>
-        </div>
-
-        {/* Footer Actions */}
-        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400 uppercase">Status Atual:</span>
-            <span className={`${COLUMNS.find(c => c.id === order.status)?.color || 'bg-slate-200'} text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase shadow-sm`}>
-              {COLUMNS.find(c => c.id === order.status)?.title}
-            </span>
-          </div>
-
-          <ShippingDataReviewModal
-            key={`review-modal-${order.id}-${isReviewModalOpen}`}
-            isOpen={isReviewModalOpen}
-            onClose={() => setIsReviewModalOpen(false)}
-            order={order}
-            onConfirm={handleConfirmCarrierData}
-          />
-
-          <ShippingQuoteModal
-            isOpen={isQuoteModalOpen}
-            onClose={() => setIsQuoteModalOpen(false)}
-            quotes={order.shippingQuote || []}
-            onSelect={handleSelectQuote}
-            isQuoting={isQuoting}
-            selectedQuote={order.selectedShippingOption}
-            onGenerateLabel={handleGenerateLabel}
-            isGeneratingLabel={isGeneratingLabel}
-          />
-
-          <LabelGenerationModal
-            isOpen={isLabelModalOpen}
-            onClose={() => setIsLabelModalOpen(false)}
-            quote={selectedQuote}
-            onGenerate={handleGenerateLabel}
-            isGenerating={isGeneratingLabel}
-            order={order}
-            onUpdateOrder={onUpdateOrder}
-          />
-
-          <div className="flex gap-2 relative">
-            <button
-              onClick={handleCreateBlingOrder}
-              disabled={isCreatingBlingOrder || !!order.blingOrderId}
-              className={`px-6 py-3 border rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
-                order.blingOrderId 
-                  ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed hidden md:flex'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
-              }`}
-            >
-              {isCreatingBlingOrder ? <Loader2 className="size-4 animate-spin" /> : order.blingOrderId ? <CheckCircle2 className="size-4 text-emerald-500" /> : <RefreshCw className="size-4" />}
-              {order.blingOrderId ? 'Enviado pro Bling' : 'Enviar para o Bling'}
-            </button>
-
-            <button
-              onClick={() => {
-                const venc = new Date();
-                venc.setDate(venc.getDate() + 30);
-                setBoletoForm({
-                  valor: order.invoiceValue ? String(order.invoiceValue) : '',
-                  dataVencimento: venc.toISOString().split('T')[0],
-                  parcelas: [],
-                  isParceled: false,
-                });
-                setShowBoletoModal(true);
-              }}
-              className="px-6 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all flex items-center gap-2 shadow-sm"
-            >
-              <Landmark className="size-4" />
-              Emitir Boleto
-            </button>
-
-            {hasNextOrder && onNextOrder && (
-              <button
-                onClick={onNextOrder}
-                className="px-6 py-3 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-all flex items-center gap-2 shadow-sm border border-slate-200 dark:border-slate-700"
-                title="Ir para o próximo pedido sem alterar a fase deste"
-              >
-                Pular para o Próximo
-                <FastForward className="size-4" />
-              </button>
-            )}
-
-            {nextPhase && (
-              <button
-                onClick={handleAdvanceAndNext}
-                disabled={!isReadyToMove}
-                className={`px-6 py-3 rounded-xl text-sm font-bold text-white transition-all flex items-center gap-2 shadow-lg ${
-                  !isReadyToMove 
-                    ? 'bg-slate-400 cursor-not-allowed shadow-none' 
-                    : 'bg-primary hover:bg-primary/90 shadow-primary/20'
-                }`}
-              >
-                {hasNextOrder ? 'Avançar e Próximo' : 'Avançar e Fechar'}
-                <ChevronRight className="size-4" />
-              </button>
-            )}
-            <div className="flex rounded-xl overflow-hidden shadow-lg shadow-primary/20">
-              <button 
-                onClick={() => {
-                  if (order.status === 'entregue') {
-                    onArchiveOrder(order.id);
-                    onClose();
-                  } else {
-                    setIsDropdownOpen(!isDropdownOpen);
-                  }
-                }}
-                className={`px-6 py-3 text-sm font-bold text-white transition-all flex items-center gap-2 ${
-                  !isReadyToMove && order.status !== 'entregue'
-                    ? 'bg-slate-400 cursor-not-allowed' 
-                    : order.status === 'entregue'
-                      ? 'bg-emerald-500 hover:bg-emerald-600'
-                      : 'bg-primary hover:bg-primary/90'
-                }`}
-              >
-                {order.status === 'entregue' ? 'Finalizado' : `Avançar para: ${nextPhase?.title || '...'}`}
-                <ChevronDown className={`size-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-              
-              {nextPhase && (
-                <button 
-                  onClick={handleAdvance}
-                  disabled={!isReadyToMove}
-                  title={`Ir para ${nextPhase.title}`}
-                  className={`px-6 py-3 border-l border-white/20 transition-all ${
-                    !isReadyToMove 
-                      ? 'bg-slate-400 cursor-not-allowed' 
-                      : 'bg-primary hover:bg-primary/90'
-                  }`}
-                >
-                  <ChevronRight className="size-6 text-white" />
-                </button>
-              )}
-            </div>
-
-            <AnimatePresence>
-              {isDropdownOpen && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: -8, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute bottom-full right-0 mb-2 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden z-[60]"
-                >
-                  <div className="p-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase p-2 tracking-widest">Mudar para fase:</p>
-                    {COLUMNS.map((col) => (
-                      <button
-                        key={col.id}
-                        onClick={() => handleStatusChange(col.id)}
-                        className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center justify-between group ${
-                          order.status === col.id 
-                            ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white' 
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`size-2 rounded-full ${col.color}`} />
-                          {col.title}
-                        </div>
-                        {order.status === col.id && <CheckCircle2 className="size-3 text-emerald-500" />}
-                        {nextPhase?.id === col.id && <ChevronRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
-                      </button>
-                    ))}
-                    <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
-                    <button
-                      onClick={() => {
-                        toast((t) => (
-                          <div className="flex flex-col gap-3">
-                            <p className="text-sm font-medium">Deseja arquivar este pedido?</p>
-                            <div className="flex gap-2 justify-end">
-                              <button 
-                                onClick={() => toast.dismiss(t.id)}
-                                className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200"
-                              >
-                                Cancelar
-                              </button>
-                              <button 
-                                onClick={() => {
-                                  toast.dismiss(t.id);
-                                  onArchiveOrder(order.id);
-                                  onClose();
-                                }}
-                                className="px-3 py-1.5 text-xs font-medium text-white bg-amber-500 rounded-md hover:bg-amber-600"
-                              >
-                                Arquivar
-                              </button>
-                            </div>
-                          </div>
-                        ), { duration: Infinity });
-                      }}
-                      className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center gap-2"
-                    >
-                      <Package className="size-3" /> Arquivar Pedido
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Bling Search Results Modal */}
-      <AnimatePresence>
-        {showBlingResults && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800"
-            >
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Clientes no Bling</h3>
-                  <p className="text-xs text-slate-500">Selecione o cliente para preencher os dados</p>
-                </div>
-                <button onClick={() => setShowBlingResults(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
-                  <X className="size-5 text-slate-500" />
-                </button>
-              </div>
-              
-              <div className="max-h-[400px] overflow-y-auto p-2 custom-scrollbar">
-                {blingSearchResults.map((customer) => (
-                  <button
-                    key={customer.id}
-                    onClick={() => handleSelectBlingCustomer(customer)}
-                    className="w-full p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700 group"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
-                        <User className="size-5 text-primary" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
-                          {customer.fantasia && customer.fantasia !== customer.nome ? (
-                            <>
-                              <span className="text-primary">{customer.fantasia}</span>
-                              <span className="text-xs text-slate-400 font-normal ml-2">({customer.nome})</span>
-                            </>
-                          ) : (
-                            customer.nome
-                          )}
-                        </div>
-                        <div className="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                          {customer.numeroDocumento && (
-                            <span className="flex items-center gap-1">
-                              <Hash className="size-3" /> {customer.numeroDocumento}
-                            </span>
-                          )}
-                          {(customer.celular || customer.telefone) && (
-                            <span className="flex items-center gap-1">
-                              <User className="size-3" /> {customer.celular || customer.telefone}
-                            </span>
-                          )}
-                        </div>
-                        {customer.endereco && (
-                          <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-                            <MapPin className="size-3" />
-                            {customer.endereco.municipio} - {customer.endereco.uf}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
-                <button 
-                  onClick={() => setShowBlingResults(false)}
-                  className="w-full py-3 text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </motion.div>
                 <section className="space-y-4">
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-4">
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -2770,6 +2492,285 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                 </section>
               )}
 
+            </section>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-400 uppercase">Status Atual:</span>
+            <span className={`${COLUMNS.find(c => c.id === order.status)?.color || 'bg-slate-200'} text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase shadow-sm`}>
+              {COLUMNS.find(c => c.id === order.status)?.title}
+            </span>
+          </div>
+
+          <ShippingDataReviewModal
+            key={`review-modal-${order.id}-${isReviewModalOpen}`}
+            isOpen={isReviewModalOpen}
+            onClose={() => setIsReviewModalOpen(false)}
+            order={order}
+            onConfirm={handleConfirmCarrierData}
+          />
+
+          <ShippingQuoteModal
+            isOpen={isQuoteModalOpen}
+            onClose={() => setIsQuoteModalOpen(false)}
+            quotes={order.shippingQuote || []}
+            onSelect={handleSelectQuote}
+            isQuoting={isQuoting}
+            selectedQuote={order.selectedShippingOption}
+            onGenerateLabel={handleGenerateLabel}
+            isGeneratingLabel={isGeneratingLabel}
+          />
+
+          <LabelGenerationModal
+            isOpen={isLabelModalOpen}
+            onClose={() => setIsLabelModalOpen(false)}
+            quote={selectedQuote}
+            onGenerate={handleGenerateLabel}
+            isGenerating={isGeneratingLabel}
+            order={order}
+            onUpdateOrder={onUpdateOrder}
+          />
+
+          <div className="flex gap-2 relative">
+            <button
+              onClick={handleCreateBlingOrder}
+              disabled={isCreatingBlingOrder || !!order.blingOrderId}
+              className={`px-6 py-3 border rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
+                order.blingOrderId 
+                  ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed hidden md:flex'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              {isCreatingBlingOrder ? <Loader2 className="size-4 animate-spin" /> : order.blingOrderId ? <CheckCircle2 className="size-4 text-emerald-500" /> : <RefreshCw className="size-4" />}
+              {order.blingOrderId ? 'Enviado pro Bling' : 'Enviar para o Bling'}
+            </button>
+
+            <button
+              onClick={() => {
+                const venc = new Date();
+                venc.setDate(venc.getDate() + 30);
+                setBoletoForm({
+                  valor: order.invoiceValue ? String(order.invoiceValue) : '',
+                  dataVencimento: venc.toISOString().split('T')[0],
+                  parcelas: [],
+                  isParceled: false,
+                });
+                setShowBoletoModal(true);
+              }}
+              className="px-6 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all flex items-center gap-2 shadow-sm"
+            >
+              <Landmark className="size-4" />
+              Emitir Boleto
+            </button>
+
+            {hasNextOrder && onNextOrder && (
+              <button
+                onClick={onNextOrder}
+                className="px-6 py-3 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-all flex items-center gap-2 shadow-sm border border-slate-200 dark:border-slate-700"
+                title="Ir para o próximo pedido sem alterar a fase deste"
+              >
+                Pular para o Próximo
+                <FastForward className="size-4" />
+              </button>
+            )}
+
+            {nextPhase && (
+              <button
+                onClick={handleAdvanceAndNext}
+                disabled={!isReadyToMove}
+                className={`px-6 py-3 rounded-xl text-sm font-bold text-white transition-all flex items-center gap-2 shadow-lg ${
+                  !isReadyToMove 
+                    ? 'bg-slate-400 cursor-not-allowed shadow-none' 
+                    : 'bg-primary hover:bg-primary/90 shadow-primary/20'
+                }`}
+              >
+                {hasNextOrder ? 'Avançar e Próximo' : 'Avançar e Fechar'}
+                <ChevronRight className="size-4" />
+              </button>
+            )}
+            <div className="flex rounded-xl overflow-hidden shadow-lg shadow-primary/20">
+              <button 
+                onClick={() => {
+                  if (order.status === 'entregue') {
+                    onArchiveOrder(order.id);
+                    onClose();
+                  } else {
+                    setIsDropdownOpen(!isDropdownOpen);
+                  }
+                }}
+                className={`px-6 py-3 text-sm font-bold text-white transition-all flex items-center gap-2 ${
+                  !isReadyToMove && order.status !== 'entregue'
+                    ? 'bg-slate-400 cursor-not-allowed' 
+                    : order.status === 'entregue'
+                      ? 'bg-emerald-500 hover:bg-emerald-600'
+                      : 'bg-primary hover:bg-primary/90'
+                }`}
+              >
+                {order.status === 'entregue' ? 'Finalizado' : `Avançar para: ${nextPhase?.title || '...'}`}
+                <ChevronDown className={`size-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {nextPhase && (
+                <button 
+                  onClick={handleAdvance}
+                  disabled={!isReadyToMove}
+                  title={`Ir para ${nextPhase.title}`}
+                  className={`px-6 py-3 border-l border-white/20 transition-all ${
+                    !isReadyToMove 
+                      ? 'bg-slate-400 cursor-not-allowed' 
+                      : 'bg-primary hover:bg-primary/90'
+                  }`}
+                >
+                  <ChevronRight className="size-6 text-white" />
+                </button>
+              )}
+            </div>
+
+            <AnimatePresence>
+              {isDropdownOpen && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: -8, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute bottom-full right-0 mb-2 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden z-[60]"
+                >
+                  <div className="p-2">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase p-2 tracking-widest">Mudar para fase:</p>
+                    {COLUMNS.map((col) => (
+                      <button
+                        key={col.id}
+                        onClick={() => handleStatusChange(col.id)}
+                        className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center justify-between group ${
+                          order.status === col.id 
+                            ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white' 
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`size-2 rounded-full ${col.color}`} />
+                          {col.title}
+                        </div>
+                        {order.status === col.id && <CheckCircle2 className="size-3 text-emerald-500" />}
+                        {nextPhase?.id === col.id && <ChevronRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                      </button>
+                    ))}
+                    <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
+                    <button
+                      onClick={() => {
+                        toast((t) => (
+                          <div className="flex flex-col gap-3">
+                            <p className="text-sm font-medium">Deseja arquivar este pedido?</p>
+                            <div className="flex gap-2 justify-end">
+                              <button 
+                                onClick={() => toast.dismiss(t.id)}
+                                className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200"
+                              >
+                                Cancelar
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  toast.dismiss(t.id);
+                                  onArchiveOrder(order.id);
+                                  onClose();
+                                }}
+                                className="px-3 py-1.5 text-xs font-medium text-white bg-amber-500 rounded-md hover:bg-amber-600"
+                              >
+                                Arquivar
+                              </button>
+                            </div>
+                          </div>
+                        ), { duration: Infinity });
+                      }}
+                      className="w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center gap-2"
+                    >
+                      <Package className="size-3" /> Arquivar Pedido
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Bling Search Results Modal */}
+      <AnimatePresence>
+        {showBlingResults && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Clientes no Bling</h3>
+                  <p className="text-xs text-slate-500">Selecione o cliente para preencher os dados</p>
+                </div>
+                <button onClick={() => setShowBlingResults(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                  <X className="size-5 text-slate-500" />
+                </button>
+              </div>
+              
+              <div className="max-h-[400px] overflow-y-auto p-2 custom-scrollbar">
+                {blingSearchResults.map((customer) => (
+                  <button
+                    key={customer.id}
+                    onClick={() => handleSelectBlingCustomer(customer)}
+                    className="w-full p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700 group"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+                        <User className="size-5 text-primary" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
+                          {customer.fantasia && customer.fantasia !== customer.nome ? (
+                            <>
+                              <span className="text-primary">{customer.fantasia}</span>
+                              <span className="text-xs text-slate-400 font-normal ml-2">({customer.nome})</span>
+                            </>
+                          ) : (
+                            customer.nome
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                          {customer.numeroDocumento && (
+                            <span className="flex items-center gap-1">
+                              <Hash className="size-3" /> {customer.numeroDocumento}
+                            </span>
+                          )}
+                          {(customer.celular || customer.telefone) && (
+                            <span className="flex items-center gap-1">
+                              <User className="size-3" /> {customer.celular || customer.telefone}
+                            </span>
+                          )}
+                        </div>
+                        {customer.endereco && (
+                          <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                            <MapPin className="size-3" />
+                            {customer.endereco.municipio} - {customer.endereco.uf}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
+                <button 
+                  onClick={() => setShowBlingResults(false)}
+                  className="w-full py-3 text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

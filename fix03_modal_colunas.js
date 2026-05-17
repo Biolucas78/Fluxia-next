@@ -14,147 +14,174 @@ if (!filePath) { console.error('ERRO: Arquivo não encontrado.'); process.exit(1
 const lines = fs.readFileSync(filePath, 'utf8').split('\n');
 console.log('Total de linhas:', lines.length);
 
-// ── Verificações precisas (idx = linha - 1) ───────────────────────────────────
-// Confirmado pelo terminal:
-// Linha 1788 (idx 1787): <div bg-slate-50 ... space-y-4>  ← início Dimensões
-// Linha 1830 (idx 1829): </div>                            ← fecha Dimensões
-// Linha 1831 (idx 1830): </section>                        ← fecha section Documentação
-// Linha 1832 (idx 1831): (vazia)
-// Linha 1833 (idx 1832): <section className="space-y-4">  ← Rastreamento
-
-function chk(idx, expected, label) {
-  if (!lines[idx] || !lines[idx].includes(expected)) {
-    console.error(`ERRO [${label}] linha ${idx+1}: esperava "${expected}"`);
-    console.error('  Encontrado: "' + (lines[idx] || '') + '"');
-    process.exit(1);
-  }
-  console.log(`OK [${label}] linha ${idx+1}`);
-}
-
-chk(1787, 'bg-slate-50',         'div Dimensões start');
-chk(1789, 'Dimensões da Caixa',  'Dimensões title');
-chk(1829, '</div>',              'div Dimensões end');
-chk(1830, '</section>',          'section Documentação end');
-chk(1832, 'space-y-4',           'section Rastreamento start');
-
-// Encontrar dinamicamente os demais blocos
-function findLine(str, from = 0) {
+function findLine(str, from = 0, exact = false) {
   for (let i = from; i < lines.length; i++) {
-    if (lines[i].includes(str)) return i;
+    if (exact ? lines[i].trim() === str : lines[i].includes(str)) return i;
   }
   return -1;
 }
 
-// Frete: section que contém "Frete e Envio"
-const idxFreteTitle   = findLine('Frete e Envio');
-const idxFreteSection = findLine('<section', idxFreteTitle - 15);
+// ── Encontrar todos os limites de forma dinâmica ──────────────────────────────
 
-// InfoEnvio: section que contém "Informações de Envio"
-const idxInfoTitle    = findLine('Informações de Envio');
-const idxInfoSection  = findLine('<section', idxInfoTitle - 10);
-
-// Histórico
-const idxHistorico    = findLine('statusHistory && order.statusHistory.length > 0');
-
-// Right Column
-const idxRightCol     = findLine('Right Column: Products Checklist');
-let colEsqEndIdx = idxRightCol - 1;
-while (lines[colEsqEndIdx].trim() === '') colEsqEndIdx--;
-
-console.log('\nMarcadores encontrados:');
-console.log('  Frete section:   linha', idxFreteSection + 1);
-console.log('  InfoEnvio section: linha', idxInfoSection + 1);
-console.log('  Histórico:       linha', idxHistorico + 1);
-console.log('  Right Column:    linha', idxRightCol + 1);
-console.log('  Fim col esquerda: linha', colEsqEndIdx + 1, '→', lines[colEsqEndIdx].trim());
-
-if ([idxFreteSection, idxInfoSection, idxHistorico, idxRightCol].includes(-1)) {
-  console.error('ERRO: Algum marcador não encontrado.');
-  process.exit(1);
-}
-
-// ── Extrair blocos ────────────────────────────────────────────────────────────
-// dimDivStart..dimDivEnd: a <div> de Dimensões (idx 1787 a 1830, exclusive)
-const blocoDimensoes    = lines.slice(1787, 1830);  // idx 1787–1829 = 43 linhas
-
-// Rastreamento: idx 1832 até idxFreteSection (exclusive)
-const blocoRastreamento = lines.slice(1832, idxFreteSection);
-
-// Frete: idxFreteSection até idxInfoSection (exclusive)
-const blocoFrete        = lines.slice(idxFreteSection, idxInfoSection);
-
-// InfoEnvio: idxInfoSection até idxHistorico (exclusive)
-const blocoInfoEnvio    = lines.slice(idxInfoSection, idxHistorico);
-
-// Histórico: idxHistorico até colEsqEndIdx (exclusive)
-const blocoHistorico    = lines.slice(idxHistorico, colEsqEndIdx);
-
-// Coluna direita: idxRightCol em diante
-const colunaDireita     = lines.slice(idxRightCol);
-
-console.log('\nTamanhos dos blocos:');
-console.log('  Dimensões:', blocoDimensoes.length, '| primeira:', blocoDimensoes[0]?.trim().slice(0, 50));
-console.log('  Rastreamento:', blocoRastreamento.length, '| primeira:', blocoRastreamento[0]?.trim().slice(0, 50));
-console.log('  Frete:', blocoFrete.length, '| primeira:', blocoFrete[0]?.trim().slice(0, 50));
-console.log('  InfoEnvio:', blocoInfoEnvio.length, '| primeira:', blocoInfoEnvio[0]?.trim().slice(0, 50));
-console.log('  Histórico:', blocoHistorico.length, '| primeira:', blocoHistorico[0]?.trim().slice(0, 50));
-console.log('  Coluna direita:', colunaDireita.length, '| primeira:', colunaDireita[0]?.trim().slice(0, 50));
-
-// ── Nova coluna esquerda ──────────────────────────────────────────────────────
-// Tudo antes de Dimensões (0..1786) + </section> (idx 1830) + Histórico + </div> col
-const novaEsquerda = [
-  ...lines.slice(0, 1787),     // até linha 1787 (idx 1786, vazia) inclusive
-  lines[1830],                  // </section> que fecha a section de Documentação
-  '',
-  ...blocoHistorico,
-  lines[colEsqEndIdx],          // </div> da coluna esquerda
-];
-
-// ── Nova coluna direita ───────────────────────────────────────────────────────
-// Encontrar o </div> que fecha o grid (10 espaços)
-let gridCloseIdx = -1;
-for (let i = colunaDireita.length - 1; i >= 0; i--) {
-  if (colunaDireita[i].trim() === '</div>' && colunaDireita[i].match(/^ {10}<\/div>/)) {
-    gridCloseIdx = i;
+// 1. Dimensões: a <div> que contém "Dimensões da Caixa"
+const idxDimTitle = findLine('Dimensões da Caixa (cm)');
+// Procurar a <div> imediatamente acima do título (máx 3 linhas acima)
+let dimDivStart = -1;
+for (let i = idxDimTitle - 1; i >= idxDimTitle - 5; i--) {
+  if (lines[i].trim().startsWith('<div ') && lines[i].includes('bg-slate-50')) {
+    dimDivStart = i;
     break;
   }
 }
-if (gridCloseIdx === -1) {
-  // fallback
-  for (let i = colunaDireita.length - 1; i >= 0; i--) {
-    if (colunaDireita[i].trim() === '</div>' && colunaDireita[i].startsWith('          ')) {
-      gridCloseIdx = i;
+if (dimDivStart === -1) { console.error('ERRO: <div> de Dimensões não encontrada.'); process.exit(1); }
+
+// Encontrar o </div> que fecha essa div (contando abertura/fechamento)
+let depth = 0;
+let dimDivEnd = -1;
+for (let i = dimDivStart; i < lines.length; i++) {
+  const t = lines[i].trim();
+  const opens = (t.match(/<div[\s>]/g) || []).length;
+  const closes = (t.match(/<\/div>/g) || []).length;
+  depth += opens - closes;
+  if (depth === 0 && i > dimDivStart) { dimDivEnd = i; break; }
+}
+if (dimDivEnd === -1) { console.error('ERRO: </div> de Dimensões não encontrado.'); process.exit(1); }
+
+// A </section> que fecha Documentação+Dimensões vem logo após dimDivEnd
+let sectionDocEnd = -1;
+for (let i = dimDivEnd + 1; i <= dimDivEnd + 5; i++) {
+  if (lines[i] && lines[i].trim() === '</section>') { sectionDocEnd = i; break; }
+}
+if (sectionDocEnd === -1) { console.error('ERRO: </section> após Dimensões não encontrada.'); process.exit(1); }
+
+console.log('dimDivStart:', dimDivStart + 1, '→', lines[dimDivStart].trim().slice(0, 50));
+console.log('dimDivEnd:', dimDivEnd + 1, '→', lines[dimDivEnd].trim());
+console.log('sectionDocEnd:', sectionDocEnd + 1, '→', lines[sectionDocEnd].trim());
+
+// 2. Section de Rastreamento: começa logo após sectionDocEnd
+let rastSectionStart = -1;
+for (let i = sectionDocEnd + 1; i <= sectionDocEnd + 5; i++) {
+  if (lines[i] && lines[i].trim().startsWith('<section')) { rastSectionStart = i; break; }
+}
+if (rastSectionStart === -1) { console.error('ERRO: section Rastreamento não encontrada.'); process.exit(1); }
+console.log('rastSectionStart:', rastSectionStart + 1, '→', lines[rastSectionStart].trim());
+
+// 3. Section de Frete e Envio
+const idxFreteTitle = findLine('Frete e Envio');
+let freteSectionStart = -1;
+for (let i = idxFreteTitle - 1; i >= idxFreteTitle - 10; i--) {
+  if (lines[i].trim().startsWith('<section')) { freteSectionStart = i; break; }
+}
+if (freteSectionStart === -1) { console.error('ERRO: section Frete não encontrada.'); process.exit(1); }
+console.log('freteSectionStart:', freteSectionStart + 1);
+
+// 4. Section de Informações de Envio
+const idxInfoTitle = findLine('Informações de Envio');
+let infoSectionStart = -1;
+for (let i = idxInfoTitle - 1; i >= idxInfoTitle - 10; i--) {
+  if (lines[i].trim().startsWith('<section')) { infoSectionStart = i; break; }
+}
+if (infoSectionStart === -1) { console.error('ERRO: section InfoEnvio não encontrada.'); process.exit(1); }
+console.log('infoSectionStart:', infoSectionStart + 1);
+
+// 5. Encontrar o fim de InfoEnvio (a </section> que a fecha)
+// É a </section> que vem após o conteúdo de InfoEnvio
+// Encontrar contando tags dentro da section
+let infoSectionEnd = -1;
+let depthInfo = 0;
+let inSection = false;
+for (let i = infoSectionStart; i < lines.length; i++) {
+  const t = lines[i].trim();
+  if (i === infoSectionStart) { inSection = true; depthInfo = 1; continue; }
+  if (!inSection) continue;
+  if (t.startsWith('<section')) depthInfo++;
+  if (t === '</section>') { depthInfo--; if (depthInfo === 0) { infoSectionEnd = i; break; } }
+}
+if (infoSectionEnd === -1) { console.error('ERRO: fim section InfoEnvio não encontrado.'); process.exit(1); }
+console.log('infoSectionEnd:', infoSectionEnd + 1);
+
+// 6. Verificar se há section extra após InfoEnvio (carrier display) antes do Histórico
+const idxHistorico = findLine('statusHistory && order.statusHistory.length > 0');
+console.log('idxHistorico:', idxHistorico + 1);
+
+// Tudo entre infoSectionEnd+1 e idxHistorico pode ter seções extras (ex: carrier display)
+// Incluir no bloco InfoEnvio
+const blocoInfoEnvioFull = lines.slice(infoSectionStart, idxHistorico);
+console.log('blocoInfoEnvioFull:', blocoInfoEnvioFull.length, 'linhas');
+
+// 7. Right Column
+const idxRightCol = findLine('Right Column: Products Checklist');
+let colEsqEnd = idxRightCol - 1;
+while (colEsqEnd > 0 && lines[colEsqEnd].trim() === '') colEsqEnd--;
+console.log('colEsqEnd:', colEsqEnd + 1, '→', lines[colEsqEnd].trim());
+console.log('idxRightCol:', idxRightCol + 1);
+
+// 8. Fim da section da coluna direita (</section> que fecha Itens+Observações)
+// É a </section> antes do </div> que fecha o grid
+// O grid fecha com </div> com ~10 espaços, depois </div> com ~8 espaços
+// Observações termina com </section> seguido de </div></div>
+const idxObsComment = findLine('Observações do Pedido', idxRightCol);
+// Procurar o </section> após as Observações
+let rightSecClose = -1;
+for (let i = idxObsComment + 30; i < idxObsComment + 100; i++) {
+  if (lines[i] && lines[i].trim() === '</section>' && lines[i].includes('            ')) {
+    // Verificar que é seguido de </div></div>
+    let next = i + 1;
+    while (next < lines.length && lines[next].trim() === '') next++;
+    if (lines[next] && lines[next].trim() === '</div>') {
+      rightSecClose = i;
       break;
     }
   }
 }
-if (gridCloseIdx === -1) {
-  console.error('ERRO: Fechamento do grid não encontrado.');
-  colunaDireita.slice(-10).forEach((l, i) => console.log(`  ${i}: "${l}"`));
-  process.exit(1);
+if (rightSecClose === -1) {
+  // fallback: última </section> antes do footer
+  const idxFooter = findLine('Footer Actions');
+  for (let i = idxFooter - 1; i >= idxFooter - 10; i--) {
+    if (lines[i] && lines[i].trim() === '</section>') { rightSecClose = i; break; }
+  }
 }
-console.log(`\nFechamento do grid: pos ${gridCloseIdx} → "${colunaDireita[gridCloseIdx]}"`);
+if (rightSecClose === -1) { console.error('ERRO: fim section coluna direita não encontrado.'); process.exit(1); }
+console.log('rightSecClose:', rightSecClose + 1, '→', lines[rightSecClose].trim());
 
-// Dimensões envolto em section própria na coluna direita
-const dimensoesSection = [
+// ── Extrair blocos ────────────────────────────────────────────────────────────
+const blocoDimensoes    = lines.slice(dimDivStart, dimDivEnd + 1);
+const blocoRastreamento = lines.slice(rastSectionStart, freteSectionStart);
+const blocoFrete        = lines.slice(freteSectionStart, infoSectionStart);
+const blocoInfoEnvio    = blocoInfoEnvioFull;
+const blocoHistorico    = lines.slice(idxHistorico, colEsqEnd);
+
+console.log('\nBlocos extraídos:');
+console.log('  Dimensões:', blocoDimensoes.length);
+console.log('  Rastreamento:', blocoRastreamento.length);
+console.log('  Frete:', blocoFrete.length);
+console.log('  InfoEnvio:', blocoInfoEnvio.length);
+console.log('  Histórico:', blocoHistorico.length);
+
+// ── Montar novo arquivo ───────────────────────────────────────────────────────
+const novoArquivo = [
+  // COLUNA ESQUERDA
+  ...lines.slice(0, dimDivStart),          // tudo antes da <div> Dimensões
+  lines[sectionDocEnd],                     // </section> fecha Documentação
+  '',
+  ...blocoHistorico,                        // Histórico do Pedido
+  lines[colEsqEnd],                         // </div> fecha coluna esquerda
+  '',
+  // COLUNA DIREITA
+  ...lines.slice(idxRightCol, rightSecClose),  // Right Column + Itens + Observações
+  // Dimensões com section wrapper
   '                <section className="space-y-4">',
   ...blocoDimensoes,
   '                </section>',
-];
-
-const novaColunaDireita = [
-  ...colunaDireita.slice(0, gridCloseIdx),
-  ...dimensoesSection,
+  // Rastreamento, Frete, InfoEnvio (já têm suas próprias sections)
   ...blocoRastreamento,
   ...blocoFrete,
   ...blocoInfoEnvio,
-  colunaDireita[gridCloseIdx],
-  ...colunaDireita.slice(gridCloseIdx + 1),
-];
+  lines[rightSecClose],                     // </section> fecha coluna direita
+  ...lines.slice(rightSecClose + 1),        // resto (</div></div> footer etc)
+].join('\n');
 
-// ── Montar e verificar ────────────────────────────────────────────────────────
-const novoArquivo = [...novaEsquerda, ...novaColunaDireita].join('\n');
-
+// ── Verificações ──────────────────────────────────────────────────────────────
 const termos = [
   'Dados do Cliente', 'Texto Original do Pedido', 'Condições de Pagamento',
   'Origem do Pedido', 'Documentação', 'Histórico do Pedido',
@@ -162,21 +189,14 @@ const termos = [
   'Dimensões da Caixa', 'Rastreamento em Tempo Real', 'Frete e Envio', 'Informações de Envio',
 ];
 
-console.log('\nVerificações finais:');
-let allOk = true;
+console.log('\nVerificações:');
+let ok = true;
 for (const t of termos) {
-  if (novoArquivo.includes(t)) {
-    console.log(`  ✓ "${t}"`);
-  } else {
-    console.error(`  ✗ FALTANDO: "${t}"`);
-    allOk = false;
-  }
+  if (novoArquivo.includes(t)) { console.log(`  ✓ ${t}`); }
+  else { console.error(`  ✗ FALTANDO: ${t}`); ok = false; }
 }
 
-if (!allOk) {
-  console.error('\nERRO: Arquivo incompleto. Não salvo.');
-  process.exit(1);
-}
+if (!ok) { console.error('\nNão salvo.'); process.exit(1); }
 
 fs.writeFileSync(filePath, novoArquivo, 'utf8');
-console.log('\n✅ Arquivo salvo! Execute: npx tsc --noEmit');
+console.log('\n✅ Salvo! Execute: npx tsc --noEmit');
