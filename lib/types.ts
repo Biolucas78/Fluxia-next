@@ -178,6 +178,7 @@ export interface Order {
   invoiceKey?: string;
   invoiceNumber?: string;
   boletoNossoNumero?: string;
+  boletos?: { nossoNumero: string; seuNumero: string; valor: number; dataEmissao: string; dataVencimento: string; situacao: string; }[];
   invoiceValue?: number;
   paymentMethod?: 'boleto' | 'pix' | 'deposito_amazon' | 'deposito_meli' | 'deposito_fazendinha' | 'deposito_wix' | 'transferencia' | 'dinheiro' | 'cartao';
   noInvoice?: boolean;

@@ -1841,6 +1841,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 hasBoleto: false,
                                 boletoLinked: false,
                                 boletoNossoNumero: '',
+                                boletos: [],
                                 paymentDueDate: '',
                                 paymentDate: '',
                                 boletSituacao: '',
@@ -1878,7 +1879,21 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                   return;
                                 }
                               } catch (e: any) { toast.error('Erro ao verificar lock: ' + e.message); return; }
-                              onUpdateOrder({ ...order, hasBoleto: true, boletoLinked: true, boletoNossoNumero: String(pendingBoleto.nossoNumero||''), invoiceNumber: String(pendingBoleto.seuNumero||''), invoiceValue: pendingBoleto.valor, paymentDueDate: pendingBoleto.dataVencimento||'', paymentDate: pendingBoleto.dataEmissao||'', boletSituacao: pendingBoleto.situacaoBoleto||'', statusHistory: [...(order.statusHistory||[]), { action: 'Boleto vinculado e confirmado', details: `NF: ${pendingBoleto.seuNumero} | NossoNumero: ${pendingBoleto.nossoNumero}`, timestamp: new Date().toISOString() }] });
+                              // Adicionar ao array de boletos (suporte a múltiplas parcelas)
+              const novoBoleto = { nossoNumero: String(pendingBoleto.nossoNumero||''), seuNumero: String(pendingBoleto.seuNumero||''), valor: pendingBoleto.valor||0, dataEmissao: pendingBoleto.dataEmissao||'', dataVencimento: pendingBoleto.dataVencimento||'', situacao: pendingBoleto.situacaoBoleto||'' };
+              const boletosAtuais = (order as any).boletos || [];
+              // Não duplicar boleto já vinculado
+              const boletosAtualizados = boletosAtuais.find((b: any) => b.nossoNumero === novoBoleto.nossoNumero) ? boletosAtuais : [...boletosAtuais, novoBoleto];
+              // Usar paymentDueDate do boleto mais recente (maior vencimento)
+              const maiorVencimento = boletosAtualizados.reduce((acc: string, b: any) => b.dataVencimento > acc ? b.dataVencimento : acc, '');
+              onUpdateOrder({ ...order, hasBoleto: true, boletoLinked: true,
+                boletoNossoNumero: String(pendingBoleto.nossoNumero||''),
+                boletos: boletosAtualizados,
+                boletSituacao: pendingBoleto.situacaoBoleto||'',
+                paymentDueDate: maiorVencimento || pendingBoleto.dataVencimento||'',
+                paymentDate: order.paymentDate || pendingBoleto.dataEmissao||'',
+                // NÃO sobrescrever invoiceNumber e invoiceValue da NF
+                statusHistory: [...(order.statusHistory||[]), { action: 'Boleto vinculado e confirmado', details: `NF: ${pendingBoleto.seuNumero} | NossoNumero: ${pendingBoleto.nossoNumero}`, timestamp: new Date().toISOString() }] } as any);
                               setBoletoData({ nossoNumero: String(pendingBoleto.nossoNumero||''), seuNumero: String(pendingBoleto.seuNumero||''), valor: pendingBoleto.valor||0, dataEmissao: pendingBoleto.dataEmissao||'', dataVencimento: pendingBoleto.dataVencimento||'', situacao: pendingBoleto.situacaoBoleto||'' });
                               setPendingBoleto(null); setBoletosList([]);
                               toast.success('Boleto vinculado com sucesso!');
@@ -1915,7 +1930,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           </button>
                         </div>
                       )}
-                                            {(order.hasBoleto && (boletoData || order.boletoNossoNumero || order.paymentDueDate)) && (
+                                            {(order.hasBoleto && ((order as any).boletos?.length > 0 || boletoData || order.boletoNossoNumero || order.paymentDueDate)) && (
                         <div className="mt-2 space-y-2">
                           <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
@@ -1950,6 +1965,20 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               </div>
                             )}
                           </div>
+                          {/* Lista de todos os boletos vinculados */}
+                          {(order as any).boletos && (order as any).boletos.length > 1 && (
+                            <div className="space-y-1 mt-2">
+                              <p className="text-[9px] text-slate-400 font-bold uppercase">Boletos Vinculados ({(order as any).boletos.length} parcelas)</p>
+                              {(order as any).boletos.map((b: any, i: number) => (
+                                <div key={i} className="grid grid-cols-2 gap-x-4 gap-y-1 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                                  <div><p className="text-[9px] text-slate-400 uppercase">NF/Parcela</p><p className="text-xs font-bold">{b.seuNumero}</p></div>
+                                  <div><p className="text-[9px] text-slate-400 uppercase">Valor</p><p className="text-xs font-bold text-primary">{new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(b.valor||0)}</p></div>
+                                  <div><p className="text-[9px] text-slate-400 uppercase">Emissão</p><p className="text-xs">{(b.dataEmissao||"").split("-").reverse().join("/")}</p></div>
+                                  <div><p className="text-[9px] text-slate-400 uppercase">Vencimento</p><p className="text-xs">{(b.dataVencimento||"").split("-").reverse().join("/")}</p></div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <div className="space-y-1 mt-1">
                             <p className="text-[9px] text-slate-400 font-bold uppercase text-center">Enviar cobrança via</p>
                             <div className="grid grid-cols-2 gap-2">
