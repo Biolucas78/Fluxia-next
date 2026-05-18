@@ -1988,7 +1988,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 {(['pix', 'deposito_amazon', 'deposito_meli', 'deposito_fazendinha', 'deposito_wix'] as const).map((m) => (
                                   <button key={m} onClick={() => { setPaymentMethod(m); onUpdateOrder({ ...order, paymentMethod: m, statusHistory: [...(order.statusHistory||[]), { action: `Definiu forma de pagamento: ${m}`, timestamp: new Date().toISOString() }] }); }}
                                     className={`py-1.5 rounded-lg text-[10px] font-bold border transition-all ${paymentMethod === m ? 'bg-primary text-white border-primary' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-primary'}`}>
-                                    {m === 'pix' ? 'PIX' : m === 'deposito_amazon' ? 'Depósito Amazon' : 'Depósito Meli'}
+                                    {m === 'pix' ? 'PIX' : m === 'deposito_amazon' ? 'Depósito Amazon' : m === 'deposito_meli' ? 'Depósito Meli' : m === 'deposito_fazendinha' ? 'Depósito Fazendinha' : 'Depósito Wix'}
                                   </button>
                                 ))}
                               </div>
