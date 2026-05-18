@@ -179,7 +179,13 @@ export interface Order {
   invoiceNumber?: string;
   boletoNossoNumero?: string;
   invoiceValue?: number;
-  paymentMethod?: 'boleto' | 'pix' | 'transferencia' | 'dinheiro' | 'cartao';
+  paymentMethod?: 'boleto' | 'pix' | 'deposito_amazon' | 'deposito_meli' | 'transferencia' | 'dinheiro' | 'cartao';
+  noInvoice?: boolean;
+  noInvoiceLinked?: boolean;
+  noInvoiceValue?: number;
+  noInvoiceDueDate?: string;
+  noInvoiceBlingOrderId?: string;
+  paymentLinked?: boolean;
   paymentStatus?: 'pendente' | 'pago' | 'vencido';
   paymentDate?: string;
   paymentDueDate?: string;
