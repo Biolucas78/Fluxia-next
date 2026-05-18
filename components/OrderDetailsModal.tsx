@@ -1548,7 +1548,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 // Verificar se NF já está vinculada a outro pedido
                                 try {
                                   const lockRes = await fetch('/api/check-lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'nf', value: pendingInvoice.invoiceNumber, orderId: order.id }) });
-                                  const lockData = await lockRes.json();
+                                  const lockData = await lockRes.json(); toast(`DEBUG: value=${pendingInvoice.invoiceNumber} locked=${lockData.locked}`);
                                   if (lockData.locked) {
                                     toast.error(`NF ${pendingInvoice.invoiceNumber} já está vinculada ao pedido de ${lockData.lockedBy?.clientName || 'outro cliente'}.`);
                                     return;
@@ -1795,7 +1795,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               // Verificar se boleto já está vinculado a outro pedido
                               try {
                                 const lockRes = await fetch('/api/check-lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'boleto', value: String(pendingBoleto.nossoNumero||''), orderId: order.id }) });
-                                const lockData = await lockRes.json();
+                                const lockData = await lockRes.json(); toast(`DEBUG: value=${pendingInvoice.invoiceNumber} locked=${lockData.locked}`);
                                 if (lockData.locked) {
                                   toast.error(`Boleto NF ${pendingBoleto.seuNumero} já está vinculado ao pedido de ${lockData.lockedBy?.clientName || 'outro cliente'}.`);
                                   return;
