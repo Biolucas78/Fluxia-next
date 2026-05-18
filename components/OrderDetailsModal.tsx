@@ -1985,7 +1985,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             <div className="space-y-1">
                               <label className="text-[9px] text-slate-400 uppercase font-bold">Forma de Pagamento</label>
                               <div className="grid grid-cols-3 gap-1">
-                                {(['pix', 'deposito_amazon', 'deposito_meli'] as const).map((m) => (
+                                {(['pix', 'deposito_amazon', 'deposito_meli', 'deposito_fazendinha', 'deposito_wix'] as const).map((m) => (
                                   <button key={m} onClick={() => { setPaymentMethod(m); onUpdateOrder({ ...order, paymentMethod: m, statusHistory: [...(order.statusHistory||[]), { action: `Definiu forma de pagamento: ${m}`, timestamp: new Date().toISOString() }] }); }}
                                     className={`py-1.5 rounded-lg text-[10px] font-bold border transition-all ${paymentMethod === m ? 'bg-primary text-white border-primary' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-primary'}`}>
                                     {m === 'pix' ? 'PIX' : m === 'deposito_amazon' ? 'Depósito Amazon' : 'Depósito Meli'}
@@ -2013,7 +2013,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             {order.paymentStatus === 'pago' && (
                               <div className="flex items-center gap-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
                                 <CheckCircle2 className="size-3 text-emerald-600" />
-                                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Pagamento confirmado — {order.paymentMethod === 'pix' ? 'PIX' : order.paymentMethod === 'deposito_amazon' ? 'Depósito Amazon' : order.paymentMethod === 'deposito_meli' ? 'Depósito Meli' : order.paymentMethod}</span>
+                                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Pagamento confirmado — {order.paymentMethod === 'pix' ? 'PIX' : order.paymentMethod === 'deposito_amazon' ? 'Depósito Amazon' : order.paymentMethod === 'deposito_meli' ? 'Depósito Meli' : order.paymentMethod === 'deposito_fazendinha' ? 'Depósito Fazendinha' : order.paymentMethod === 'deposito_wix' ? 'Depósito Wix' : order.paymentMethod}</span>
                               </div>
                             )}
                           </div>

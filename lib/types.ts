@@ -179,7 +179,7 @@ export interface Order {
   invoiceNumber?: string;
   boletoNossoNumero?: string;
   invoiceValue?: number;
-  paymentMethod?: 'boleto' | 'pix' | 'deposito_amazon' | 'deposito_meli' | 'transferencia' | 'dinheiro' | 'cartao';
+  paymentMethod?: 'boleto' | 'pix' | 'deposito_amazon' | 'deposito_meli' | 'deposito_fazendinha' | 'deposito_wix' | 'transferencia' | 'dinheiro' | 'cartao';
   noInvoice?: boolean;
   noInvoiceLinked?: boolean;
   noInvoiceValue?: number;
