@@ -1975,6 +1975,10 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                   <div><p className="text-[9px] text-slate-400 uppercase">Valor</p><p className="text-xs font-bold text-primary">{new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(b.valor||0)}</p></div>
                                   <div><p className="text-[9px] text-slate-400 uppercase">Emissão</p><p className="text-xs">{(b.dataEmissao||"").split("-").reverse().join("/")}</p></div>
                                   <div><p className="text-[9px] text-slate-400 uppercase">Vencimento</p><p className="text-xs">{(b.dataVencimento||"").split("-").reverse().join("/")}</p></div>
+                                  <div className="col-span-2">
+                                    <p className="text-[9px] text-slate-400 uppercase">Situação</p>
+                                    {(() => { const sit = b.situacao || ""; const cor = sit === "LIQUIDADO" ? "text-emerald-600" : sit === "VENCIDO" ? "text-red-500" : "text-amber-600"; const label = sit === "LIQUIDADO" ? "Pago" : sit === "VENCIDO" ? "Vencido" : sit === "ENTRADA NORMAL" ? "A Receber" : sit || "-"; return <p className={cor + " text-xs font-bold"}>{label}</p>; })()}
+                                  </div>
                                 </div>
                               ))}
                             </div>
