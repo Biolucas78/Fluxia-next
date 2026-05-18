@@ -2,7 +2,7 @@ import React from 'react';
 import { adminDb } from '@/lib/firebase-admin';
 import MapWrapper from '@/components/MapWrapper';
 
-export const revalidate = 3600; // Revalidate every hour
+export const dynamic = 'force-dynamic';
 
 export default async function MapaParceirosPage() {
   let customers: any[] = [];
