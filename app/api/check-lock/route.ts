@@ -5,19 +5,21 @@ export async function POST(request: Request) {
   try {
     const { type, value, orderId } = await request.json();
     if (!type || !value) return NextResponse.json({ locked: false });
+    // Normalizar: remover zeros à esquerda para comparação consistente
+    const normalizedValue = String(value).trim().replace(/^0+/, '') || String(value);
 
     const collection = 'orders';
     let snapshot;
 
     if (type === 'nf') {
       snapshot = await adminDb.collection(collection)
-        .where('invoiceNumber', '==', String(value))
+        .where('invoiceNumber', '==', normalizedValue)
         .where('invoiceLinked', '==', true)
         .limit(5)
         .get();
     } else if (type === 'boleto') {
       snapshot = await adminDb.collection(collection)
-        .where('boletoNossoNumero', '==', String(value))
+        .where('boletoNossoNumero', '==', normalizedValue)
         .where('boletoLinked', '==', true)
         .limit(5)
         .get();
