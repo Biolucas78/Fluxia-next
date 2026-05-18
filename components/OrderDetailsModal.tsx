@@ -1544,7 +1544,16 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               {pendingInvoice.invoiceKey && (<div className="col-span-2"><p className="text-[9px] text-slate-400 uppercase">Chave NF-e</p><p className="text-[9px] text-slate-600 dark:text-slate-400 font-mono break-all select-all">{pendingInvoice.invoiceKey}</p></div>)}
                             </div>
                             <div className="flex gap-2 pt-1">
-                              <button onClick={() => {
+                              <button onClick={async () => {
+                                // Verificar se NF já está vinculada a outro pedido
+                                try {
+                                  const lockRes = await fetch('/api/check-lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'nf', value: pendingInvoice.invoiceNumber, orderId: order.id }) });
+                                  const lockData = await lockRes.json();
+                                  if (lockData.locked) {
+                                    toast.error(`NF ${pendingInvoice.invoiceNumber} já está vinculada ao pedido de ${lockData.lockedBy?.clientName || 'outro cliente'}.`);
+                                    return;
+                                  }
+                                } catch (e) { /* fail open */ }
                                 onUpdateOrder({ ...order, hasInvoice: true, invoiceLinked: true, invoiceKey: pendingInvoice.invoiceKey||'', invoiceNumber: pendingInvoice.invoiceNumber||'', invoiceValue: pendingInvoice.invoiceValue, statusHistory: [...(order.statusHistory||[]), { action: 'Nota Fiscal vinculada e confirmada', details: `NF: ${pendingInvoice.invoiceNumber} | Valor: ${pendingInvoice.invoiceValue}`, timestamp: new Date().toISOString() }] } as any);
                                 setManualInvoiceKey(pendingInvoice.invoiceKey||''); setManualInvoiceNumber(pendingInvoice.invoiceNumber||''); setManualInvoiceValue(pendingInvoice.invoiceValue||'');
                                 setPendingInvoice(null); setNfList([]);
@@ -1782,7 +1791,16 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             <div className="col-span-2"><p className="text-[9px] text-slate-400 uppercase">NossoNumero</p><p className="text-xs text-slate-600 dark:text-slate-400 select-all">{pendingBoleto.nossoNumero}</p></div>
                           </div>
                           <div className="flex gap-2 pt-1">
-                            <button onClick={() => {
+                            <button onClick={async () => {
+                              // Verificar se boleto já está vinculado a outro pedido
+                              try {
+                                const lockRes = await fetch('/api/check-lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'boleto', value: String(pendingBoleto.nossoNumero||''), orderId: order.id }) });
+                                const lockData = await lockRes.json();
+                                if (lockData.locked) {
+                                  toast.error(`Boleto NF ${pendingBoleto.seuNumero} já está vinculado ao pedido de ${lockData.lockedBy?.clientName || 'outro cliente'}.`);
+                                  return;
+                                }
+                              } catch (e) { /* fail open */ }
                               onUpdateOrder({ ...order, hasBoleto: true, boletoLinked: true, boletoNossoNumero: String(pendingBoleto.nossoNumero||''), invoiceNumber: String(pendingBoleto.seuNumero||''), invoiceValue: pendingBoleto.valor, paymentDueDate: pendingBoleto.dataVencimento||'', paymentDate: pendingBoleto.dataEmissao||'', boletSituacao: pendingBoleto.situacaoBoleto||'', statusHistory: [...(order.statusHistory||[]), { action: 'Boleto vinculado e confirmado', details: `NF: ${pendingBoleto.seuNumero} | NossoNumero: ${pendingBoleto.nossoNumero}`, timestamp: new Date().toISOString() }] } as any);
                               setBoletoData({ nossoNumero: String(pendingBoleto.nossoNumero||''), seuNumero: String(pendingBoleto.seuNumero||''), valor: pendingBoleto.valor||0, dataEmissao: pendingBoleto.dataEmissao||'', dataVencimento: pendingBoleto.dataVencimento||'', situacao: pendingBoleto.situacaoBoleto||'' });
                               setPendingBoleto(null); setBoletosList([]);
