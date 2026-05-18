@@ -359,7 +359,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         body: JSON.stringify({ 
           blingOrderId: order.blingOrderId,
           clientName: order.clientName,
-          document: order.cnpj || order.cpf
+          document: order.cnpj || order.cpf,
+          orderId: order.id
         })
       });
 

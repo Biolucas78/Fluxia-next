@@ -1,4 +1,18 @@
-import { NextResponse } from 'next/server';
+const fs = require('fs');
+const path = require('path');
+
+const possiblePaths = [
+  'app/api/bling/get-invoice/route.ts',
+  path.join(process.env.HOME || '', 'Fluxia-next/app/api/bling/get-invoice/route.ts'),
+];
+let filePath = null;
+for (const p of possiblePaths) {
+  if (fs.existsSync(p)) { filePath = p; break; }
+}
+if (!filePath) { console.error('ERRO: route.ts não encontrado.'); process.exit(1); }
+console.log('Arquivo:', filePath);
+
+const NEW_ROUTE = `import { NextResponse } from 'next/server';
 import { getValidBlingTokenServer } from '@/lib/bling-server';
 import { fetchWithRetry } from '@/lib/bling-utils';
 import { adminDb } from '@/lib/firebase-admin';
@@ -11,8 +25,8 @@ export async function POST(request: Request) {
     }
 
     const { blingOrderId, clientName, document, orderId } = await request.json();
-    const headers = { 'Authorization': `Bearer ${token}` };
-    const docClean = (document || '').replace(/\D/g, '');
+    const headers = { 'Authorization': \`Bearer \${token}\` };
+    const docClean = (document || '').replace(/\\D/g, '');
     const allMatches: any[] = [];
 
     // Buscar NFs vinculadas no Firestore para excluir da lista
@@ -29,18 +43,18 @@ export async function POST(request: Request) {
           lockedNumbers.add(norm(d.invoiceNumber));
         }
       });
-      console.log(`[Bling] NFs já vinculadas a outros pedidos: ${lockedNumbers.size}`);
+      console.log(\`[Bling] NFs já vinculadas a outros pedidos: \${lockedNumbers.size}\`);
     } catch (e) {
       console.warn('[Bling] Não foi possível buscar locks:', e);
     }
 
     // Busca por CPF/CNPJ (principal)
     if (docClean) {
-      console.log(`[Bling] Buscando NFs por CNPJ/CPF: ${docClean}`);
+      console.log(\`[Bling] Buscando NFs por CNPJ/CPF: \${docClean}\`);
       const MAX_PAGES = 5;
       for (let page = 1; page <= MAX_PAGES; page++) {
         const res = await fetchWithRetry(
-          `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${page}`,
+          \`https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=\${page}\`,
           { headers }
         );
         if (!res.ok) break;
@@ -49,7 +63,7 @@ export async function POST(request: Request) {
         if (invoices.length === 0) break;
 
         invoices.filter((inv: any) => {
-          const invDoc = (inv.contato?.numeroDocumento || '').replace(/\D/g, '');
+          const invDoc = (inv.contato?.numeroDocumento || '').replace(/\\D/g, '');
           return invDoc && invDoc === docClean;
         }).forEach((n: any) => {
           if (!allMatches.find((m: any) => m.id === n.id)) allMatches.push(n);
@@ -62,10 +76,10 @@ export async function POST(request: Request) {
 
     // Fallback por blingOrderId se não achou nada por CNPJ
     if (allMatches.length === 0 && blingOrderId) {
-      console.log(`[Bling] Fallback: buscando NF por blingOrderId: ${blingOrderId}`);
+      console.log(\`[Bling] Fallback: buscando NF por blingOrderId: \${blingOrderId}\`);
       try {
         const res = await fetchWithRetry(
-          `https://api.bling.com.br/Api/v3/nfe?idPedidoVenda=${blingOrderId}&limite=5`,
+          \`https://api.bling.com.br/Api/v3/nfe?idPedidoVenda=\${blingOrderId}&limite=5\`,
           { headers }
         );
         if (res.ok) {
@@ -81,9 +95,9 @@ export async function POST(request: Request) {
 
     // Fallback por nome se não achou nada
     if (allMatches.length === 0 && clientName && !docClean) {
-      console.log(`[Bling] Fallback por nome: ${clientName}`);
+      console.log(\`[Bling] Fallback por nome: \${clientName}\`);
       const res = await fetchWithRetry(
-        `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=1`,
+        \`https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=1\`,
         { headers }
       );
       if (res.ok) {
@@ -112,14 +126,14 @@ export async function POST(request: Request) {
     for (const inv of toDetail) {
       // Pular NFs já vinculadas a outros pedidos
       if (lockedNumbers.has(norm(inv.numero))) {
-        console.log(`[Bling] NF ${inv.numero} já vinculada, removendo da lista.`);
+        console.log(\`[Bling] NF \${inv.numero} já vinculada, removendo da lista.\`);
         continue;
       }
 
       try {
         await new Promise(resolve => setTimeout(resolve, 150));
         const res = await fetchWithRetry(
-          `https://api.bling.com.br/Api/v3/nfe/${inv.id}`,
+          \`https://api.bling.com.br/Api/v3/nfe/\${inv.id}\`,
           { headers }
         );
         if (res.ok) {
@@ -164,7 +178,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ found: false, message: 'Todas as notas fiscais deste cliente já estão vinculadas a outros pedidos.' });
     }
 
-    console.log(`[Bling] Retornando ${lista.length} NF(s) disponíveis.`);
+    console.log(\`[Bling] Retornando \${lista.length} NF(s) disponíveis.\`);
     return NextResponse.json({ found: true, lista });
 
   } catch (error: any) {
@@ -172,3 +186,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message || 'Failed to fetch invoice' }, { status: 500 });
   }
 }
+`;
+
+fs.writeFileSync(filePath, NEW_ROUTE, 'utf8');
+console.log('OK: Rota get-invoice corrigida (remove vinculadas, busca por CNPJ primeiro).');
