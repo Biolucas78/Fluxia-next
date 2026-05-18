@@ -1915,7 +1915,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           </button>
                         </div>
                       )}
-                                            {(boletoData || order.boletoNossoNumero || order.paymentDueDate) && (
+                                            {(order.hasBoleto && (boletoData || order.boletoNossoNumero || order.paymentDueDate)) && (
                         <div className="mt-2 space-y-2">
                           <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
