@@ -152,6 +152,9 @@ export interface Order {
   trackingNumber?: string;
   blingOrderId?: number;
   hasInvoice: boolean;
+  invoiceLinked?: boolean;
+  boletoLinked?: boolean;
+  boletSituacao?: string;
   hasBoleto: boolean;
   hasOrderDocument: boolean;
   createdAt: string;

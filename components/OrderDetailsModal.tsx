@@ -1554,7 +1554,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                     return;
                                   }
                                 } catch (e) { /* fail open */ }
-                                onUpdateOrder({ ...order, hasInvoice: true, invoiceLinked: true, invoiceKey: pendingInvoice.invoiceKey||'', invoiceNumber: pendingInvoice.invoiceNumber||'', invoiceValue: pendingInvoice.invoiceValue, statusHistory: [...(order.statusHistory||[]), { action: 'Nota Fiscal vinculada e confirmada', details: `NF: ${pendingInvoice.invoiceNumber} | Valor: ${pendingInvoice.invoiceValue}`, timestamp: new Date().toISOString() }] } as any);
+                                onUpdateOrder({ ...order, hasInvoice: true, invoiceLinked: true, invoiceKey: pendingInvoice.invoiceKey||'', invoiceNumber: pendingInvoice.invoiceNumber||'', invoiceValue: pendingInvoice.invoiceValue, statusHistory: [...(order.statusHistory||[]), { action: 'Nota Fiscal vinculada e confirmada', details: `NF: ${pendingInvoice.invoiceNumber} | Valor: ${pendingInvoice.invoiceValue}`, timestamp: new Date().toISOString() }] });
                                 setManualInvoiceKey(pendingInvoice.invoiceKey||''); setManualInvoiceNumber(pendingInvoice.invoiceNumber||''); setManualInvoiceValue(pendingInvoice.invoiceValue||'');
                                 setPendingInvoice(null); setNfList([]);
                                 toast.success('Nota Fiscal vinculada com sucesso!');
@@ -1801,7 +1801,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                   return;
                                 }
                               } catch (e) { /* fail open */ }
-                              onUpdateOrder({ ...order, hasBoleto: true, boletoLinked: true, boletoNossoNumero: String(pendingBoleto.nossoNumero||''), invoiceNumber: String(pendingBoleto.seuNumero||''), invoiceValue: pendingBoleto.valor, paymentDueDate: pendingBoleto.dataVencimento||'', paymentDate: pendingBoleto.dataEmissao||'', boletSituacao: pendingBoleto.situacaoBoleto||'', statusHistory: [...(order.statusHistory||[]), { action: 'Boleto vinculado e confirmado', details: `NF: ${pendingBoleto.seuNumero} | NossoNumero: ${pendingBoleto.nossoNumero}`, timestamp: new Date().toISOString() }] } as any);
+                              onUpdateOrder({ ...order, hasBoleto: true, boletoLinked: true, boletoNossoNumero: String(pendingBoleto.nossoNumero||''), invoiceNumber: String(pendingBoleto.seuNumero||''), invoiceValue: pendingBoleto.valor, paymentDueDate: pendingBoleto.dataVencimento||'', paymentDate: pendingBoleto.dataEmissao||'', boletSituacao: pendingBoleto.situacaoBoleto||'', statusHistory: [...(order.statusHistory||[]), { action: 'Boleto vinculado e confirmado', details: `NF: ${pendingBoleto.seuNumero} | NossoNumero: ${pendingBoleto.nossoNumero}`, timestamp: new Date().toISOString() }] });
                               setBoletoData({ nossoNumero: String(pendingBoleto.nossoNumero||''), seuNumero: String(pendingBoleto.seuNumero||''), valor: pendingBoleto.valor||0, dataEmissao: pendingBoleto.dataEmissao||'', dataVencimento: pendingBoleto.dataVencimento||'', situacao: pendingBoleto.situacaoBoleto||'' });
                               setPendingBoleto(null); setBoletosList([]);
                               toast.success('Boleto vinculado com sucesso!');
