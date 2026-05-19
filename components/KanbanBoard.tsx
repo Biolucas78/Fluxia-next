@@ -232,6 +232,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
           if (filterTag === 'amostra' && !o.isSample) return false;
           if (filterTag === 'hasInvoice' && !o.hasInvoice) return false;
           if (filterTag === 'hasBoleto' && !o.hasBoleto) return false;
+          if (filterTag === 'semDocumento' && ((o as any).invoiceLinked || (o as any).boletoLinked || (o as any).noInvoiceLinked)) return false;
           if (filterTag === 'custom' && (!o.tags || o.tags.length === 0)) return false; // Future use
         }
 
@@ -543,6 +544,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
                       <option value="amostra">Amostras</option>
                       <option value="hasInvoice">Com Nota Fiscal (NF-e)</option>
                       <option value="hasBoleto">Com Boleto</option>
+                      <option value="semDocumento">Sem N, B ou P</option>
                     </select>
                   </div>
 
