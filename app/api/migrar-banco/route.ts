@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 
 const COLLECTIONS = [
   'orders', 'leads', 'clientes', 'bling_customers', 'products',
-  'inventory', 'recurrence_messages',
+  'inventory', 'recurrence_messages', 'bling_config', 'product_mapping',
 ];
 
 export async function GET(request: Request) {
