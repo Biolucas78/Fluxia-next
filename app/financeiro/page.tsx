@@ -297,7 +297,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function FinanceiroPage() {
-  const { allOrders, archivedOrders, isLoaded, handleUpdateOrder, handleArchiveOrder } = useOrders();
+  const { allOrders, isLoaded, handleUpdateOrder, handleArchiveOrder } = useOrders();
   const { userProfile, loading: userLoading } = useUser();
 
   // Busca
@@ -322,7 +322,7 @@ export default function FinanceiroPage() {
     date: new Date().toISOString().split('T')[0],
   });
 
-  const todosOsPedidos = useMemo(() => [...allOrders, ...archivedOrders], [allOrders, archivedOrders]);
+  const todosOsPedidos = useMemo(() => allOrders, [allOrders]);
 
   // ── Filtro de busca ──────────────────────────────────────────────────────────
   function matchesSearch(order: Order) {
