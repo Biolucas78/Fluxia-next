@@ -210,9 +210,11 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
   const phone = order.phone?.replace(/\D/g, '');
   const cobrancaMsg = (() => {
     const v = formatCurrency(value);
-    const nf = order.invoiceNumber ? `nota fiscal ${order.invoiceNumber}` : (order as any).noInvoiceBlingOrderId ? `pedido ${(order as any).noInvoiceBlingOrderId}` : 'seu pedido';
+    const emissao = issue ? formatDate(issue) : '';
+    const nf = order.invoiceNumber || (order as any).noInvoiceBlingOrderId || '';
     const venc = due ? formatDate(due) : '';
-    return `Olá! Passando para avisar sobre o pagamento referente à ${nf}, no valor de ${v}${venc ? `, com vencimento em ${venc}` : ''}. Poderia nos confirmar?`;
+    const boletoValor = (boletos && boletos.length > 0) ? formatCurrency(boletos[0].valor || value) : v;
+    return `Pedido faturado em ${emissao || '-'}, referente a nota fiscal ${nf || '-'}, no valor de ${boletoValor}, vencido em ${venc || '-'}.`;
   })();
 
   const waPersonal = phone ? `https://wa.me/55${phone}?text=${encodeURIComponent(cobrancaMsg)}` : null;
