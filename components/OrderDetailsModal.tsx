@@ -2113,6 +2113,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                     ...order,
                                     paymentStatus: 'pago',
                                     paymentDate: paymentConfirmDate || new Date().toISOString().split('T')[0],
+                                    paymentConfirmedManually: true,
                                     statusHistory: [...(order.statusHistory||[]), {
                                       action: `Pagamento confirmado via ${paymentMethod || order.paymentMethod || 'não informado'}`,
                                       details: `Data: ${(paymentConfirmDate || new Date().toISOString().split('T')[0]).split('-').reverse().join('/')}`,

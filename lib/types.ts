@@ -187,6 +187,7 @@ export interface Order {
   noInvoiceDueDate?: string;
   noInvoiceBlingOrderId?: string;
   paymentLinked?: boolean;
+  paymentConfirmedManually?: boolean;
   paymentStatus?: 'pendente' | 'pago' | 'vencido';
   paymentDate?: string;
   paymentDueDate?: string;
