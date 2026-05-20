@@ -129,6 +129,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [noInvoiceDueDate, setNoInvoiceDueDate] = useState<string>(order.noInvoiceDueDate || '');
   const [isFetchingBlingOrder, setIsFetchingBlingOrder] = useState(false);
   const [pendingBlingOrder, setPendingBlingOrder] = useState<any>(null);
+  const [blingOrdersList, setBlingOrdersList] = useState<any[]>([]);
   const [boletoData, setBoletoData] = useState<{nossoNumero: string; seuNumero: string; valor: number; dataEmissao: string; dataVencimento: string; situacao: string} | null>(null);
   const [blingSearchResults, setBlingSearchResults] = useState<any[]>([]);
   const [showBoletoModal, setShowBoletoModal] = useState(false);
@@ -1715,13 +1716,15 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             {/* Botão Buscar Pedido no Bling */}
                             <div className="flex items-center gap-2">
                               <button onClick={async () => {
-                                if (!order.blingOrderId && !order.clientName) { toast.error('Pedido sem ID do Bling ou nome do cliente.'); return; }
-                                setIsFetchingBlingOrder(true); setPendingBlingOrder(null);
+                                if (!order.clientName) { toast.error('Pedido sem nome do cliente.'); return; }
+                                setIsFetchingBlingOrder(true); setPendingBlingOrder(null); setBlingOrdersList([]);
                                 try {
-                                  const res = await fetch('/api/bling/get-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blingOrderId: order.blingOrderId, clientName: order.clientName, document: order.cnpj || order.cpf, orderId: order.id }) });
+                                  const res = await fetch('/api/bling/get-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientName: order.clientName, document: order.cnpj || order.cpf, orderId: order.id }) });
                                   const data = await res.json();
-                                  if (data.found) { setPendingBlingOrder(data.order); toast('Pedido encontrado! Confirme para vincular.', { icon: '🔍' }); }
-                                  else { toast.error(data.message || 'Pedido não encontrado no Bling.'); }
+                                  if (data.found && data.lista && data.lista.length > 0) {
+                                    setBlingOrdersList(data.lista);
+                                    toast(`${data.lista.length} pedido(s) encontrado(s). Escolha abaixo.`, { icon: '🔍' });
+                                  } else { toast.error(data.message || 'Nenhum pedido encontrado no Bling.'); }
                                 } catch (e: any) { toast.error('Erro: ' + e.message); }
                                 finally { setIsFetchingBlingOrder(false); }
                               }} disabled={isFetchingBlingOrder} className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1">
@@ -1729,35 +1732,63 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 Buscar Pedido no Bling
                               </button>
                               {order.noInvoiceLinked && (
-                                <button onClick={() => onUpdateOrder({ ...order, noInvoiceLinked: false, noInvoiceBlingOrderId: '', statusHistory: [...(order.statusHistory||[]), { action: 'Pedido Bling desvinculado (Sem NF)', timestamp: new Date().toISOString() }] })} className="text-[10px] font-bold text-red-500 hover:text-red-700 flex items-center gap-1">
+                                <button onClick={() => { onUpdateOrder({ ...order, noInvoiceLinked: false, noInvoiceBlingOrderId: '', statusHistory: [...(order.statusHistory||[]), { action: 'Pedido Bling desvinculado (Sem NF)', timestamp: new Date().toISOString() }] }); setBlingOrdersList([]); setPendingBlingOrder(null); }} className="text-[10px] font-bold text-red-500 hover:text-red-700 flex items-center gap-1">
                                   <X className="size-3" /> Desvincular
                                 </button>
                               )}
                             </div>
-                            {/* Card confirmação pedido Bling */}
+
+                            {/* Lista de pedidos para escolha */}
+                            {blingOrdersList.length > 0 && (
+                              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{blingOrdersList.length} pedido(s) disponível(is) — escolha o correto:</p>
+                                {blingOrdersList.map((p: any) => (
+                                  <div key={p.id} className={`p-2.5 rounded-xl border cursor-pointer transition-all ${pendingBlingOrder?.id === p.id ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-300'}`}
+                                    onClick={() => setPendingBlingOrder(p)}>
+                                    <div className="flex items-center justify-between">
+                                      <div>
+                                        <p className="text-xs font-bold text-slate-900 dark:text-white">Pedido #{p.numero}</p>
+                                        <p className="text-[10px] text-slate-400">{p.data ? p.data.split('-').reverse().join('/') : '—'}{p.situacao ? ` · ${p.situacao}` : ''}</p>
+                                      </div>
+                                      <p className="text-xs font-black text-primary">{new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(p.valor||0)}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Card confirmação do pedido selecionado */}
                             {pendingBlingOrder && (
                               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl space-y-2">
-                                <p className="text-[9px] font-bold text-amber-700 uppercase">Confirmar vinculação do Pedido?</p>
+                                <p className="text-[9px] font-bold text-amber-700 uppercase">Confirmar vinculação do Pedido #{pendingBlingOrder.numero}?</p>
                                 <div className="grid grid-cols-2 gap-2">
                                   <div><p className="text-[9px] text-slate-400 uppercase">Número</p><p className="text-xs font-bold select-all">{pendingBlingOrder.numero}</p></div>
                                   <div><p className="text-[9px] text-slate-400 uppercase">Valor</p><p className="text-xs font-bold text-primary">{new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(pendingBlingOrder.valor||0)}</p></div>
-                                  <div className="col-span-2"><p className="text-[9px] text-slate-400 uppercase">Cliente</p><p className="text-xs text-slate-600 dark:text-slate-400">{pendingBlingOrder.cliente}</p></div>
+                                  <div><p className="text-[9px] text-slate-400 uppercase">Data</p><p className="text-xs text-slate-600 dark:text-slate-400">{pendingBlingOrder.data ? pendingBlingOrder.data.split('-').reverse().join('/') : '—'}</p></div>
+                                  <div><p className="text-[9px] text-slate-400 uppercase">Cliente</p><p className="text-xs text-slate-600 dark:text-slate-400 truncate">{pendingBlingOrder.cliente}</p></div>
                                 </div>
                                 <div className="flex gap-2">
-                                  <button onClick={() => {
+                                  <button onClick={async () => {
+                                    // Verificar lock antes de confirmar
+                                    try {
+                                      const lockRes = await fetch('/api/check-lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'order', value: String(pendingBlingOrder.id||''), orderId: order.id }) });
+                                      const lockData = await lockRes.json();
+                                      if (lockData.locked) { toast.error(`Este pedido já está vinculado ao card "${lockData.lockedBy}"`); return; }
+                                    } catch (e: any) { toast.error('Erro ao verificar lock: ' + e.message); return; }
                                     onUpdateOrder({ ...order, noInvoiceLinked: true, noInvoiceBlingOrderId: String(pendingBlingOrder.id||''), noInvoiceValue: pendingBlingOrder.valor, statusHistory: [...(order.statusHistory||[]), { action: 'Pedido Bling vinculado (Sem NF)', details: `Pedido: ${pendingBlingOrder.numero} | Valor: ${pendingBlingOrder.valor}`, timestamp: new Date().toISOString() }] });
-                                    setNoInvoiceValue(String(pendingBlingOrder.valor||'')); setPendingBlingOrder(null);
+                                    setNoInvoiceValue(String(pendingBlingOrder.valor||'')); setPendingBlingOrder(null); setBlingOrdersList([]);
                                     toast.success('Pedido vinculado com sucesso!');
                                   }} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold rounded-lg flex items-center justify-center gap-1">
                                     <CheckCircle2 className="size-3" /> Confirmar
                                   </button>
-                                  <button onClick={() => setPendingBlingOrder(null)} className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-600 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1">
+                                  <button onClick={() => { setPendingBlingOrder(null); setBlingOrdersList([]); }} className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-600 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1">
                                     <X className="size-3" /> Cancelar
                                   </button>
                                 </div>
                               </div>
                             )}
-                            {order.noInvoiceLinked && (
+
+                            {order.noInvoiceLinked && !blingOrdersList.length && (
                               <div className="flex items-center gap-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
                                 <CheckCircle2 className="size-3 text-emerald-600" />
                                 <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Pedido Bling vinculado</span>
