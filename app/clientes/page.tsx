@@ -66,6 +66,11 @@ export default function ClientesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showCNPJPanel, setShowCNPJPanel] = useState(false);
+  const [cnpjInput, setCnpjInput] = useState('');
+  const [isFetchingCNPJ, setIsFetchingCNPJ] = useState(false);
+  const [cnpjResult, setCnpjResult] = useState<any>(null);
+  const [cnpjError, setCnpjError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmittingLocal, setIsSubmittingLocal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -389,6 +394,65 @@ export default function ClientesPage() {
     }
   };
 
+  const formatCNPJ = (v: string) => {
+    const d = v.replace(/\D/g, '').slice(0, 14);
+    return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+            .replace(/(\d{2})(\d{3})(\d{3})(\d{4})/, '$1.$2.$3/$4')
+            .replace(/(\d{2})(\d{3})(\d{3})/, '$1.$2.$3')
+            .replace(/(\d{2})(\d{3})/, '$1.$2');
+  };
+
+  const handleConsultarCNPJ = async (cnpjRaw?: string) => {
+    const cnpj = (cnpjRaw || cnpjInput).replace(/\D/g, '');
+    if (cnpj.length !== 14) { setCnpjError('CNPJ deve ter 14 dígitos.'); return; }
+    setIsFetchingCNPJ(true); setCnpjResult(null); setCnpjError('');
+    try {
+      const res = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`);
+      if (!res.ok) {
+        if (res.status === 404) throw new Error('CNPJ não encontrado na base pública.');
+        if (res.status === 429) throw new Error('Limite de consultas atingido. Aguarde um momento.');
+        throw new Error('Erro ao consultar CNPJ (status ' + res.status + ').');
+      }
+      const data = await res.json();
+      setCnpjResult(data);
+    } catch (e: any) {
+      setCnpjError(e.message || 'Erro ao consultar CNPJ.');
+    } finally {
+      setIsFetchingCNPJ(false);
+    }
+  };
+
+  const handleUsarDadosCNPJ = () => {
+    if (!cnpjResult) return;
+    const est = cnpjResult.estabelecimento || {};
+    const ie = est.inscricoes_estaduais?.[0]?.inscricao_estadual || '';
+    const telefone = est.ddd1 && est.telefone1 ? `(${est.ddd1}) ${est.telefone1}` : '';
+    const cep = (est.cep || '').replace(/\D/g, '');
+    const logradouro = est.logradouro || '';
+    const numero = est.numero || '';
+    const complemento = est.complemento || '';
+    handleOpenModal({
+      nome: cnpjResult.razao_social || '',
+      fantasia: cnpjResult.nome_fantasia || '',
+      tipo: 'J',
+      numeroDocumento: cnpjInput.replace(/\D/g, ''),
+      email: est.email || '',
+      celular: telefone,
+      ie: ie,
+      isentoIE: !ie,
+      endereco: {
+        geral: {
+          cep, uf: est.estado?.sigla || '',
+          municipio: est.cidade?.nome || '',
+          bairro: est.bairro || '',
+          endereco: logradouro ? `${logradouro}, ${numero}${complemento ? ' - ' + complemento : ''}` : '',
+          numero, complemento,
+        }
+      }
+    });
+    setShowCNPJPanel(false);
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
       <Sidebar />
@@ -444,6 +508,13 @@ export default function ClientesPage() {
                   )
                 )}
 
+                <button
+                  onClick={() => { setShowCNPJPanel(v => !v); setCnpjResult(null); setCnpjError(''); }}
+                  className={`w-full md:w-auto px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all border ${showCNPJPanel ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white dark:bg-slate-800 text-primary border-primary/30 hover:border-primary hover:bg-primary/5'}`}
+                >
+                  <Database className="size-5" />
+                  Consultar CNPJ
+                </button>
                 <button 
                   onClick={() => handleOpenModal()}
                   className="w-full md:w-auto px-6 py-3 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
@@ -453,6 +524,135 @@ export default function ClientesPage() {
                 </button>
               </div>
             </div>
+
+            {/* Painel Consulta CNPJ */}
+            {showCNPJPanel && (
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 rounded-xl"><Database className="size-4 text-primary" /></div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 dark:text-white">Consultar CNPJ</h3>
+                      <p className="text-[10px] text-slate-400">Receita Federal via publica.cnpj.ws</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowCNPJPanel(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                    <X className="size-4 text-slate-400" />
+                  </button>
+                </div>
+                <div className="p-5 space-y-4">
+                  {/* Campo de entrada */}
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="00.000.000/0000-00"
+                        value={cnpjInput}
+                        onChange={e => setCnpjInput(formatCNPJ(e.target.value))}
+                        onKeyDown={e => e.key === 'Enter' && handleConsultarCNPJ()}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleConsultarCNPJ()}
+                      disabled={isFetchingCNPJ || cnpjInput.replace(/\D/g,'').length !== 14}
+                      className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-black hover:bg-primary/90 transition-all disabled:opacity-40 flex items-center gap-2"
+                    >
+                      {isFetchingCNPJ ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+                      {isFetchingCNPJ ? 'Consultando...' : 'Consultar'}
+                    </button>
+                  </div>
+
+                  {/* Erro */}
+                  {cnpjError && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-xs font-bold text-red-600 dark:text-red-400">
+                      {cnpjError}
+                    </div>
+                  )}
+
+                  {/* Resultado */}
+                  {cnpjResult && (
+                    <div className="space-y-4">
+                      {/* Header do resultado */}
+                      <div className="flex items-start justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+                        <div className="min-w-0">
+                          <p className="text-base font-black text-slate-900 dark:text-white truncate">{cnpjResult.razao_social}</p>
+                          {cnpjResult.nome_fantasia && <p className="text-xs text-slate-500 truncate">{cnpjResult.nome_fantasia}</p>}
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${cnpjResult.estabelecimento?.situacao_cadastral === 'ATIVA' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
+                              {cnpjResult.estabelecimento?.situacao_cadastral || 'Situação desconhecida'}
+                            </span>
+                            {cnpjResult.estabelecimento?.atividade_principal?.descricao && (
+                              <span className="text-[10px] text-slate-500 truncate max-w-xs">{cnpjResult.estabelecimento.atividade_principal.descricao}</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleUsarDadosCNPJ}
+                          className="shrink-0 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20"
+                        >
+                          <Plus className="size-3.5" /> Cadastrar Cliente
+                        </button>
+                      </div>
+
+                      {/* Grid de dados */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {[
+                          { label: 'CNPJ', value: cnpjInput },
+                          { label: 'Abertura', value: cnpjResult.estabelecimento?.data_inicio_atividade ? new Date(cnpjResult.estabelecimento.data_inicio_atividade + 'T12:00:00').toLocaleDateString('pt-BR') : '' },
+                          { label: 'Natureza Jurídica', value: cnpjResult.natureza_juridica?.descricao },
+                          { label: 'Porte', value: cnpjResult.porte?.descricao },
+                          { label: 'Capital Social', value: cnpjResult.capital_social ? new Intl.NumberFormat('pt-BR', {style:'currency',currency:'BRL'}).format(Number(cnpjResult.capital_social)) : '' },
+                          { label: 'Email', value: cnpjResult.estabelecimento?.email },
+                          { label: 'Telefone', value: cnpjResult.estabelecimento?.ddd1 && cnpjResult.estabelecimento?.telefone1 ? `(${cnpjResult.estabelecimento.ddd1}) ${cnpjResult.estabelecimento.telefone1}` : '' },
+                          { label: 'CEP', value: cnpjResult.estabelecimento?.cep },
+                          { label: 'Endereço', value: cnpjResult.estabelecimento?.logradouro ? `${cnpjResult.estabelecimento.logradouro}, ${cnpjResult.estabelecimento.numero || 'S/N'}` : '' },
+                          { label: 'Bairro', value: cnpjResult.estabelecimento?.bairro },
+                          { label: 'Cidade/UF', value: cnpjResult.estabelecimento?.cidade?.nome && cnpjResult.estabelecimento?.estado?.sigla ? `${cnpjResult.estabelecimento.cidade.nome}/${cnpjResult.estabelecimento.estado.sigla}` : '' },
+                          { label: 'Insc. Estadual', value: cnpjResult.estabelecimento?.inscricoes_estaduais?.[0]?.inscricao_estadual || (cnpjResult.estabelecimento?.inscricoes_estaduais?.length === 0 ? 'Isento' : '') },
+                        ].filter(i => i.value).map(item => (
+                          <div key={item.label} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{item.label}</p>
+                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200 break-words">{item.value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* CNAEs secundários */}
+                      {cnpjResult.estabelecimento?.atividades_secundarias?.length > 0 && (
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">CNAEs Secundários</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {cnpjResult.estabelecimento.atividades_secundarias.slice(0, 5).map((a: any, i: number) => (
+                              <span key={i} className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-1 rounded-lg font-medium">{a.descricao}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* QSA — Quadro societário */}
+                      {cnpjResult.socios?.length > 0 && (
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Quadro Societário</p>
+                          <div className="space-y-1.5">
+                            {cnpjResult.socios.map((s: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{s.nome}</p>
+                                  <p className="text-[10px] text-slate-400">{s.qualificacao_socio?.descricao}</p>
+                                </div>
+                                {s.data_entrada && <p className="text-[10px] text-slate-400">{new Date(s.data_entrada + 'T12:00:00').toLocaleDateString('pt-BR')}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Customers List */}
             <div className="h-[600px] shrink-0 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xl flex flex-col">
