@@ -240,7 +240,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
 
           {/* Badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <PaymentBadge method={order.paymentMethod} />
+            <PaymentBadge method={(order as any).boletoLinked ? "boleto" : order.paymentMethod} />
             <DocBadge order={order} />
           </div>
 
