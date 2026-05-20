@@ -125,6 +125,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [pendingBoleto, setPendingBoleto] = useState<any>(null);
   const [boletosList, setBoletosList] = useState<any[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<string>(order.paymentMethod || '');
+  const [paymentConfirmDate, setPaymentConfirmDate] = useState<string>(order.paymentDate || new Date().toISOString().split('T')[0]);
   const [noInvoiceValue, setNoInvoiceValue] = useState<string>(order.noInvoiceValue ? String(order.noInvoiceValue) : '');
   const [noInvoiceDueDate, setNoInvoiceDueDate] = useState<string>(order.noInvoiceDueDate || '');
   const [isFetchingBlingOrder, setIsFetchingBlingOrder] = useState(false);
@@ -2070,9 +2071,32 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             </div>
                             {/* Confirmar pagamento */}
                             {order.paymentStatus !== 'pago' && (
-                              <button onClick={() => onUpdateOrder({ ...order, paymentStatus: 'pago', statusHistory: [...(order.statusHistory||[]), { action: `Pagamento confirmado via ${paymentMethod || order.paymentMethod || 'não informado'}`, timestamp: new Date().toISOString() }] })} className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
-                                <CheckCircle2 className="size-4" /> Confirmar Pagamento
-                              </button>
+                              <div className="space-y-2">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-400 uppercase font-bold">Data do Pagamento</label>
+                                  <input
+                                    type="date"
+                                    value={paymentConfirmDate}
+                                    onChange={e => setPaymentConfirmDate(e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:border-primary"
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => onUpdateOrder({
+                                    ...order,
+                                    paymentStatus: 'pago',
+                                    paymentDate: paymentConfirmDate || new Date().toISOString().split('T')[0],
+                                    statusHistory: [...(order.statusHistory||[]), {
+                                      action: `Pagamento confirmado via ${paymentMethod || order.paymentMethod || 'não informado'}`,
+                                      details: `Data: ${(paymentConfirmDate || new Date().toISOString().split('T')[0]).split('-').reverse().join('/')}`,
+                                      timestamp: new Date().toISOString()
+                                    }]
+                                  })}
+                                  className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
+                                >
+                                  <CheckCircle2 className="size-4" /> Confirmar Pagamento
+                                </button>
+                              </div>
                             )}
                             {order.paymentStatus === 'pago' && (
                               <div className="flex items-center justify-between gap-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
