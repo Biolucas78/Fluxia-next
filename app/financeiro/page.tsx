@@ -110,7 +110,7 @@ function isOverdue(order: Order): boolean {
 // Pedidos excluídos da página Financeiro (tag Amostras, etc.)
 function isExcluded(order: Order): boolean {
   const tags = (order as any).tags as string[] | undefined;
-  if (tags && tags.some((t: string) => t.toLowerCase() === 'amostras')) return true;
+  if (tags && tags.some((t: string) => t.toLowerCase() === 'amostra')) return true;
   return false;
 }
 
@@ -349,7 +349,7 @@ export default function FinanceiroPage() {
 
   // ── Filtro de período (usa data de vencimento ou entrega) ────────────────────
   function matchesPeriod(order: Order, dateStr?: string) {
-    if (!dateStr) return true;
+    if (!dateStr) return false;
     const { from, to } = getPeriodRange(filterPeriod, customFrom, customTo);
     const d = new Date(dateStr + (dateStr.length === 10 ? 'T12:00:00' : ''));
     return d >= from && d <= to;
