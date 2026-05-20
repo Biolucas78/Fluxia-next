@@ -1,6 +1,7 @@
 'use client';
 
-import { Search, Bell, Plus, MessageSquare, LogOut, User, Menu } from 'lucide-react';
+import { Search, Bell, Plus, MessageSquare, LogOut, User, Menu, X } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { useUser } from '@/lib/hooks';
@@ -22,9 +23,16 @@ export default function Header({ title, searchQuery, onSearchChange, onImportWha
   const handleLogout = () => {
     signOut(auth);
   };
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (mobileSearchOpen && mobileInputRef.current) {
+      mobileInputRef.current.focus();
+    }
+  }, [mobileSearchOpen]);
 
   return (
-    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-8 shrink-0">
+    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-8 shrink-0 relative">
       <div className="flex items-center gap-3 md:gap-6">
         <button 
           onClick={() => window.dispatchEvent(new CustomEvent('toggleSidebar'))}
@@ -42,18 +50,30 @@ export default function Header({ title, searchQuery, onSearchChange, onImportWha
         {children}
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-4">
         {onSearchChange && (
-          <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <input 
-              type="text"
-              placeholder="Buscar pedidos..."
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm focus:ring-2 focus:ring-primary w-64 transition-all"
-            />
-          </div>
+          <>
+            {/* Desktop */}
+            <div className="relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar pedidos..."
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm focus:ring-2 focus:ring-primary w-64 transition-all"
+              />
+            </div>
+            {/* Mobile: botao lupa */}
+            {!mobileSearchOpen && (
+              <button
+                onClick={() => setMobileSearchOpen(true)}
+                className="md:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-primary transition-all"
+              >
+                <Search className="size-5" />
+              </button>
+            )}
+          </>
         )}
         
         <div className="flex items-center gap-2">
@@ -99,6 +119,26 @@ export default function Header({ title, searchQuery, onSearchChange, onImportWha
           </button>
         </div>
       </div>
+      {/* Campo expandido mobile */}
+      {onSearchChange && mobileSearchOpen && (
+        <div className="md:hidden absolute top-16 left-0 right-0 z-50 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center gap-2 shadow-lg">
+          <Search className="size-4 text-slate-400 shrink-0" />
+          <input
+            ref={mobileInputRef}
+            type="text"
+            placeholder="Buscar pedidos..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="flex-1 bg-transparent text-sm text-slate-900 dark:text-white outline-none placeholder:text-slate-400"
+          />
+          <button
+            onClick={() => { setMobileSearchOpen(false); onSearchChange(''); }}
+            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
     </header>
   );
 }
