@@ -97,9 +97,21 @@ function getIssueDate(order: Order): string | undefined {
   return hist?.timestamp?.split('T')[0];
 }
 
+// Retorna true se o pedido deve ser considerado PAGO na página Financeiro.
+// Pedidos com boleto vinculado: só são pagos se o Sicoob confirmou (boletSituacao Liquidado/Baixado/Pago).
+// Pedidos sem boleto: usa paymentStatus normalmente.
+function isPaid(order: Order): boolean {
+  const boletoLinked = (order as any).boletoLinked as boolean | undefined;
+  if (boletoLinked) {
+    const situacao = ((order as any).boletSituacao as string || '').toLowerCase();
+    return situacao === 'liquidado' || situacao === 'baixado' || situacao === 'pago';
+  }
+  return order.paymentStatus === 'pago';
+}
+
+// Retorna true se o pedido está VENCIDO (não pago + data de vencimento passou).
 function isOverdue(order: Order): boolean {
-  // Pago = nunca vencido
-  if (order.paymentStatus === 'pago') return false;
+  if (isPaid(order)) return false;
   const due = getDueDate(order);
   if (!due) return false;
   const today = new Date();
@@ -110,7 +122,7 @@ function isOverdue(order: Order): boolean {
 // Pedidos excluídos da página Financeiro (tag Amostras, etc.)
 function isExcluded(order: Order): boolean {
   const tags = (order as any).tags as string[] | undefined;
-  if (tags && tags.some((t: string) => t.toLowerCase() === 'amostra')) return true;
+  if ((order as any).isSample) return true;
   return false;
 }
 
@@ -371,7 +383,7 @@ export default function FinanceiroPage() {
   // Cobre: boleto em aberto, PIX/deposito com data futura, pedidos sem data ainda
   const toReceive = useMemo(() => {
     return pedidosElegiveis.filter(o =>
-      o.paymentStatus !== 'pago' &&
+      !isPaid(o) &&
       !isOverdue(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
@@ -387,7 +399,7 @@ export default function FinanceiroPage() {
   // Cobre: boleto vencido (Sicoob nao sincronizou) E PIX/deposito com data passada
   const overdue = useMemo(() => {
     return pedidosElegiveis.filter(o =>
-      o.paymentStatus !== 'pago' &&
+      !isPaid(o) &&
       isOverdue(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
@@ -399,7 +411,7 @@ export default function FinanceiroPage() {
   // Cobre: boleto confirmado pelo Sicoob E pagamento confirmado manualmente no modal
   const received = useMemo(() => {
     return pedidosElegiveis.filter(o =>
-      o.paymentStatus === 'pago' &&
+      isPaid(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o) &&
