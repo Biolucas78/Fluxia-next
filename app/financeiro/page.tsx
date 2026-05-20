@@ -10,7 +10,7 @@ import {
   DollarSign, Clock, AlertTriangle, CheckCircle2, FileText,
   Loader2, X, Filter, Calendar, ChevronDown,
   MessageSquare, CreditCard, Search, SlidersHorizontal,
-  Receipt, Landmark, Smartphone, ShoppingBag, Store, Warehouse
+  Receipt, Landmark, Smartphone, ShoppingBag, Store, Warehouse, RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -98,13 +98,15 @@ function getIssueDate(order: Order): string | undefined {
 }
 
 // Retorna true se o pedido deve ser considerado PAGO na página Financeiro.
-// Pedidos com boleto vinculado: só são pagos se o Sicoob confirmou (boletSituacao Liquidado/Baixado/Pago).
+// Pedidos com boleto vinculado: pagos se Sicoob confirmou OU se confirmação manual foi feita.
 // Pedidos sem boleto: usa paymentStatus normalmente.
 function isPaid(order: Order): boolean {
+  // Confirmação manual sempre prevalece (ex: boleto baixado mas pago via PIX)
+  if ((order as any).paymentConfirmedManually) return true;
   const boletoLinked = (order as any).boletoLinked as boolean | undefined;
   if (boletoLinked) {
     const situacao = ((order as any).boletSituacao as string || '').toLowerCase();
-    return situacao === 'liquidado' || situacao === 'baixado' || situacao === 'pago';
+    return situacao === 'liquidado' || situacao === 'pago';
   }
   return order.paymentStatus === 'pago';
 }
@@ -188,6 +190,40 @@ function DocBadge({ order }: { order: Order }) {
     return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"><Receipt className="size-2.5" />Ped. {(order as any).noInvoiceBlingOrderId}</span>;
   }
   return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">Sem doc.</span>;
+}
+
+function SyncBoletoButton({ order }: { order: Order }) {
+  const [syncing, setSyncing] = React.useState(false);
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/sicoob/atualizar-boleto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, nossoNumero: (order as any).boletoNossoNumero }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(data.message || 'Boleto atualizado!');
+      } else {
+        toast.error('Erro: ' + (data.error || 'Falha ao sincronizar'));
+      }
+    } catch (e: any) {
+      toast.error('Erro ao sincronizar boleto: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+  return (
+    <button
+      onClick={handleSync}
+      disabled={syncing}
+      className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all disabled:opacity-50"
+      title="Sincronizar boleto com Sicoob"
+    >
+      {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+    </button>
+  );
 }
 
 interface OrderCardProps {
@@ -277,7 +313,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
             </p>
           )}
           {(showReceiveBtn || waPersonal) && (
-            <div className="flex gap-1.5 items-center">
+            <div className="flex gap-1.5 items-center flex-wrap justify-end">
               {waPersonal && (
                 <a href={waPersonal} target="_blank" rel="noopener noreferrer"
                   className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all"
@@ -291,6 +327,9 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
                   title="WhatsApp Business">
                   <MessageSquare className="size-3.5" />
                 </a>
+              )}
+              {showReceiveBtn && (order as any).boletoLinked && (order as any).boletoNossoNumero && (
+                <SyncBoletoButton order={order} />
               )}
               {showReceiveBtn && onReceive && (
                 <button
@@ -311,7 +350,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function FinanceiroPage() {
-  const { allOrders, isLoaded, handleUpdateOrder, handleArchiveOrder } = useOrders();
+  const { allOrders, isLoaded, handleUpdateOrder } = useOrders();
   const { userProfile, loading: userLoading } = useUser();
 
   // Busca
@@ -445,6 +484,7 @@ export default function FinanceiroPage() {
         paymentMethod: paymentForm.method as any,
         paymentDate: paymentForm.date,
         paymentLinked: true,
+        paymentConfirmedManually: true,
         statusHistory: [
           ...(selectedOrder.statusHistory || []),
           {
@@ -454,12 +494,7 @@ export default function FinanceiroPage() {
         ],
       };
       await handleUpdateOrder(updatedOrder);
-      if (selectedOrder.status === 'entregue') {
-        await handleArchiveOrder(selectedOrder.id);
-        toast.success('Pagamento confirmado e pedido arquivado!');
-      } else {
-        toast.success('Pagamento confirmado!');
-      }
+      toast.success('Pagamento confirmado!');
       setSelectedOrder(null);
     } catch (e: any) {
       toast.error('Erro ao confirmar pagamento: ' + e.message);
