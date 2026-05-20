@@ -2075,9 +2075,27 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               </button>
                             )}
                             {order.paymentStatus === 'pago' && (
-                              <div className="flex items-center gap-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
-                                <CheckCircle2 className="size-3 text-emerald-600" />
-                                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Pagamento confirmado — {order.paymentMethod === 'pix' ? 'PIX' : order.paymentMethod === 'deposito_amazon' ? 'Depósito Amazon' : order.paymentMethod === 'deposito_meli' ? 'Depósito Meli' : order.paymentMethod === 'deposito_fazendinha' ? 'Depósito Fazendinha' : order.paymentMethod === 'deposito_wix' ? 'Depósito Wix' : order.paymentMethod}</span>
+                              <div className="flex items-center justify-between gap-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <CheckCircle2 className="size-3 text-emerald-600 shrink-0" />
+                                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 truncate">
+                                    Confirmado — {order.paymentMethod === 'pix' ? 'PIX' : order.paymentMethod === 'deposito_amazon' ? 'Dep. Amazon' : order.paymentMethod === 'deposito_meli' ? 'Dep. Meli' : order.paymentMethod === 'deposito_fazendinha' ? 'Dep. Fazendinha' : order.paymentMethod === 'deposito_wix' ? 'Dep. Wix' : order.paymentMethod || '—'}
+                                    {order.paymentDate ? ` · ${order.paymentDate.split('-').reverse().join('/')}` : ''}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => onUpdateOrder({
+                                    ...order,
+                                    paymentStatus: 'pendente' as any,
+                                    paymentDate: '',
+                                    paymentLinked: true,
+                                    statusHistory: [...(order.statusHistory||[]), { action: 'Confirmação de pagamento cancelada', timestamp: new Date().toISOString() }]
+                                  })}
+                                  className="text-[9px] font-black text-red-500 hover:text-red-700 uppercase tracking-widest shrink-0 flex items-center gap-1 transition-colors"
+                                  title="Cancelar confirmação — pedido voltará para A Receber ou Vencidos"
+                                >
+                                  <X className="size-3" /> Cancelar
+                                </button>
                               </div>
                             )}
                           </div>
