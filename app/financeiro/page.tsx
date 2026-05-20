@@ -98,11 +98,20 @@ function getIssueDate(order: Order): string | undefined {
 }
 
 function isOverdue(order: Order): boolean {
+  // Pago = nunca vencido
+  if (order.paymentStatus === 'pago') return false;
   const due = getDueDate(order);
   if (!due) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return new Date(due + 'T12:00:00') < today;
+}
+
+// Pedidos excluídos da página Financeiro (tag Amostras, etc.)
+function isExcluded(order: Order): boolean {
+  const tags = (order as any).tags as string[] | undefined;
+  if (tags && tags.some((t: string) => t.toLowerCase() === 'amostras')) return true;
+  return false;
 }
 
 function getDocType(order: Order): 'invoice' | 'order' | 'none' {
@@ -239,9 +248,20 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
 
         {/* Valor + ações */}
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <p className={`text-base font-black ${overdueFlag && showOverdue ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
-            {formatCurrency(value)}
-          </p>
+          {value === 0 ? (
+            <div className="flex flex-col items-end gap-1">
+              <p className="text-base font-black text-amber-500 dark:text-amber-400 line-through opacity-50">
+                R$ 0,00
+              </p>
+              <span className="text-[9px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full uppercase">
+                Corrigir valor
+              </span>
+            </div>
+          ) : (
+            <p className={`text-base font-black ${overdueFlag && showOverdue ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+              {formatCurrency(value)}
+            </p>
+          )}
           {(showReceiveBtn || waPersonal) && (
             <div className="flex gap-1.5 items-center">
               {waPersonal && (
@@ -337,39 +357,55 @@ export default function FinanceiroPage() {
 
   // ── Listas calculadas ────────────────────────────────────────────────────────
 
-  const toReceive = useMemo(() => {
-    return allOrders.filter(o =>
+    // Pedidos elegiveis: entregues + nao excluidos (Amostras) + nao deletados
+  // Inclui arquivados pois todosOsPedidos ja contem archivedOrders
+  const pedidosElegiveis = useMemo(() => {
+    return todosOsPedidos.filter(o =>
       o.status === 'entregue' &&
-      !o.archived &&
+      !isExcluded(o) &&
+      !(o as any).deleted
+    );
+  }, [todosOsPedidos]);
+
+  // A RECEBER: nao pago + vencimento >= hoje (ou sem vencimento)
+  // Cobre: boleto em aberto, PIX/deposito com data futura, pedidos sem data ainda
+  const toReceive = useMemo(() => {
+    return pedidosElegiveis.filter(o =>
       o.paymentStatus !== 'pago' &&
       !isOverdue(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o)
-    ).sort((a, b) => (getDueDate(a) || '').localeCompare(getDueDate(b) || ''));
-  }, [allOrders, searchQuery, filterDoc, filterPayment]);
+    ).sort((a, b) => {
+      const da = getDueDate(a) || '9999';
+      const db = getDueDate(b) || '9999';
+      return da.localeCompare(db);
+    });
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment]);
 
+  // VENCIDOS: nao pago + vencimento < hoje
+  // Cobre: boleto vencido (Sicoob nao sincronizou) E PIX/deposito com data passada
   const overdue = useMemo(() => {
-    return allOrders.filter(o =>
-      o.status === 'entregue' &&
-      !o.archived &&
+    return pedidosElegiveis.filter(o =>
       o.paymentStatus !== 'pago' &&
       isOverdue(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o)
     ).sort((a, b) => (getDueDate(a) || '').localeCompare(getDueDate(b) || ''));
-  }, [allOrders, searchQuery, filterDoc, filterPayment]);
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment]);
 
+  // RECEBIDOS: paymentStatus === 'pago'
+  // Cobre: boleto confirmado pelo Sicoob E pagamento confirmado manualmente no modal
   const received = useMemo(() => {
-    return todosOsPedidos.filter(o =>
+    return pedidosElegiveis.filter(o =>
       o.paymentStatus === 'pago' &&
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o) &&
       matchesPeriod(o, o.paymentDate)
     ).sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
-  }, [todosOsPedidos, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
 
   const totalToReceive = useMemo(() => toReceive.reduce((s, o) => s + getOrderValue(o), 0), [toReceive]);
   const totalOverdue = useMemo(() => overdue.reduce((s, o) => s + getOrderValue(o), 0), [overdue]);
