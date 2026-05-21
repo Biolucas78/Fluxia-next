@@ -176,50 +176,85 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const handleSearchBling = async () => {
     if (!editedCustomer.clientName) return;
     setIsSearchingBling(true);
-    console.log(`[Bling] Iniciando busca para: ${editedCustomer.clientName}`);
     try {
+      // 1. Buscar primeiro no banco local (bling_customers)
+      const { collection: col, query: q, where, getDocs, orderBy: ob } = await import('firebase/firestore');
+      const { db: firebaseDb } = await import('@/lib/firebase');
+      const nome = editedCustomer.clientName.toLowerCase().trim();
+      const snap = await getDocs(q(col(firebaseDb, 'bling_customers'), ob('nome', 'asc')));
+      const localResults = snap.docs
+        .map(d => d.data())
+        .filter((d: any) => d.nome && d.nome.toLowerCase().includes(nome))
+        .slice(0, 10);
+
+      if (localResults.length > 0) {
+        setBlingSearchResults(localResults);
+        setShowBlingResults(true);
+        toast(`${localResults.length} cliente(s) encontrado(s) no banco local.`, { icon: '🗄️' });
+        setIsSearchingBling(false);
+        return;
+      }
+
+      // 2. Fallback: buscar no Bling
+      console.log('[Bling] Nao encontrado no banco local, buscando no Bling...');
       const { searchBlingCustomers } = await import('@/lib/bling-search');
       const data = await searchBlingCustomers(editedCustomer.clientName);
-      console.log('[Bling] Resultados:', data);
-      
       if (data && data.length > 0) {
         setBlingSearchResults(data);
         setShowBlingResults(true);
+        toast(`${data.length} cliente(s) encontrado(s) no Bling.`, { icon: '🔗' });
       } else {
-        toast.error('Nenhum cliente encontrado no Bling com este nome exato. Tente um nome mais curto ou diferente.');
+        toast.error('Nenhum cliente encontrado no banco ou no Bling.');
       }
     } catch (error: any) {
-      console.error('[Bling] Erro de conexão:', error);
-      toast.error(`Erro de conexão ao buscar no Bling: ${error.message}`);
+      console.error('[Buscar cliente] Erro:', error);
+      toast.error('Erro ao buscar cliente: ' + error.message);
     } finally {
       setIsSearchingBling(false);
     }
   };
 
   const handleSelectBlingCustomer = (blingCustomer: any) => {
-    // clientName = razão social, tradeName = fantasia (card mostra fantasia se tiver)
+    const addressDetails = {
+      street: blingCustomer.endereco?.geral?.endereco || blingCustomer.endereco?.endereco || '',
+      number: blingCustomer.endereco?.geral?.numero || blingCustomer.endereco?.numero || '',
+      complement: blingCustomer.endereco?.geral?.complemento || blingCustomer.endereco?.complemento || '',
+      district: blingCustomer.endereco?.geral?.bairro || blingCustomer.endereco?.bairro || '',
+      city: blingCustomer.endereco?.geral?.municipio || blingCustomer.endereco?.municipio || '',
+      state: blingCustomer.endereco?.geral?.uf || blingCustomer.endereco?.uf || '',
+      zip: blingCustomer.endereco?.geral?.cep || blingCustomer.endereco?.cep || '',
+    };
     setEditedCustomer({
       clientName: blingCustomer.nome || '',
       tradeName: blingCustomer.fantasia || '',
-      cnpj: blingCustomer.tipo === 'J' ? blingCustomer.numeroDocumento : '',
-      cpf: blingCustomer.tipo === 'F' ? blingCustomer.numeroDocumento : '',
+      cnpj: blingCustomer.tipo === 'J' ? (blingCustomer.numeroDocumento || '') : '',
+      cpf: blingCustomer.tipo === 'F' ? (blingCustomer.numeroDocumento || '') : '',
       phone: blingCustomer.celular || blingCustomer.telefone || ''
     });
-    
-    // Also update address if available
-    if (blingCustomer.endereco?.geral || blingCustomer.endereco) {
-      setEditedAddressDetails({
-        street: blingCustomer.endereco?.geral?.endereco || blingCustomer.endereco?.endereco || '',
-        number: blingCustomer.endereco?.geral?.numero || blingCustomer.endereco?.numero || '',
-        complement: blingCustomer.endereco?.geral?.complemento || blingCustomer.endereco?.complemento || '',
-        district: blingCustomer.endereco?.geral?.bairro || blingCustomer.endereco?.bairro || '',
-        city: blingCustomer.endereco?.geral?.municipio || blingCustomer.endereco?.municipio || '',
-        state: blingCustomer.endereco?.geral?.uf || blingCustomer.endereco?.uf || '',
-        zip: blingCustomer.endereco?.geral?.cep || blingCustomer.endereco?.cep || ''
-      });
+    if (addressDetails.street || addressDetails.city) {
+      setEditedAddressDetails(addressDetails);
     }
-    
     setShowBlingResults(false);
+    // Salvar no banco local se veio do Bling (nao tem fluxiaUpdatedAt)
+    if (!blingCustomer.fluxiaUpdatedAt) {
+      fetch('/api/clientes/atualizar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientData: {
+            nome: blingCustomer.nome,
+            fantasia: blingCustomer.fantasia,
+            numeroDocumento: blingCustomer.numeroDocumento,
+            tipo: blingCustomer.tipo,
+            celular: blingCustomer.celular,
+            email: blingCustomer.email,
+            endereco: blingCustomer.endereco,
+          },
+          orderId: order.id,
+          propagate: false,
+        }),
+      }).catch(() => {});
+    }
   };
   
   const handleEmitirBoleto = async () => {
@@ -1264,7 +1299,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1 disabled:opacity-50"
                           >
                             {isSearchingBling ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
-                            BUSCAR NO BLING
+                            BUSCAR CLIENTE
                           </button>
                         </div>
                         <input 
