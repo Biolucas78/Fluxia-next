@@ -42,8 +42,11 @@ const PERIOD_PRESETS = [
   { value: 'last_month',  label: 'Mês anterior' },
   { value: 'quarter',     label: 'Trimestre' },
   { value: 'year',        label: 'Este ano' },
+  { value: 'mes',         label: 'Mês ▾' },
   { value: 'custom',      label: 'Período' },
 ];
+
+const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -141,6 +144,13 @@ function getPaymentMethodInfo(method?: string) {
 function getPeriodRange(preset: string, customFrom: string, customTo: string): { from: Date; to: Date } {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Mês específico: formato 'mes_YYYY_MM'
+  if (preset.startsWith('mes_')) {
+    const parts = preset.split('_');
+    const year = parseInt(parts[1]);
+    const month = parseInt(parts[2]) - 1; // 0-indexed
+    return { from: new Date(year, month, 1), to: new Date(year, month + 1, 0, 23, 59, 59) };
+  }
   switch (preset) {
     case 'today':
       return { from: today, to: new Date(today.getTime() + 86400000 - 1) };
@@ -151,15 +161,15 @@ function getPeriodRange(preset: string, customFrom: string, customTo: string): {
       return { from, to };
     }
     case 'month':
-      return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: new Date(now.getFullYear(), now.getMonth() + 1, 0) };
+      return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59) };
     case 'last_month':
-      return { from: new Date(now.getFullYear(), now.getMonth() - 1, 1), to: new Date(now.getFullYear(), now.getMonth(), 0) };
+      return { from: new Date(now.getFullYear(), now.getMonth() - 1, 1), to: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59) };
     case 'quarter': {
       const q = Math.floor(now.getMonth() / 3);
-      return { from: new Date(now.getFullYear(), q * 3, 1), to: new Date(now.getFullYear(), q * 3 + 3, 0) };
+      return { from: new Date(now.getFullYear(), q * 3, 1), to: new Date(now.getFullYear(), q * 3 + 3, 0, 23, 59, 59) };
     }
     case 'year':
-      return { from: new Date(now.getFullYear(), 0, 1), to: new Date(now.getFullYear(), 11, 31) };
+      return { from: new Date(now.getFullYear(), 0, 1), to: new Date(now.getFullYear(), 11, 31, 23, 59, 59) };
     case 'custom':
       return {
         from: customFrom ? new Date(customFrom + 'T00:00:00') : new Date(now.getFullYear(), 0, 1),
@@ -366,6 +376,7 @@ export default function FinanceiroPage() {
   const [filterPeriod, setFilterPeriod] = useState('month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
 
   // Modal pagamento
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -401,10 +412,13 @@ export default function FinanceiroPage() {
   }
 
   // ── Filtro de período (usa data de vencimento ou entrega) ────────────────────
-  function matchesPeriod(order: Order, dateStr?: string) {
-    if (!dateStr) return false;
+  function matchesPeriod(order: Order) {
+    // Sem filtro ativo = mostrar todos
+    if (filterPeriod === 'month' && !customFrom && !customTo) return true;
+    const dateStr = order.createdAt || (order as any).updatedAt || '';
+    if (!dateStr) return true;
     const { from, to } = getPeriodRange(filterPeriod, customFrom, customTo);
-    const d = new Date(dateStr + (dateStr.length === 10 ? 'T12:00:00' : ''));
+    const d = new Date(dateStr.length === 10 ? dateStr + 'T12:00:00' : dateStr);
     return d >= from && d <= to;
   }
 
@@ -428,13 +442,14 @@ export default function FinanceiroPage() {
       !isOverdue(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
-      matchesPayment(o)
+      matchesPayment(o) &&
+      matchesPeriod(o)
     ).sort((a, b) => {
       const da = getDueDate(a) || '9999';
       const db = getDueDate(b) || '9999';
       return da.localeCompare(db);
     });
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment]);
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
 
   // VENCIDOS: nao pago + vencimento < hoje
   // Cobre: boleto vencido (Sicoob nao sincronizou) E PIX/deposito com data passada
@@ -444,9 +459,10 @@ export default function FinanceiroPage() {
       isOverdue(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
-      matchesPayment(o)
+      matchesPayment(o) &&
+      matchesPeriod(o)
     ).sort((a, b) => (getDueDate(a) || '').localeCompare(getDueDate(b) || ''));
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment]);
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
 
   // RECEBIDOS: paymentStatus === 'pago'
   // Cobre: boleto confirmado pelo Sicoob E pagamento confirmado manualmente no modal
@@ -456,7 +472,7 @@ export default function FinanceiroPage() {
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o) &&
-      matchesPeriod(o, o.paymentDate)
+      matchesPeriod(o)
     ).sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
   }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
 
@@ -598,7 +614,7 @@ export default function FinanceiroPage() {
               >
                 <SlidersHorizontal className="size-3.5" />
                 Filtros
-                {(filterDoc !== 'all' || filterPayment !== 'all' || filterPeriod !== 'month') && (
+                {(filterDoc !== 'all' || filterPayment !== 'all' || filterPeriod !== 'month' || filterPeriod.startsWith('mes_')) && (
                   <span className="size-1.5 rounded-full bg-primary" />
                 )}
               </button>
@@ -621,15 +637,48 @@ export default function FinanceiroPage() {
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Período</p>
                       <div className="flex flex-wrap gap-1.5">
                         {PERIOD_PRESETS.map(p => (
-                          <button
-                            key={p.value}
-                            onClick={() => setFilterPeriod(p.value)}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                              filterPeriod === p.value
-                                ? 'bg-primary text-white'
-                                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:border-primary hover:text-primary'
-                            }`}
-                          >{p.label}</button>
+                          <div key={p.value} className="relative">
+                            <button
+                              onClick={() => {
+                                if (p.value === 'mes') {
+                                  setShowMonthPicker(v => !v);
+                                } else {
+                                  setFilterPeriod(p.value);
+                                  setShowMonthPicker(false);
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                (p.value === 'mes' && filterPeriod.startsWith('mes_')) || filterPeriod === p.value
+                                  ? 'bg-primary text-white'
+                                  : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:border-primary hover:text-primary'
+                              }`}
+                            >
+                              {p.value === 'mes' && filterPeriod.startsWith('mes_')
+                                ? (() => { const pts = filterPeriod.split('_'); return MONTH_NAMES[parseInt(pts[2])-1] + ' ' + pts[1]; })()
+                                : p.label}
+                            </button>
+                            {/* Dropdown de meses */}
+                            {p.value === 'mes' && showMonthPicker && (
+                              <div className="absolute top-8 left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-2 min-w-[160px]">
+                                {[new Date().getFullYear(), new Date().getFullYear() - 1].map(year => (
+                                  <div key={year}>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase px-2 py-1">{year}</p>
+                                    <div className="grid grid-cols-3 gap-1">
+                                      {MONTH_NAMES.map((name, idx) => {
+                                        const val = `mes_${year}_${String(idx+1).padStart(2,'0')}`;
+                                        return (
+                                          <button key={val}
+                                            onClick={() => { setFilterPeriod(val); setShowMonthPicker(false); }}
+                                            className={`px-1.5 py-1 rounded-lg text-[10px] font-bold transition-all ${filterPeriod === val ? 'bg-primary text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                                          >{name.slice(0,3)}</button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         ))}
                       </div>
                       {filterPeriod === 'custom' && (
@@ -678,7 +727,7 @@ export default function FinanceiroPage() {
                     {/* Limpar filtros */}
                     {(filterDoc !== 'all' || filterPayment !== 'all' || filterPeriod !== 'month') && (
                       <button
-                        onClick={() => { setFilterDoc('all'); setFilterPayment('all'); setFilterPeriod('month'); setCustomFrom(''); setCustomTo(''); }}
+                        onClick={() => { setFilterDoc('all'); setFilterPayment('all'); setFilterPeriod('month'); setCustomFrom(''); setCustomTo(''); setShowMonthPicker(false); }}
                         className="text-[10px] font-black text-red-500 hover:text-red-600 uppercase tracking-widest"
                       >
                         Limpar filtros
