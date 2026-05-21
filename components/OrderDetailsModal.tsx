@@ -1200,7 +1200,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                         Cancelar
                       </button>
                       <button 
-                        onClick={() => {
+                        onClick={async () => {
+                          // 1. Atualizar o pedido atual
                           onUpdateOrder({ 
                             ...order, 
                             clientName: editedCustomer.clientName,
@@ -1212,13 +1213,35 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             addressDetails: editedAddressDetails,
                             statusHistory: [
                               ...(order.statusHistory || []),
-                              {
-                                action: 'Dados do cliente atualizados manualmente',
-                                timestamp: new Date().toISOString()
-                              }
+                              { action: 'Dados do cliente atualizados manualmente', timestamp: new Date().toISOString() }
                             ]
                           });
                           setIsEditingCustomer(false);
+                          // 2. Salvar no banco de clientes e propagar para outros pedidos
+                          try {
+                            const res = await fetch('/api/clientes/atualizar', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                clientData: {
+                                  nome: editedCustomer.clientName,
+                                  fantasia: editedCustomer.tradeName,
+                                  celular: editedCustomer.phone,
+                                  cnpj: editedCustomer.cnpj,
+                                  cpf: editedCustomer.cpf,
+                                  addressDetails: editedAddressDetails,
+                                },
+                                orderId: order.id,
+                                propagate: true,
+                              }),
+                            });
+                            const data = await res.json();
+                            if (data.ok) {
+                              toast.success(`Salvo! ${data.propagated > 0 ? data.propagated + ' pedido(s) atualizado(s).' : ''}`);
+                            }
+                          } catch (e) {
+                            console.warn('[clientes] Erro ao propagar:', e);
+                          }
                         }}
                         className="text-[10px] font-bold text-emerald-500 hover:text-emerald-600"
                       >

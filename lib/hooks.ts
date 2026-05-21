@@ -237,6 +237,27 @@ export function useOrders() {
       const sanitizedOrder = sanitizeForFirestore(order);
       const collectionName = getCollectionName();
       await setDoc(doc(db, collectionName, order.id), sanitizedOrder);
+
+      // Salvar/atualizar cliente no banco e propagar para outros pedidos
+      if (order.clientName && typeof window !== 'undefined') {
+        try {
+          const clientData = {
+            nome: order.clientName,
+            fantasia: order.tradeName || '',
+            celular: order.phone || '',
+            email: order.email || '',
+            numeroDocumento: order.cnpj || order.cpf || '',
+            addressDetails: order.addressDetails,
+          };
+          await fetch('/api/clientes/atualizar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientData, orderId: order.id, propagate: false }),
+          });
+        } catch (e) {
+          console.warn('[clientes] Nao foi possivel salvar cliente:', e);
+        }
+      }
     } catch (e) {
       console.error("Failed to save to Firestore", e);
     }
