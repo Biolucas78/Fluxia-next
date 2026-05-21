@@ -239,40 +239,42 @@ export default function ClientesPage() {
       setIsSubmitting(false);
     }
   };
+  const handleSaveLocalMerge = async () => {
+    if (!currentCustomer.nome) return;
+    const res = await fetch("/api/clientes/atualizar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientData: {
+          nome: currentCustomer.nome,
+          fantasia: currentCustomer.fantasia,
+          tipo: currentCustomer.tipo,
+          numeroDocumento: currentCustomer.numeroDocumento,
+          celular: currentCustomer.celular,
+          email: currentCustomer.email,
+          ie: currentCustomer.isentoIE ? "ISENTO" : currentCustomer.ie,
+          endereco: currentCustomer.endereco,
+        },
+        propagate: true,
+      })
+    });
+    const data = await res.json();
+    if (data.propagated > 0) toast.success(data.propagated + " pedido(s) atualizado(s).");
+  };
+
 
   const handleSaveToLocalDb = async () => {
     if (!currentCustomer.nome) {
-      toast.error('O nome é obrigatório.');
+      toast.error('O nome e obrigatorio.');
       return;
     }
-
     setIsSubmittingLocal(true);
     try {
-      const customerId = String(currentCustomer.id || `local_${Date.now()}`);
-      
-      const dataToSave = {
-        id: customerId,
-        nome: currentCustomer.nome,
-        fantasia: currentCustomer.fantasia,
-        tipo: currentCustomer.tipo,
-        numeroDocumento: currentCustomer.numeroDocumento,
-        ie: currentCustomer.isentoIE ? 'ISENTO' : currentCustomer.ie,
-        indicadorIe: parseInt(currentCustomer.contribuinte),
-        celular: currentCustomer.celular,
-        email: currentCustomer.email,
-        mostrarNoMapa: currentCustomer.mostrarNoMapa,
-        endereco: currentCustomer.endereco,
-        codigoRegimeTributario: parseInt(currentCustomer.codigoRegimeTributario),
-        updatedAt: Date.now()
-      };
-
-      await setDoc(doc(db, 'bling_customers', customerId), dataToSave, { merge: true });
-      
-      toast.success('Cliente salvo no banco de dados local!');
+      await handleSaveLocalMerge();
+      toast.success('Cliente salvo no banco com merge inteligente!');
       setIsModalOpen(false);
     } catch (error: any) {
-      console.error('Error saving to local DB:', error);
-      toast.error(`Erro ao salvar localmente: ${error.message}`);
+      toast.error('Erro ao salvar: ' + error.message);
     } finally {
       setIsSubmittingLocal(false);
     }
