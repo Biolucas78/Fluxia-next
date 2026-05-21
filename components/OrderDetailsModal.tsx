@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
 import { toast } from 'react-hot-toast';
 import { Order, OrderStatus } from '@/lib/types';
+import { useClientData } from '@/lib/hooks';
 import { 
   X, 
   MapPin,
@@ -101,6 +102,42 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     phone: order.phone || ''
   });
   const [editedObservations, setEditedObservations] = useState(order.observations || '');
+
+  // Listener em tempo real do cliente no banco
+  const { clientData: liveClientData } = useClientData({
+    clientId: (order as any).clientId,
+    cnpj: order.cnpj,
+    cpf: order.cpf,
+    clientName: order.clientName,
+  });
+
+  // Atualizar campos do cliente quando banco for atualizado
+  React.useEffect(() => {
+    if (!liveClientData || isEditingCustomer) return;
+    const phone = liveClientData.celular || liveClientData.telefone || '';
+    const tradeName = liveClientData.fantasia || '';
+    // Atualizar editedCustomer com dados mais recentes do banco
+    setEditedCustomer(prev => ({
+      ...prev,
+      phone: phone || prev.phone,
+      tradeName: tradeName || prev.tradeName,
+      cnpj: liveClientData.tipo === 'J' ? (liveClientData.numeroDocumento || prev.cnpj) : prev.cnpj,
+      cpf: liveClientData.tipo === 'F' ? (liveClientData.numeroDocumento || prev.cpf) : prev.cpf,
+    }));
+    // Atualizar endereco se disponivel
+    if (liveClientData.endereco?.geral && !isEditingCustomer) {
+      const g = liveClientData.endereco.geral;
+      setEditedAddressDetails(prev => ({
+        street: g.endereco || prev.street,
+        number: g.numero || prev.number,
+        complement: g.complemento || prev.complement,
+        district: g.bairro || prev.district,
+        city: g.municipio || prev.city,
+        state: g.uf || prev.state,
+        zip: g.cep || prev.zip,
+      }));
+    }
+  }, [liveClientData, isEditingCustomer]);
   const [paymentCondition, setPaymentCondition] = useState(order.paymentCondition || 'A vista');
   const [originType, setOriginType] = useState(order.originType || 'CRV');
   const [isSyncingTracking, setIsSyncingTracking] = useState(false);
@@ -1286,6 +1323,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                   )}
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-2">
+                  {liveClientData && (
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Dados do banco — ao vivo</span>
+                    </div>
+                  )}
                   {isEditingCustomer ? (
                     <div className="space-y-3">
                       <div>

@@ -651,3 +651,56 @@ export function useLeads(dateRange?: { start: Date; end: Date }) {
     handlePermanentDeleteLead
   };
 }
+// ── Hook: dados do cliente em tempo real ─────────────────────────────────────
+export function useClientData(order: { clientId?: string; cnpj?: string; cpf?: string; clientName?: string }) {
+  const [clientData, setClientData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const docId = (order as any).clientId;
+    const docClean = (order.cnpj || order.cpf || '').replace(/\D/g, '');
+    const nome = order.clientName || '';
+
+    if (!docId && !docClean && !nome) return;
+
+    setIsLoading(true);
+    let unsubscribe: (() => void) | null = null;
+
+    const setupListener = async () => {
+      try {
+        const { collection, query, where, onSnapshot, doc, limit } = await import('firebase/firestore');
+
+        if (docId) {
+          // Listener direto pelo clientId
+          const ref = doc(db, 'bling_customers', docId);
+          unsubscribe = onSnapshot(ref, (snap) => {
+            if (snap.exists()) setClientData(snap.data());
+            setIsLoading(false);
+          });
+        } else if (docClean) {
+          // Listener por CNPJ/CPF
+          const q = query(collection(db, 'bling_customers'), where('numeroDocumento', '==', docClean), limit(1));
+          unsubscribe = onSnapshot(q, (snap) => {
+            if (!snap.empty) setClientData(snap.docs[0].data());
+            setIsLoading(false);
+          });
+        } else if (nome) {
+          // Listener por nome exato
+          const q = query(collection(db, 'bling_customers'), where('nome', '==', nome), limit(1));
+          unsubscribe = onSnapshot(q, (snap) => {
+            if (!snap.empty) setClientData(snap.docs[0].data());
+            setIsLoading(false);
+          });
+        }
+      } catch (e) {
+        console.warn('[useClientData] Erro ao configurar listener:', e);
+        setIsLoading(false);
+      }
+    };
+
+    setupListener();
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [(order as any).clientId, order.cnpj, order.cpf, order.clientName]);
+
+  return { clientData, isLoading };
+}
