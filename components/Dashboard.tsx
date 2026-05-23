@@ -1089,6 +1089,67 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
           </div>
         )}
 
+        {/* Modal Histórico de Separações */}
+        {showHistoryModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+            >
+              <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="flex items-center gap-3">
+                  <div className="size-9 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <RotateCcw className="size-4 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-black text-slate-900 dark:text-white">Histórico de Separações</h2>
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Últimas 10 ações — clique para desfazer</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                  <X className="size-4 text-slate-400" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+                {isLoadingHistory && (
+                  <div className="py-8 text-center"><Loader2 className="size-6 animate-spin text-primary mx-auto" /></div>
+                )}
+                {!isLoadingHistory && separationHistory.length === 0 && (
+                  <div className="py-10 text-center text-slate-400">
+                    <RotateCcw className="size-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-xs font-bold">Nenhuma separação registrada ainda</p>
+                  </div>
+                )}
+                {!isLoadingHistory && separationHistory.map((entry) => {
+                  const ts = new Date(entry.timestamp);
+                  const dateStr = ts.toLocaleDateString('pt-BR');
+                  const timeStr = ts.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                  return (
+                    <div key={entry.id} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-black text-slate-900 dark:text-white truncate">{entry.descricao}</p>
+                        <p className="text-[9px] text-slate-400 font-bold">{dateStr} às {timeStr} · {entry.snapshot?.length || 0} pedido(s)</p>
+                      </div>
+                      <button
+                        onClick={() => handleUndo(entry)}
+                        disabled={isUndoing}
+                        className="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-400 text-[10px] font-black rounded-xl transition-all disabled:opacity-50"
+                      >
+                        {isUndoing ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
+                        Desfazer
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                <p className="text-[9px] text-slate-400 text-center font-bold">Desfazer restaura o estado anterior dos pedidos afetados</p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {/* Modal Separar Embalagens */}
         {showSeparationModal && (
           <BulkCheckModal
