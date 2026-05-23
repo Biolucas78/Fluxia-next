@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { DashboardStats, Order, ShippingOption, ProductItem } from '@/lib/types';
 import { Coffee, Package, Users, TrendingUp, Scale, CheckCircle, Calendar, Filter, Truck, AlertTriangle, ChevronRight, Info, ArrowRight, Beaker, Layers } from 'lucide-react';
 import { 
@@ -21,7 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ShippingQuote from '@/components/ShippingQuote';
 import BulkCheckModal from '@/components/BulkCheckModal';
 import ProductMappingManager from '@/components/ProductMappingManager';
-import { X, MapPin, Globe, TrendingDown } from 'lucide-react';
+import { X, Loader2, MapPin, Globe, TrendingDown, RotateCcw } from 'lucide-react';
 
 interface DashboardProps {
   stats: DashboardStats;
@@ -46,6 +46,10 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   const [chartMetric, setChartMetric] = useState<'kg' | 'units' | 'clients'>('kg');
   const [showShippedModal, setShowShippedModal] = useState(false);
   const [showSeparationModal, setShowSeparationModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [separationHistory, setSeparationHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isUndoing, setIsUndoing] = useState(false);
   const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; qty: number} | null>(null);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
   
@@ -564,6 +568,67 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     if (n.includes('yellow')) return 'text-blue-500 dark:text-blue-400';
     return 'text-slate-700 dark:text-white';
   };
+  // Salvar snapshot no historico antes de separar
+  const saveToHistory = useCallback(async (tipo: string, descricao: string, affectedOrders: any[]) => {
+    const snapshot = affectedOrders.map(o => ({
+      id: o.id,
+      status: o.status,
+      products: JSON.parse(JSON.stringify(o.products)),
+      statusHistory: JSON.parse(JSON.stringify(o.statusHistory || [])),
+    }));
+    try {
+      await fetch('/api/separation-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo, descricao, snapshot }),
+      });
+    } catch (e) {
+      console.warn('[history] Erro ao salvar:', e);
+    }
+  }, []);
+
+  // Carregar historico
+  const loadHistory = useCallback(async () => {
+    setIsLoadingHistory(true);
+    try {
+      const res = await fetch('/api/separation-history');
+      const data = await res.json();
+      if (data.ok) setSeparationHistory(data.entries);
+    } catch (e) {
+      console.warn('[history] Erro ao carregar:', e);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, []);
+
+  // Desfazer separacao
+  const handleUndo = useCallback(async (entry: any) => {
+    if (!onUpdateOrder) return;
+    setIsUndoing(true);
+    try {
+      for (const snap of entry.snapshot) {
+        await onUpdateOrder({
+          ...snap,
+          statusHistory: [
+            ...(snap.statusHistory || []),
+            { action: 'Separacao desfeita via historico', timestamp: new Date().toISOString() }
+          ]
+        } as any);
+      }
+      // Remover entrada do historico apos desfazer
+      await fetch('/api/separation-history', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: entry.id }),
+      });
+      setSeparationHistory(prev => prev.filter(e => e.id !== entry.id));
+    } catch (e: any) {
+      console.error('[history] Erro ao desfazer:', e);
+    } finally {
+      setIsUndoing(false);
+    }
+  }, [onUpdateOrder]);
+
   return (
     <div className="space-y-10 pb-10">
       {/* Global Date Filter */}
@@ -843,15 +908,25 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                   <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Itens a separar (Pedidos)</p>
                 </div>
               </div>
-              {packagingDemand.length > 0 && (
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => setShowSeparationModal(true)}
-                  className="flex items-center gap-1 px-2 py-1 bg-primary hover:bg-primary/90 text-white text-[9px] font-black rounded-lg transition-all"
+                  onClick={() => { setShowHistoryModal(true); loadHistory(); }}
+                  className="flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-[9px] font-black rounded-lg transition-all"
+                  title="Histórico de separações"
                 >
-                  <Layers className="size-3" />
-                  Separar
+                  <RotateCcw className="size-3" />
+                  Retornar
                 </button>
-              )}
+                {packagingDemand.length > 0 && (
+                  <button
+                    onClick={() => setShowSeparationModal(true)}
+                    className="flex items-center gap-1 px-2 py-1 bg-primary hover:bg-primary/90 text-white text-[9px] font-black rounded-lg transition-all"
+                  >
+                    <Layers className="size-3" />
+                    Separar
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex-1 p-3 overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-3 gap-1.5">
@@ -960,11 +1035,17 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                     Cancelar
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const item = selectedPackagingItem;
-                      // Mesma lógica do BulkCheckModal handleToggleProduct
-                      // Monta a chave no formato nome-peso-moagem para comparar com produtos
                       const pedidos = orders.filter(o => o.status === 'pedidos');
+                      // Salvar snapshot antes de modificar
+                      const affected = pedidos.filter(order => order.products.some(p => {
+                        const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+                        return `${p.name} ${p.weight}${grind}` === item.name && !p.checked;
+                      }));
+                      if (affected.length > 0) {
+                        await saveToHistory('minicard', `Separou: ${item.qty}x ${item.name}`, affected);
+                      }
                       pedidos.forEach(order => {
                         let hasChange = false;
                         const updatedProducts = order.products.map(p => {
