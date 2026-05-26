@@ -327,7 +327,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       });
       const data = await res.json();
       if (!data.ok) {
-        toast.error('Erro ao emitir boleto: ' + (data.error || 'Erro desconhecido'));
+        const det = data.detalhes ? JSON.stringify(data.detalhes) : ''; toast.error('Erro boleto: ' + (data.error || '') + ' ' + det, { duration: 8000 });
         return;
       }
       const nossoNumeros = data.boletos
