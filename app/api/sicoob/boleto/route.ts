@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
           'Juros mora 1,0% ao mes apos vencimento.',
           'Multa de 2,0% apos vencimento.',
           'Pedido faturado em ' + (dataPedido || new Date().toLocaleDateString('pt-BR')),
-          'Referente a Nota Fiscal ' + (numeroNF || seuNumero) + (numeroParcela ? ' - Parcela ' + numeroParcela : ''),
+          ('Ref. NF ' + (numeroNF || seuNumero) + (numeroParcela ? ' Parc ' + numeroParcela : '')).slice(0, 40),
         ],
         gerarPdf: true,
         pagador: {
