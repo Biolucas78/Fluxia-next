@@ -963,10 +963,10 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           toast.success('Ação realizada com sucesso!');
         }
       } else {
-        setQuoteError(data.error || 'Erro ao gerar etiqueta');
+        const errMsg = data.error || 'Erro ao gerar etiqueta'; setQuoteError(errMsg); toast.error(errMsg, { duration: 8000 });
       }
     } catch (e) {
-      setQuoteError('Erro de conexão ao gerar etiqueta');
+      setQuoteError('Erro de conexão ao gerar etiqueta'); toast.error('Erro de conexão ao gerar etiqueta', { duration: 8000 });
     } finally {
       setIsGeneratingLabel(false);
     }
