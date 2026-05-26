@@ -223,10 +223,11 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
 
   return data;
 }
-
 export async function POST(req: Request) {
   try {
-    const { order, selectedOption } = await req.json();
+    const body = await req.json();
+    const order = body.order;
+    const selectedOption = body.selectedOption;
 
     const destCpfCnpj = (order.cnpj || order.cpf || '').replace(/\D/g, '');
     if (!destCpfCnpj || (destCpfCnpj.length !== 11 && destCpfCnpj.length !== 14)) {
