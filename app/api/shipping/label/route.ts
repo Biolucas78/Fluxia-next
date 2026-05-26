@@ -19,17 +19,17 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
   }];
 
   // 3. Formatar endereço do destinatário
+  const addrParts = order.address ? order.address.split(',') : [];
+  const safeStr = (v: any, fallback: string, max: number) => (typeof v === 'string' && v.trim() ? v.trim() : fallback).substring(0, max);
   const parsedAddress = {
-    logradouro: (order.addressDetails?.street || (order.address ? order.address.split(',')[0].trim() : 'Rua Padrão')).substring(0, 50),
-    numero: (order.addressDetails?.number || (order.address ? order.address.split(',')[1]?.trim() : 'S/N')).substring(0, 6),
-    complemento: (order.addressDetails?.complement || (order.address ? order.address.split(',')[2]?.trim() : '')).substring(0, 30),
-    bairro: (order.addressDetails?.district || (order.address ? order.address.split(',')[3]?.trim() : 'Centro')).substring(0, 30),
-    cidade: (order.addressDetails?.city || (order.address ? order.address.split(',')[4]?.trim() : 'São Paulo')).substring(0, 30),
-    uf: (order.addressDetails?.state || (order.address ? order.address.split(',')[5]?.trim() : 'SP')).trim().substring(0, 2),
+    logradouro: safeStr(order.addressDetails?.street || addrParts[0], 'Rua Nao Informada', 50),
+    numero: safeStr(order.addressDetails?.number || addrParts[1], 'SN', 6),
+    complemento: safeStr(order.addressDetails?.complement || addrParts[2], '', 30),
+    bairro: safeStr(order.addressDetails?.district || addrParts[3], 'Centro', 30),
+    cidade: safeStr(order.addressDetails?.city || addrParts[4], 'Nao Informada', 30),
+    uf: safeStr(order.addressDetails?.state || addrParts[5], 'MG', 2).replace(/[^A-Za-z]/g, '').toUpperCase() || 'MG',
     cep: destCep.replace(/\D/g, '')
   };
-
-  // 4. Montar a declaração de conteúdo
   const declaracaoConteudo = order.products
     .filter((p: any) => p.name)
     .map((p: any) => ({
