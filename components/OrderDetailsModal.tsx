@@ -177,11 +177,13 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     dataVencimento: string;
     parcelas: { valor: string; dataVencimento: string }[];
     isParceled: boolean;
+    dataEmissao: string;
   }>({
     valor: '',
     dataVencimento: '',
     parcelas: [],
     isParceled: false,
+    dataEmissao: new Date().toISOString().split('T')[0],
   });
   const [showBlingResults, setShowBlingResults] = useState(false);
   const [isEditingDate, setIsEditingDate] = useState(false);
@@ -315,7 +317,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         valor: boletoForm.isParceled ? undefined : parseFloat(boletoForm.valor),
         dataVencimento: boletoForm.isParceled ? undefined : boletoForm.dataVencimento,
         seuNumero: order.invoiceNumber || order.id,
-        dataEmissao: new Date().toISOString().split('T')[0],
+        dataEmissao: boletoForm.dataEmissao,
         parcelas: parcelas,
         dataPedido: new Date().toLocaleDateString('pt-BR'),
         numeroNF: order.invoiceNumber || '',
@@ -1037,6 +1039,16 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           </div>
           {/* A Vista */}
           {!boletoForm.isParceled && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Data de Emissão</label>
+                <input
+                  type="date"
+                  value={boletoForm.dataEmissao}
+                  onChange={e => setBoletoForm(f => ({ ...f, dataEmissao: e.target.value }))}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-primary"
+                />
+              </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Valor (R$)</label>
@@ -1058,6 +1070,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                   className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-primary"
                 />
               </div>
+            </div>
             </div>
           )}
           {/* Parcelado */}
@@ -3076,6 +3089,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                   dataVencimento: venc.toISOString().split('T')[0],
                   parcelas: [],
                   isParceled: false,
+                  dataEmissao: new Date().toISOString().split('T')[0],
                 });
                 setShowBoletoModal(true);
               }}
