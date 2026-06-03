@@ -246,6 +246,7 @@ export default function ClientesPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        clientId: currentCustomer.id || undefined,
         clientData: {
           nome: currentCustomer.nome,
           fantasia: currentCustomer.fantasia,

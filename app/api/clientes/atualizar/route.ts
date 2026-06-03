@@ -50,7 +50,7 @@ function mergeCustomer(existing: any, incoming: any): { data: any; changed: bool
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { clientData, orderId, propagate = true } = body;
+    const { clientData, orderId, propagate = true, clientId: directClientId } = body;
 
     if (!clientData || !clientData.nome) {
       return NextResponse.json({ ok: false, error: 'nome obrigatorio' }, { status: 400 });
