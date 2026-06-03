@@ -255,6 +255,7 @@ export default function ClientesPage() {
           email: currentCustomer.email,
           ie: currentCustomer.isentoIE ? "ISENTO" : currentCustomer.ie,
           endereco: currentCustomer.endereco,
+          mostrarNoMapa: currentCustomer.mostrarNoMapa,
         },
         propagate: true,
       })

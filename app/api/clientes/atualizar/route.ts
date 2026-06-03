@@ -6,7 +6,7 @@ function mergeCustomer(existing: any, incoming: any): { data: any; changed: bool
   const merged = { ...existing };
   let changed = false;
 
-  const fieldsFluxiaPriority = ['celular', 'email', 'fantasia', 'nome', 'endereco'];
+  const fieldsFluxiaPriority = ['celular', 'email', 'fantasia', 'nome', 'endereco', 'mostrarNoMapa'];
   const fieldsNeverOverwrite = ['numeroDocumento', 'ie', 'tipo'];
   const fieldsNewOnly = ['cnpj', 'cpf'];
 
