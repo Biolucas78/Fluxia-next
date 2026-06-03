@@ -12,7 +12,7 @@ function mergeCustomer(existing: any, incoming: any): { data: any; changed: bool
 
   // Campos que Fluxia tem prioridade (sobrescreve se incoming tiver valor)
   for (const f of fieldsFluxiaPriority) {
-    if (incoming[f] !== undefined && incoming[f] !== null && incoming[f] !== '') {
+    if (incoming[f] !== undefined && incoming[f] !== null && (incoming[f] !== '' || typeof incoming[f] === 'boolean')) {
       if (JSON.stringify(merged[f]) !== JSON.stringify(incoming[f])) {
         merged[f] = incoming[f];
         changed = true;
