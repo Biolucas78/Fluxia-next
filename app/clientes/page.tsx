@@ -262,6 +262,7 @@ export default function ClientesPage() {
       })
     });
     const data = await res.json();
+    toast.success("Debug: " + JSON.stringify({ok: data.ok, clientId: data.clientId, msg: data.message}), {duration: 10000});
     if (data.propagated > 0) toast.success(data.propagated + " pedido(s) atualizado(s).");
   };
 
