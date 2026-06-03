@@ -138,6 +138,33 @@ export default function ClientMap({ customers, isPublic = false }: ClientMapProp
     }
   };
 
+  const [recalculatingId, setRecalculatingId] = React.useState<string | null>(null);
+
+  const handleRecalcularPosicao = async (customer: any) => {
+    if (!customer.id) return;
+    setRecalculatingId(customer.id);
+    try {
+      // Limpar coordenadas antigas primeiro
+      await updateDoc(doc(db, 'bling_customers', String(customer.id)), {
+        coordenadas: null
+      });
+      // Recalcular
+      const coords = await geocodeAddress(customer);
+      if (coords) {
+        await updateDoc(doc(db, 'bling_customers', String(customer.id)), {
+          coordenadas: coords
+        });
+        toast.success('Posição recalculada: ' + coords.lat.toFixed(4) + ', ' + coords.lng.toFixed(4));
+      } else {
+        toast.error('Nao foi possivel geocodificar o endereco. Verifique os dados do cliente.');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao recalcular: ' + e.message);
+    } finally {
+      setRecalculatingId(null);
+    }
+  };
+
   if (!isActive && !isPublic) {
     return (
       <div className="mt-8 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => setIsActive(true)}>
@@ -248,12 +275,21 @@ export default function ClientMap({ customers, isPublic = false }: ClientMapProp
                     {customer.endereco?.geral?.municipio || customer.endereco?.municipio} - {customer.endereco?.geral?.uf || customer.endereco?.uf}
                   </p>
                   {!isPublic && (
-                    <button
-                      onClick={() => handleRemoverDoMapa(customer)}
-                      className="w-full mt-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg border border-red-200 transition-colors"
-                    >
-                      Remover do Mapa
-                    </button>
+                    <div className="flex flex-col gap-1 mt-2">
+                      <button
+                        onClick={() => handleRecalcularPosicao(customer)}
+                        disabled={recalculatingId === customer.id}
+                        className="w-full px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold rounded-lg border border-blue-200 transition-colors disabled:opacity-50"
+                      >
+                        {recalculatingId === customer.id ? 'Recalculando...' : 'Recalcular Posição'}
+                      </button>
+                      <button
+                        onClick={() => handleRemoverDoMapa(customer)}
+                        className="w-full px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg border border-red-200 transition-colors"
+                      >
+                        Remover do Mapa
+                      </button>
+                    </div>
                   )}
                 </div>
               </Popup>
