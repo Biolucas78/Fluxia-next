@@ -226,6 +226,7 @@ export default function ClientesPage() {
       if (result.data && result.data.id) {
         await setDoc(doc(db, 'bling_customers', String(result.data.id)), {
           ...result.data,
+          mostrarNoMapa: currentCustomer.mostrarNoMapa,
           updatedAt: Date.now()
         }, { merge: true });
       }

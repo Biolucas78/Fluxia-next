@@ -126,6 +126,18 @@ export default function ClientMap({ customers, isPublic = false }: ClientMapProp
     setIsGeocoding(false);
   };
 
+  const handleRemoverDoMapa = async (customer: any) => {
+    if (!customer.id) return;
+    try {
+      await updateDoc(doc(db, 'bling_customers', String(customer.id)), {
+        mostrarNoMapa: false
+      });
+      toast.success((customer.fantasia || customer.nome || 'Cliente') + ' removido do mapa.');
+    } catch (e: any) {
+      toast.error('Erro ao remover: ' + e.message);
+    }
+  };
+
   if (!isActive && !isPublic) {
     return (
       <div className="mt-8 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => setIsActive(true)}>
@@ -227,14 +239,22 @@ export default function ClientMap({ customers, isPublic = false }: ClientMapProp
               position={[customer.coordenadas.lat, customer.coordenadas.lng]}
             >
               <Popup>
-                <div className="p-1">
+                <div className="p-1 min-w-[160px]">
                   <h4 className="font-bold text-sm mb-1">{customer.fantasia || customer.nome}</h4>
                   <p className="text-xs text-slate-600 mb-1">
                     {customer.endereco?.geral?.endereco || customer.endereco?.endereco}, {customer.endereco?.geral?.numero || customer.endereco?.numero}
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 mb-2">
                     {customer.endereco?.geral?.municipio || customer.endereco?.municipio} - {customer.endereco?.geral?.uf || customer.endereco?.uf}
                   </p>
+                  {!isPublic && (
+                    <button
+                      onClick={() => handleRemoverDoMapa(customer)}
+                      className="w-full mt-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg border border-red-200 transition-colors"
+                    >
+                      Remover do Mapa
+                    </button>
+                  )}
                 </div>
               </Popup>
             </Marker>
