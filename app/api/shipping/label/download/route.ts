@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const idRecibo = searchParams.get('idRecibo');
+  const tipo = searchParams.get('tipo') || 'rotulo';
 
   if (!idRecibo) {
     return NextResponse.json({ error: 'ID do recibo não informado.' }, { status: 400 });
@@ -21,7 +22,8 @@ export async function GET(req: Request) {
 
     while (attempts < maxAttempts) {
       // Consultar o rótulo pelo id do recibo
-      const response = await fetch(`https://api.correios.com.br/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`, {
+      const endpoint = tipo === 'dce' ? `https://api.correios.com.br/prepostagem/v1/prepostagens/declaracaoconteudo/download/assincrono/${idRecibo}` : `https://api.correios.com.br/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`;
+      const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

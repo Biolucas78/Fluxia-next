@@ -221,6 +221,40 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
     // Não lançamos erro aqui para permitir que o usuário tente baixar o PDF depois se a pré-postagem foi criada
   }
 
+  // Gerar DC-e se nao tiver NF vinculada
+  const temNF = !!(order.invoiceKey && order.invoiceKey.length > 10);
+  if (!temNF) {
+    console.log('Sem NF — gerando Declaracao de Conteudo...');
+    try {
+      const dceRequest = {
+        idCorreios: CORREIOS_USER?.replace(/\D/g, ''),
+        numeroCartaoPostagem: CORREIOS_CARD?.replace(/\D/g, ''),
+        idsPrePostagem: [prePostageId],
+        layoutImpressao: "PADRAO"
+      };
+      const dceResponse = await fetch('https://api.correios.com.br/prepostagem/v1/prepostagens/declaracaoconteudo/assincrono/pdf', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
+        },
+        body: JSON.stringify(dceRequest)
+      });
+      if (dceResponse.ok) {
+        const dceResult = await dceResponse.json();
+        data.idReciboDce = dceResult.idRecibo;
+        console.log('DC-e solicitada. Recibo: ' + data.idReciboDce);
+      } else {
+        const dceError = await dceResponse.text();
+        console.error('Erro DC-e:', dceError);
+      }
+    } catch (dceErr) {
+      console.error('Erro ao gerar DC-e:', dceErr);
+    }
+  }
+
   return data;
 }
 export async function POST(req: Request) {

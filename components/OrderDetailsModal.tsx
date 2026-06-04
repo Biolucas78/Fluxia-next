@@ -957,8 +957,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         if (data.inCart) {
           toast.success(data.message || 'Emissão enviada para o carrinho da transportadora para finalizar pagamento.', { duration: 6000 });
         } else if (data.labelUrl) {
-          toast.success('Etiqueta gerada com sucesso e pronta para imprimir!');
+          toast.success('Etiqueta gerada!' + (data.dceUrl ? ' DC-e gerada!' : ''));
           window.open(data.labelUrl, '_blank');
+          if (data.dceUrl) setTimeout(() => window.open(data.dceUrl, '_blank'), 800);
         } else {
           toast.success('Ação realizada com sucesso!');
         }
