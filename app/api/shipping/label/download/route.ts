@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
+import { daceCache } from '../route';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,25 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const idRecibo = searchParams.get('idRecibo');
   const tipo = searchParams.get('tipo') || 'rotulo';
+
+  // Handler especial para DACE - base64 ja em memoria
+  if (tipo === 'dce') {
+    const token = searchParams.get('token');
+    if (!token) {
+      return NextResponse.json({ error: 'Token da DACE nao informado.' }, { status: 400 });
+    }
+    const base64Dace = daceCache.get(token);
+    if (!base64Dace) {
+      return NextResponse.json({ error: 'DACE nao encontrada ou expirada.' }, { status: 404 });
+    }
+    const pdfBuffer = Buffer.from(base64Dace, 'base64');
+    return new Response(pdfBuffer, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="dace-${token}.pdf"`
+      }
+    });
+  }
 
   if (!idRecibo) {
     return NextResponse.json({ error: 'ID do recibo não informado.' }, { status: 400 });

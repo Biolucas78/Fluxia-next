@@ -6,6 +6,9 @@ const CORREIOS_TOKEN = process.env.CORREIOS_ACCESS_CODE;
 const CORREIOS_CARD = process.env.CORREIOS_POSTAGE_CARD;
 const CORREIOS_CONTRACT = process.env.CORREIOS_CONTRACT;
 
+// Map global para armazenar base64 da DACE temporariamente
+export const daceCache = new Map();
+
 async function generateCorreiosLabel(order: any, selectedOption: any, token: string, origin: any, destCpfCnpj: string, destCep: string, totalWeightKg: number) {
   // 1. Extrair e formatar o código do serviço (ex: "03220")
   const serviceCode = selectedOption.id.toString().replace(/\D/g, '').padStart(5, '0');
@@ -228,15 +231,9 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
   const temNF = !!(order.invoiceKey && order.invoiceKey.length > 10);
   console.log("[DC-e] invoiceKey:", JSON.stringify(order.invoiceKey), "temNF:", temNF, "invoiceLinked:", order.invoiceLinked);
   if (!temNF) {
-    console.log('Sem NF — gerando Declaracao de Conteudo...');
+    console.log('Sem NF - gerando DACE (Declaracao de Conteudo Eletronica)...');
     try {
-      const dceRequest = {
-        idCorreios: CORREIOS_USER?.replace(/\D/g, ''),
-        numeroCartaoPostagem: CORREIOS_CARD?.replace(/\D/g, ''),
-        idsPrePostagem: [prePostageId],
-        layoutImpressao: "PADRAO"
-      };
-      const dceResponse = await fetch(`https://api.correios.com.br/prepostagem/v1/prepostagens/${prePostageId}/declaracaoconteudo`, {
+      const daceResponse = await fetch('https://api.correios.com.br/prepostagem/v1/prepostagens/dce/dace/impressao', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer ' + token,
@@ -244,21 +241,30 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
           'Accept': 'application/json',
           'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
         },
-        body: JSON.stringify({ layoutImpressao: 'PADRAO' })
+        body: JSON.stringify({
+          idsPrePostagens: [prePostageId],
+          tipoDace: "R"
+        })
       });
-      if (dceResponse.ok) {
-        const dceResult = await dceResponse.json();
-        data.idReciboDce = dceResult.idRecibo;
-        console.log('DC-e solicitada. Recibo: ' + data.idReciboDce);
+      if (daceResponse.ok) {
+        const daceResult = await daceResponse.json();
+        const base64Dace = daceResult.dados;
+        if (base64Dace) {
+          daceCache.set(prePostageId, base64Dace);
+          setTimeout(() => daceCache.delete(prePostageId), 10 * 60 * 1000);
+          data.dceUrl = `/api/shipping/label/download?tipo=dce&token=${encodeURIComponent(prePostageId)}`;
+          console.log('DACE gerada com sucesso. dceUrl:', data.dceUrl);
+        } else {
+          console.warn('DACE retornou sem dados base64:', JSON.stringify(daceResult));
+        }
       } else {
-        const dceError = await dceResponse.text();
-        console.error('Erro DC-e:', dceError);
+        const daceError = await daceResponse.text();
+        console.error('Erro DACE:', daceError);
       }
-    } catch (dceErr) {
-      console.error('Erro ao gerar DC-e:', dceErr);
+    } catch (daceErr) {
+      console.error('Erro ao gerar DACE:', daceErr);
     }
   }
-
   return data;
 }
 export async function POST(req: Request) {
