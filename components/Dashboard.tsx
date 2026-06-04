@@ -1075,8 +1075,9 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                       const pedidos = orders.filter(o => o.status === 'pedidos');
                       // Salvar snapshot antes de modificar
                       const affected = pedidos.filter(order => order.products.some(p => {
-                        const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
-                        return `${p.name} ${p.weight}${grind}` === item.name && !p.checked;
+                        const grindNorm = normalizeGrindForKey(p.grindType || '');
+                        const grind = grindNorm ? ` (${grindNorm})` : '';
+                        return `${p.name.trim()} ${(p.weight || '').trim()}${grind}` === item.name && !p.checked;
                       }));
                       if (affected.length > 0) {
                         await saveToHistory('minicard', `Separou: ${item.qty}x ${item.name}`, affected);
@@ -1084,8 +1085,9 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                       pedidos.forEach(order => {
                         let hasChange = false;
                         const updatedProducts = order.products.map(p => {
-                          const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
-                          const productKey = `${p.name} ${p.weight}${grind}`;
+                          const grindNorm = normalizeGrindForKey(p.grindType || '');
+                          const grind = grindNorm ? ` (${grindNorm})` : '';
+                          const productKey = `${p.name.trim()} ${(p.weight || '').trim()}${grind}`;
                           if (productKey === item.name && !p.checked) {
                             hasChange = true;
                             return { ...p, checked: true };
