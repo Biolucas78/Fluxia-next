@@ -957,7 +957,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         if (data.inCart) {
           toast.success(data.message || 'Emissão enviada para o carrinho da transportadora para finalizar pagamento.', { duration: 6000 });
         } else if (data.labelUrl) {
-          toast.success('Etiqueta gerada!' + (data.dceUrl ? ' DC-e gerada!' : ''));
+          console.log('[DEBUG label response]', JSON.stringify({labelUrl: data.labelUrl, dceUrl: data.dceUrl, idReciboDce: data.idReciboDce}));
+          toast.success('Etiqueta gerada!' + (data.dceUrl ? ' DC-e gerada!' : ' (sem DC-e)'), {duration: 8000});
           window.open(data.labelUrl, '_blank');
           if (data.dceUrl) setTimeout(() => window.open(data.dceUrl, '_blank'), 800);
         } else {
