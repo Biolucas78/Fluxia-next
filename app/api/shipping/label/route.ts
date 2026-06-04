@@ -340,6 +340,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ 
           success: true, 
           labelUrl: labelUrl,
+          dceUrl: labelData.dceUrl || null,
           trackingNumber: labelData.codigoObjeto,
           idRecibo: labelData.idRecibo
       });
