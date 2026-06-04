@@ -162,18 +162,21 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
   console.log(`Aguardando processamento da pré-postagem ${prePostageId}...`);
   let statusReady = false;
   for (let i = 0; i < 5; i++) {
-    const statusResponse = await fetch(`https://api.correios.com.br/prepostagem/v1/prepostagens/${prePostageId}`, {
+    const statusResponse = await fetch(`https://api.correios.com.br/prepostagem/v1/prepostagens/lista`, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
         'Accept': 'application/json',
         'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
-      }
+      },
+      body: JSON.stringify({ idsPrePostagem: [prePostageId] })
     });
 
     if (statusResponse.ok) {
       const statusData = await statusResponse.json();
       console.log(`Status atual da pré-postagem ${prePostageId}: ${statusData.status}`);
-      if (statusData.status === "CRIADA" || statusData.status === "FINALIZADA") {
+      const statusItem = (statusData.itens || statusData)[0] || statusData; if (statusItem.status === "CRIADA" || statusItem.status === "FINALIZADA" || statusItem.descStatusAtual === "Criada") {
         statusReady = true;
         break;
       }
@@ -233,7 +236,7 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
         idsPrePostagem: [prePostageId],
         layoutImpressao: "PADRAO"
       };
-      const dceResponse = await fetch('https://api.correios.com.br/prepostagem/v1/prepostagens/declaracaoconteudo/assincrono/pdf', {
+      const dceResponse = await fetch(`https://api.correios.com.br/prepostagem/v1/prepostagens/${prePostageId}/declaracaoconteudo`, {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer ' + token,
@@ -241,7 +244,7 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
           'Accept': 'application/json',
           'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
         },
-        body: JSON.stringify(dceRequest)
+        body: JSON.stringify({ layoutImpressao: 'PADRAO' })
       });
       if (dceResponse.ok) {
         const dceResult = await dceResponse.json();
