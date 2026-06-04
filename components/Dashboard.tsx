@@ -362,7 +362,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
       if (order.status === 'pedidos') {
         order.products.forEach(product => {
           if (!product.checked) {
-            const isPersonalizado = (product.name || '').toLowerCase().includes('personaliz');
+            const isPersonalizado = ((product as any).productionNotes || '').toLowerCase().includes('personaliz') || (product.name || '').toLowerCase().includes('personaliz');
             const grindNorm = normalizeGrindForKey(product.grindType || '');
             const grindSuffix = grindNorm ? ` (${grindNorm})` : '';
             const keyBase = (product.name || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') + ' ' + (product.weight || '').trim().toLowerCase();
@@ -370,7 +370,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
             if (!demand[key]) {
               const grindOrig = grindNorm ? ` (${grindNorm})` : '';
               demand[key] = {
-                displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}`,
+                displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}${isPersonalizado ? ' · Personalizado' : ''}`,
                 qty: 0,
                 clientes: [],
               };
