@@ -223,6 +223,7 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
 
   // Gerar DC-e se nao tiver NF vinculada
   const temNF = !!(order.invoiceKey && order.invoiceKey.length > 10);
+  console.log("[DC-e] invoiceKey:", JSON.stringify(order.invoiceKey), "temNF:", temNF, "invoiceLinked:", order.invoiceLinked);
   if (!temNF) {
     console.log('Sem NF — gerando Declaracao de Conteudo...');
     try {
