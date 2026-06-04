@@ -50,7 +50,7 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
   const [separationHistory, setSeparationHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
-  const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; qty: number} | null>(null);
+  const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; qty: number; clientes?: string[]} | null>(null);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
   
   // Global Date Filter
@@ -345,23 +345,46 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
     }).sort((a, b) => b.neededKg - a.neededKg);
   }, [orders, coffeeStocks]);
 
+  // Normaliza moagem para agrupamento — moagens especiais ficam separadas
+  const normalizeGrindForKey = (grindType: string): string => {
+    const g = (grindType || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    if (!g || g === 'n/a') return '';
+    const especiais = ['prensa', 'espresso', 'aeropress', 'chemex', 'coado', 'moka', 'turco'];
+    if (especiais.some(e => g.includes(e))) return grindType.trim();
+    if (g.includes('moido') || g.includes('moida') || g.includes('moidos')) return 'Moido';
+    if (g.includes('grao') || g.includes('graos')) return 'Graos';
+    return grindType.trim();
+  };
+
   const packagingDemand = useMemo(() => {
-    const demand: Record<string, number> = {};
-    
+    const demand: Record<string, { displayName: string; qty: number; clientes: string[] }> = {};
     orders.forEach(order => {
       if (order.status === 'pedidos') {
         order.products.forEach(product => {
           if (!product.checked) {
-            const grind = product.grindType !== 'N/A' ? ` (${product.grindType})` : '';
-            const key = `${product.name} ${product.weight}${grind}`;
-            demand[key] = (demand[key] || 0) + product.quantity;
+            const isPersonalizado = (product.name || '').toLowerCase().includes('personaliz');
+            const grindNorm = normalizeGrindForKey(product.grindType || '');
+            const grindSuffix = grindNorm ? ` (${grindNorm})` : '';
+            const keyBase = (product.name || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') + ' ' + (product.weight || '').trim().toLowerCase();
+            const key = isPersonalizado ? keyBase + grindSuffix + '_pers' : keyBase + grindSuffix.toLowerCase();
+            if (!demand[key]) {
+              const grindOrig = grindNorm ? ` (${grindNorm})` : '';
+              demand[key] = {
+                displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}`,
+                qty: 0,
+                clientes: [],
+              };
+            }
+            demand[key].qty += product.quantity;
+            const clientName = (order as any).tradeName || order.clientName || '';
+            if (clientName && !demand[key].clientes.includes(clientName)) {
+              demand[key].clientes.push(clientName);
+            }
           }
         });
       }
     });
-
-    return Object.entries(demand).map(([name, qty]) => ({ name, qty }))
-      .sort((a, b) => b.qty - a.qty);
+    return Object.values(demand).sort((a, b) => b.qty - a.qty);
   }, [orders]);
 
   const onShelf = useMemo(() => {
@@ -931,16 +954,16 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
             <div className="flex-1 p-3 overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-3 gap-1.5">
                 {[...packagingDemand].sort((a, b) => b.qty - a.qty).map((item) => {
-                  const parts = item.name.split(' ');
-                  const grind = item.name.includes('(') ? item.name.match(/\(([^)]+)\)/)?.[1] || '' : '';
-                  const cleanName = item.name.replace(/\s*\([^)]*\)/, '').trim();
+                  const parts = item.displayName.split(' ');
+                  const grind = item.displayName.includes('(') ? item.displayName.match(/\(([^)]+)\)/)?.[1] || '' : '';
+                  const cleanName = item.displayName.replace(/\s*\([^)]*\)/, '').trim();
                   const weightMatch = cleanName.match(/(\d+g|\d+kg)/i);
                   const weight = weightMatch ? weightMatch[0] : '';
                   const coffeeName = cleanName.replace(weight, '').trim();
                   return (
                     <button
-                      key={item.name}
-                      onClick={() => setSelectedPackagingItem(item)}
+                      key={item.displayName}
+                      onClick={() => setSelectedPackagingItem({ name: item.displayName, qty: item.qty, clientes: item.clientes })}
                       className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] transition-all hover:scale-105 hover:shadow-md active:scale-95 cursor-pointer ${getCoffeeCardStyle(coffeeName || cleanName)}`}
                     >
                       <span className={`text-lg font-black leading-none ${getCoffeeQtyColor(coffeeName || cleanName)}`}>{item.qty}</span>
@@ -1026,6 +1049,18 @@ export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, o
                 </p>
                 <p className="text-base font-black text-slate-900 dark:text-white mb-6">
                   {selectedPackagingItem.qty}× {selectedPackagingItem.name}
+                {selectedPackagingItem.clientes && selectedPackagingItem.clientes.length > 0 && (
+                  <div className="mb-4 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Pedidos de</p>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedPackagingItem.clientes.map((cliente, i) => (
+                        <span key={i} className="text-[10px] font-bold bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                          {cliente}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 </p>
                 <div className="flex gap-3">
                   <button
