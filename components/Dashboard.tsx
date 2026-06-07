@@ -26,7 +26,6 @@ import { X, Loader2, MapPin, Globe, TrendingDown, RotateCcw } from 'lucide-react
 interface DashboardProps {
   stats: DashboardStats;
   orders: Order[];
-  onSeedOrder?: () => void;
   onUpdateOrder?: (order: Order) => void;
 }
 
@@ -41,7 +40,7 @@ interface CoffeeNeed {
   greenInput: number;
 }
 
-export default function Dashboard({ stats, orders: initialOrders, onSeedOrder, onUpdateOrder }: DashboardProps) {
+export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder }: DashboardProps) {
   const [filter, setFilter] = useState<FilterType>('month');
   const [chartMetric, setChartMetric] = useState<'kg' | 'units' | 'clients'>('kg');
   const [showShippedModal, setShowShippedModal] = useState(false);

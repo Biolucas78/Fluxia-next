@@ -11,13 +11,12 @@ interface HeaderProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   onImportWhatsApp?: () => void;
-  onSeedOrder?: () => void;
   onNewOrder?: () => void;
   newOrderLabel?: string;
   children?: React.ReactNode;
 }
 
-export default function Header({ title, searchQuery, onSearchChange, onImportWhatsApp, onSeedOrder, onNewOrder, newOrderLabel = 'Novo Pedido', children }: HeaderProps) {
+export default function Header({ title, searchQuery, onSearchChange, onImportWhatsApp, onNewOrder, newOrderLabel = 'Novo Pedido', children }: HeaderProps) {
   const { userProfile } = useUser();
 
   const handleLogout = () => {
@@ -85,14 +84,7 @@ export default function Header({ title, searchQuery, onSearchChange, onImportWha
               <MessageSquare className="size-4" /> WhatsApp
             </button>
           )}
-          {onSeedOrder && (
-            <button 
-              onClick={onSeedOrder}
-              className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
-            >
-              <Plus className="size-4" /> Testar Frete
-            </button>
-          )}
+
           {onNewOrder && (
             <button 
               onClick={onNewOrder}

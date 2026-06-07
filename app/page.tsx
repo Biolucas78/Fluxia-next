@@ -22,24 +22,6 @@ export default function Home() {
     }
   }, [effectiveRole, router]);
 
-  const handleSeedOrder = () => {
-    const testOrder: Order = {
-      id: `test-${Math.random().toString(36).substring(2, 7)}`,
-      clientName: 'Cliente de Teste (Belo Horizonte)',
-      address: 'Rua da Bahia, 1000, Centro, Belo Horizonte - MG, 30160-011',
-      products: [
-        { id: 'p1', name: 'Café Especial 250g', quantity: 2, weight: '250g', grindType: 'grãos', checked: true },
-        { id: 'p2', name: 'Café Reserva 500g', quantity: 1, weight: '500g', grindType: 'moído', checked: true }
-      ],
-      status: 'caixa_montada',
-      hasInvoice: true,
-      hasBoleto: true,
-      hasOrderDocument: false,
-      createdAt: new Date().toISOString(),
-      boxDimensions: { width: 20, height: 15, length: 25 }
-    };
-    handleOrderCreated(testOrder);
-  };
 
   if (userLoading) {
     return (
@@ -69,16 +51,14 @@ export default function Home() {
       <Sidebar />
       
       <main className="flex-1 flex flex-col overflow-hidden">
-        <Header 
-          title="Dashboard de Produção" 
-          onSeedOrder={handleSeedOrder}
+        <Header
+          title="Dashboard de Produção"
         />
         
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           <Dashboard 
             stats={stats} 
             orders={orders} 
-            onSeedOrder={handleSeedOrder} 
             onUpdateOrder={handleUpdateOrder}
           />
         </div>
