@@ -284,12 +284,17 @@ export async function POST(req: Request) {
     }
 
     // Calcular peso total
-    const boxWeightG = order.boxWeight || order.products.reduce((acc: number, p: any) => {
-      const w = parseFloat(p.weight?.toString().replace('g', '') || '0');
-      if (p.weight?.toString().toLowerCase().includes('kg')) return acc + w * 1000 * (p.quantity || 1);
-      return acc + w * (p.quantity || 1);
-    }, 0);
-    const totalWeightKg = Math.max(0.01, boxWeightG / 1000);
+    const parseWeightToGrams = (raw: any): number => {
+      if (!raw) return 0;
+      const str = raw.toString().trim().toLowerCase();
+      const val = parseFloat(str.replace(/[^0-9.]/g, ''));
+      if (isNaN(val)) return 0;
+      return str.includes('kg') ? val * 1000 : val;
+    };
+    const boxWeightG = order.boxWeight
+      ? parseWeightToGrams(order.boxWeight)
+      : order.products.reduce((acc: number, p: any) => acc + parseWeightToGrams(p.weight) * (p.quantity || 1), 0);
+    const totalWeightKg = Math.max(0.01, Math.min(999, boxWeightG / 1000));
 
     // Lógica para definir a origem (remetente)
     const isMelhorEnvio = selectedOption.provider === 'Melhor Envio';
