@@ -350,128 +350,131 @@ export async function POST(req: Request) {
       const sfToken = process.env.SUPERFRETE_TOKEN;
       if (!sfToken) return NextResponse.json({ error: 'Token Superfrete não configurado.' }, { status: 500 });
 
-      const SF_URL = (process.env.SUPERFRETE_URL || 'https://api.superfrete.com/api/v0').replace(/\/$/, '').replace(/\/calculator$/, '');
+      const SF_URL = (process.env.SUPERFRETE_URL || 'https://api.superfrete.com/api/v0').replace(/\/$/, '');
 
       const sfHeaders = {
         'Authorization': `Bearer ${sfToken.trim()}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'User-Agent': 'FluxiaCRM (biolucas@gmail.com)'
+        'User-Agent': 'FluxiaCRM/1.0 (biolucas@gmail.com)'
       };
 
-      // Extrair service_id do id (ex: "sf-1" → 1)
+      // Extrair service ID do id (ex: "sf-1" → 1)
       const sfServiceId = parseInt(selectedOption.id.toString().replace(/\D/g, ''), 10);
 
-      // Montar payload do pedido
-      const sfOrderPayload = {
-        service_id: sfServiceId,
+      const sfCartPayload: any = {
+        service: sfServiceId,
         from: {
           name: origin.name || 'Cafe Fazenda Itaoca',
           phone: (origin.phone || '3530000000').replace(/\D/g, ''),
           email: origin.email || 'contato@itaoca.com.br',
           document: (process.env.ORIGIN_DOCUMENT || origin.company_document || '').replace(/\D/g, ''),
           address: origin.address || 'Rua Padrão',
-          number: origin.number || 'S/N',
+          number: origin.number || '',
           complement: origin.complement || '',
-          district: origin.district || 'Centro',
+          district: origin.district || 'NA',
           city: origin.city || 'Varginha',
-          state_abbr: origin.state_abbr || 'MG',
-          country_id: 'BR',
-          postal_code: (origin.postal_code || origin.zip || process.env.ORIGIN_CEP || '37100000').replace(/\D/g, '')
+          state_abbr: (origin.state_abbr || 'MG').toUpperCase(),
+          postal_code: (origin.postal_code || origin.zip || '37100000').replace(/\D/g, '')
         },
         to: {
           name: order.clientName,
-          phone: (order.phone || '11000000000').replace(/\D/g, ''),
-          email: order.email || 'cliente@email.com',
+          phone: (order.phone || '').replace(/\D/g, '') || undefined,
+          email: order.email || undefined,
           document: destCpfCnpj,
           address: order.addressDetails?.street || (order.address ? order.address.split(',')[0] : 'Rua Padrão'),
-          number: order.addressDetails?.number || (order.address ? order.address.split(',')[1]?.trim() : 'S/N') || 'S/N',
+          number: order.addressDetails?.number || (order.address ? order.address.split(',')[1]?.trim() : '') || '',
           complement: order.addressDetails?.complement || '',
-          district: order.addressDetails?.district || 'Centro',
+          district: order.addressDetails?.district || 'NA',
           city: order.addressDetails?.city || 'São Paulo',
-          state_abbr: (order.addressDetails?.state || 'SP').trim().substring(0, 2),
-          country_id: 'BR',
+          state_abbr: (order.addressDetails?.state || 'SP').trim().substring(0, 2).toUpperCase(),
           postal_code: destCep
         },
         products: order.products.map((p: any) => ({
           name: p.name.substring(0, 50),
           quantity: p.quantity,
-          unitary_value: (parseFloat(order.insuranceValue || '0') / (order.products.length || 1)) || 1.0,
-          weight: Math.max(0.1, (parseFloat(p.weight?.toString().replace(/[^\d.]/g, '') || '0') / 1000) * p.quantity)
+          unitary_value: (parseFloat(order.insuranceValue || '0') / (order.products.length || 1)) || 1.0
         })),
-        volumes: [{
+        volumes: {
           height: Math.max(2, order.boxDimensions?.height || 10),
           width: Math.max(11, order.boxDimensions?.width || 10),
           length: Math.max(16, order.boxDimensions?.length || 10),
           weight: totalWeightKg
-        }],
+        },
         options: {
-          insurance_value: parseFloat(order.insuranceValue || '0') || 1.0,
+          insurance_value: parseFloat(order.insuranceValue || '0') || null,
           receipt: false,
           own_hand: false,
-          collect: false,
-          reverse: false,
           non_commercial: !order.invoiceKey,
-          ...(order.invoiceKey ? { invoice: { key: order.invoiceKey, number: order.invoiceNumber || '' } } : {}),
-          ...(order.cnpj || order.cpf ? { cpf_cnpj: destCpfCnpj } : {})
+          ...(order.invoiceKey ? { invoice: { key: order.invoiceKey, number: order.invoiceNumber || '' } } : {})
         }
       };
 
-      // 1. Criar pedido
-      const sfOrderRes = await fetch(`${SF_URL}/order/create`, {
+      // 1. Enviar para o carrinho Superfrete (POST /cart)
+      const sfCartRes = await fetch(`${SF_URL}/cart`, {
         method: 'POST',
         headers: sfHeaders,
-        body: JSON.stringify(sfOrderPayload)
+        body: JSON.stringify(sfCartPayload)
       });
 
-      if (!sfOrderRes.ok) {
-        const err = await sfOrderRes.text();
-        console.error('Superfrete order/create error:', sfOrderRes.status, err);
-        return NextResponse.json({ error: `Erro ao criar pedido no Superfrete: ${err.substring(0, 200)}` }, { status: 500 });
+      if (!sfCartRes.ok) {
+        const err = await sfCartRes.text();
+        console.error('Superfrete /cart error:', sfCartRes.status, err);
+        return NextResponse.json({ error: `Erro ao criar pedido no Superfrete: ${err.substring(0, 300)}` }, { status: 500 });
       }
 
-      const sfOrder = await sfOrderRes.json();
-      const sfOrderId = sfOrder.id;
+      const sfCart = await sfCartRes.json();
+      const sfOrderId = sfCart.id;
 
       if (!sfOrderId) {
+        console.error('Superfrete /cart sem ID:', JSON.stringify(sfCart));
         return NextResponse.json({ error: 'Superfrete não retornou ID do pedido.' }, { status: 500 });
       }
 
-      // 2. Checkout
+      // 2. Checkout — debita saldo da conta Superfrete e gera tracking
       const sfCheckoutRes = await fetch(`${SF_URL}/checkout`, {
         method: 'POST',
         headers: sfHeaders,
-        body: JSON.stringify({ orders: [sfOrderId] })
+        body: JSON.stringify({ orders: [String(sfOrderId)] })
       });
 
       if (!sfCheckoutRes.ok) {
         const err = await sfCheckoutRes.text();
-        console.error('Superfrete checkout error:', sfCheckoutRes.status, err);
-        return NextResponse.json({ error: `Erro no checkout Superfrete: ${err.substring(0, 200)}` }, { status: 500 });
+        console.error('Superfrete /checkout error:', sfCheckoutRes.status, err);
+        return NextResponse.json({ error: `Erro no checkout Superfrete (verifique saldo na conta): ${err.substring(0, 300)}` }, { status: 500 });
       }
 
-      // 3. Gerar etiqueta
-      const sfLabelRes = await fetch(`${SF_URL}/generate/label`, {
+      const sfCheckout = await sfCheckoutRes.json();
+      const checkoutOrder = sfCheckout.purchase?.orders?.[0];
+      const trackingNumber = checkoutOrder?.tracking || null;
+
+      // 3. Obter URL da etiqueta (POST /tag/print)
+      const sfPrintRes = await fetch(`${SF_URL}/tag/print`, {
         method: 'POST',
         headers: sfHeaders,
-        body: JSON.stringify({ orders: [sfOrderId], original: true })
+        body: JSON.stringify({ orders: [String(sfOrderId)] })
       });
 
-      if (!sfLabelRes.ok) {
-        const err = await sfLabelRes.text();
-        console.error('Superfrete generate/label error:', sfLabelRes.status, err);
-        return NextResponse.json({ error: `Erro ao gerar etiqueta Superfrete: ${err.substring(0, 200)}` }, { status: 500 });
+      if (!sfPrintRes.ok) {
+        const err = await sfPrintRes.text();
+        console.error('Superfrete /tag/print error:', sfPrintRes.status, err);
+        return NextResponse.json({
+          success: true,
+          trackingNumber,
+          shipmentId: String(sfOrderId),
+          shippingProvider: 'superfrete',
+          message: 'Etiqueta paga mas o link de impressão falhou. Acesse o painel da SuperFrete.'
+        });
       }
 
-      const sfLabel = await sfLabelRes.json();
-      const labelUrl = sfLabel.url || sfLabel.label_url || null;
-      const trackingNumber = sfOrder.tracking || sfOrder.tracking_number || sfLabel.tracking || null;
+      const sfPrint = await sfPrintRes.json();
+      const labelUrl = sfPrint.url || null;
 
       return NextResponse.json({
         success: true,
         labelUrl,
         trackingNumber,
-        shipmentId: sfOrderId,
+        shipmentId: String(sfOrderId),
         shippingProvider: 'superfrete'
       });
     }
