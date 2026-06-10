@@ -898,7 +898,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           }
         } catch (_) {}
       }
-      onUpdateOrder({ ...order, shippingQuote: quotes });
+      onUpdateOrder({ ...targetOrder, shippingQuote: quotes });
     } catch (err: any) {
       setQuoteError(err.message);
     } finally {
