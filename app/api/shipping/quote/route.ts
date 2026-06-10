@@ -251,7 +251,9 @@ async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dime
             }
           );
           if (agencyRes.ok) {
-            const agencies = await agencyRes.json();
+            const text = await agencyRes.text();
+            if (!text) return;
+            const agencies = JSON.parse(text);
             if (Array.isArray(agencies) && agencies.length > 0) {
               agenciesByCompany[companyId] = agencies[0];
             }
