@@ -192,9 +192,9 @@ async function getCorreiosQuotes(destinationCep: string, weight: number, dimensi
   }
 }
 
-async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dimensions: any, originCep: string, insuranceValue: number = 0) {
+async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dimensions: any, originCep: string, insuranceValue: number = 0, originState: string = '', originCity: string = '') {
   if (!MELHOR_ENVIO_TOKEN || !originCep) return [];
-  
+
   try {
     const payload = {
       from: { postal_code: originCep.replace(/\D/g, '') },
@@ -231,49 +231,51 @@ async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dime
     }
 
     const data = await response.json();
-    
-    // Fetch agencies for Jadlog if needed (Jadlog IDs are usually 3 and 4)
-    // For a "perfect integration", we should ideally return agency options, 
-    // but for now we'll pick the first available agency for the sender
-    const quotes = await Promise.all(data
-      .filter((option: any) => !option.error)
-      .map(async (option: any) => {
-        const quote: any = {
-          id: `me-${option.id}`,
-          provider: 'Melhor Envio',
-          name: option.name,
-          price: parseFloat(option.price),
-          currency: option.currency,
-          delivery_time: option.delivery_time,
-          company: {
-            id: option.company.id,
-            name: option.company.name,
-            picture: option.company.picture
-          }
-        };
+    const validOptions = data.filter((option: any) => !option.error);
 
-        // If Jadlog (ID 3 or 4) or other carriers that might need an agency
-        if ([3, 4].includes(option.id)) {
-          try {
-            const agencyRes = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/shipment/agencies?company=${option.company.id}&postal_code=${originCep.replace(/\D/g, '')}`, {
+    // Busca agências por transportadora única, filtrando pelo estado e cidade do remetente
+    const agenciesByCompany: Record<number, any> = {};
+    if (originState && originCity) {
+      const uniqueCompanyIds = [...new Set<number>(validOptions.map((o: any) => o.company.id))];
+      await Promise.all(uniqueCompanyIds.map(async (companyId: number) => {
+        try {
+          const cityEncoded = encodeURIComponent(originCity);
+          const agencyRes = await fetch(
+            `${MELHOR_ENVIO_URL}/api/v2/me/shipment/agencies?company=${companyId}&country=BR&state=${originState}&city=${cityEncoded}`,
+            {
               headers: {
-                'Authorization': `Bearer ${MELHOR_ENVIO_TOKEN.trim()}`,
-                'Accept': 'application/json'
-              }
-            });
-            if (agencyRes.ok) {
-              const agencies = await agencyRes.json();
-              if (agencies && agencies.length > 0) {
-                quote.agency = agencies[0]; // Pick the first agency for the sender
+                'Authorization': `Bearer ${MELHOR_ENVIO_TOKEN!.trim()}`,
+                'Accept': 'application/json',
+                'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
               }
             }
-          } catch (e) {
-            console.warn('Failed to fetch agencies for Jadlog:', e);
+          );
+          if (agencyRes.ok) {
+            const agencies = await agencyRes.json();
+            if (Array.isArray(agencies) && agencies.length > 0) {
+              agenciesByCompany[companyId] = agencies[0];
+            }
           }
+        } catch (e) {
+          console.warn(`Falha ao buscar agências para empresa ${companyId}:`, e);
         }
-
-        return quote;
       }));
+    }
+
+    const quotes = validOptions.map((option: any) => ({
+      id: `me-${option.id}`,
+      provider: 'Melhor Envio',
+      name: option.name,
+      price: parseFloat(option.price),
+      currency: option.currency,
+      delivery_time: option.delivery_time,
+      company: {
+        id: option.company.id,
+        name: option.company.name,
+        picture: option.company.picture
+      },
+      agency: agenciesByCompany[option.company.id] || null
+    }));
 
     return quotes;
   } catch (e) {
@@ -388,8 +390,25 @@ export async function POST(req: Request) {
     const safeWeight = Math.max(100, Number(weight) || 0); // minimum 100g
     const safeInsuranceValue = parseFloat(insuranceValue || '0');
 
+    // Extrair estado e cidade do remetente para busca de agências
+    let originState = '';
+    let originCity = '';
+    try {
+      const originJson = JSON.parse(
+        originType === 'BH' ? (process.env.ORIGIN_BH_JSON || '{}') :
+        originType === 'CRV' ? (process.env.ORIGIN_CRV_JSON || '{}') : '{}'
+      );
+      originState = originJson.state_abbr || '';
+      // Converte "BELO HORIZONTE" → "Belo Horizonte" para a API do Melhor Envio
+      originCity = (originJson.city || '')
+        .toLowerCase()
+        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+    } catch (e) {
+      console.warn('Falha ao extrair estado/cidade de origem:', e);
+    }
+
     const [meQuotes, sfQuotes, correiosQuotes] = await Promise.all([
-      getMelhorEnvioQuotes(cleanDestinationCep, safeWeight, dimensions, selectedOriginCep, safeInsuranceValue),
+      getMelhorEnvioQuotes(cleanDestinationCep, safeWeight, dimensions, selectedOriginCep, safeInsuranceValue, originState, originCity),
       getSuperfreteQuotes(cleanDestinationCep, safeWeight, dimensions, selectedOriginCep),
       getCorreiosQuotes(cleanDestinationCep, safeWeight, dimensions, selectedOriginCep, safeInsuranceValue)
     ]);
