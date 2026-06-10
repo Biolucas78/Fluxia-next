@@ -199,17 +199,18 @@ async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dime
     const payload = {
       from: { postal_code: originCep.replace(/\D/g, '') },
       to: { postal_code: destinationCep.replace(/\D/g, '') },
-      volumes: [{
-        width: dimensions.width,
-        height: dimensions.height,
-        length: dimensions.length,
-        weight: weight / 1000,
-        insurance_value: Math.max(0, insuranceValue)
+      products: [{
+        id: '1',
+        width: Math.round(dimensions.width),
+        height: Math.round(dimensions.height),
+        length: Math.round(dimensions.length),
+        weight: Math.max(0.01, weight / 1000),
+        insurance_value: Math.max(0.01, insuranceValue),
+        quantity: 1
       }],
       options: {
         receipt: false,
         own_hand: false,
-        insurance: true
       }
     };
 
@@ -268,9 +269,9 @@ async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dime
       id: `me-${option.id}`,
       provider: 'Melhor Envio',
       name: option.name,
-      price: parseFloat(option.price),
+      price: parseFloat(option.custom_price || option.price),
       currency: option.currency,
-      delivery_time: option.delivery_time,
+      delivery_time: option.custom_delivery_time || option.delivery_time,
       company: {
         id: option.company.id,
         name: option.company.name,
