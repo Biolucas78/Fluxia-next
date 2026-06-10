@@ -113,7 +113,7 @@ export default function ShippingQuoteModal({
             {quotes.length > 0 && onGenerateLabel && (
               <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
                 <button
-                  onClick={onGenerateLabel}
+                  onClick={() => onGenerateLabel?.()}
                   disabled={!selectedQuote || isGeneratingLabel}
                   className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
                     !selectedQuote || isGeneratingLabel
