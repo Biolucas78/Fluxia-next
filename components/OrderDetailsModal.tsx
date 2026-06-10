@@ -921,16 +921,34 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     setSelectedQuote(quote);
   };
 
-  const handleGenerateLabel = async () => {
+  const handleGenerateLabel = async (overrides: Record<string, any> = {}) => {
     if (!order.selectedShippingOption) return;
-    
+
+    // Mescla os dados atuais do modal (sempre têm precedência sobre o order salvo)
+    const finalOrder = {
+      ...order,
+      ...overrides,
+      addressDetails: {
+        ...order.addressDetails,
+        ...(overrides.street || overrides.number || overrides.zip ? {
+          street: overrides.street,
+          number: overrides.number,
+          complement: overrides.complement,
+          district: overrides.district,
+          city: overrides.city,
+          state: overrides.state,
+          zip: overrides.zip,
+        } : {}),
+      },
+    };
+
     setIsGeneratingLabel(true);
     setQuoteError(null);
     try {
       const response = await fetch('/api/shipping/label', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order, selectedOption: order.selectedShippingOption })
+        body: JSON.stringify({ order: finalOrder, selectedOption: order.selectedShippingOption })
       });
       
       const data = await response.json();

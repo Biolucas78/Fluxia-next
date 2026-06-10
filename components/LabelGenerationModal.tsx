@@ -9,7 +9,7 @@ interface LabelGenerationModalProps {
   isOpen: boolean;
   onClose: () => void;
   quote: ShippingOption | null;
-  onGenerate: () => void;
+  onGenerate: (overrides: Record<string, any>) => void;
   isGenerating: boolean;
   order: Order;
   onUpdateOrder: (order: Order) => void;
@@ -243,8 +243,8 @@ export default function LabelGenerationModal({ isOpen, onClose, quote, onGenerat
         </div>
 
         <div className="p-6 border-t border-slate-100 dark:border-slate-800">
-          <button 
-            onClick={onGenerate}
+          <button
+            onClick={() => onGenerate(shippingData)}
             disabled={isGenerating}
             className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
