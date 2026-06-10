@@ -535,6 +535,8 @@ export async function POST(req: Request) {
       }
     };
 
+    console.log('[ME Cart] document enviado:', destCpfCnpj, 'length:', destCpfCnpj.length);
+    console.log('[ME Cart] cnpj raw:', order.cnpj, '| cpf raw:', order.cpf);
     const cartResponse = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/cart`, {
       method: 'POST',
       headers: {
