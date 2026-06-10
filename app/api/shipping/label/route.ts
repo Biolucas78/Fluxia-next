@@ -493,16 +493,25 @@ export async function POST(req: Request) {
         serviceId = match[0];
     }
     
+    const isNonCommercial = !order.invoiceKey;
+    const insuranceTotal = Math.max(1, parseFloat(order.insuranceValue || '0'));
+    const productCount = order.products.length || 1;
+    const unitValue = (insuranceTotal / productCount).toFixed(2);
+
     const cartPayload = {
       service: parseInt(serviceId.toString(), 10),
       agency: selectedOption.agency?.id,
-      from: origin,
+      from: {
+        ...origin,
+        state_register: isNonCommercial ? 'ISENTO' : '',
+      },
       to: {
         name: order.clientName,
         phone: order.phone?.replace(/\D/g, '') || '00000000000',
         email: order.email || 'cliente@exemplo.com',
         document: destCpfCnpj.length === 11 ? destCpfCnpj : undefined,
         company_document: destCpfCnpj.length === 14 ? destCpfCnpj : undefined,
+        state_register: isNonCommercial ? 'ISENTO' : '',
         address: order.addressDetails?.street || (order.address ? order.address.split(',')[0] : 'Rua Padrão'),
         number: order.addressDetails?.number || (order.address ? order.address.split(',')[1] : 'S/N'),
         complement: order.addressDetails?.complement || '',
@@ -514,9 +523,8 @@ export async function POST(req: Request) {
       },
       products: order.products.map((p: any) => ({
         name: p.name.substring(0, 50),
-        quantity: p.quantity,
-        unitary_weight: (parseFloat(p.weight?.toString().replace(/\D/g, '') || '0') / 1000) || 0.1,
-        unitary_value: (parseFloat(order.insuranceValue || '0') / (order.products.length || 1)) || 1.0
+        quantity: String(p.quantity || 1),
+        unitary_value: unitValue,
       })),
       volumes: [{
           height: Math.max(2, order.boxDimensions?.height || 10),
@@ -525,19 +533,15 @@ export async function POST(req: Request) {
           weight: totalWeightKg
       }],
       options: {
-          insurance_value: parseFloat(order.insuranceValue || '0'),
+          insurance_value: insuranceTotal,
           receipt: false,
           own_hand: false,
-          collect: false,
           reverse: false,
-          non_commercial: !order.invoiceKey,
-          invoice: order.invoiceKey ? { key: order.invoiceKey, number: order.invoiceNumber } : undefined,
-          content_description: order.productDescription || order.products.map((p: any) => `${p.quantity}x ${p.name}`).join(', ').substring(0, 100)
+          non_commercial: isNonCommercial,
+          invoice: order.invoiceKey ? { key: order.invoiceKey } : undefined,
       }
     };
 
-    console.log('[ME Cart] document enviado:', destCpfCnpj, 'length:', destCpfCnpj.length);
-    console.log('[ME Cart] cnpj raw:', order.cnpj, '| cpf raw:', order.cpf);
     const cartResponse = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/cart`, {
       method: 'POST',
       headers: {
