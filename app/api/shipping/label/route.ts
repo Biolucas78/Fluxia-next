@@ -384,6 +384,7 @@ export async function POST(req: Request) {
 
       const sfCartPayload: any = {
         service: sfServiceId,
+        platform: 'Fluxia',
         from: {
           name: origin.name || 'Cafe Fazenda Itaoca',
           phone: (origin.phone || '3530000000').replace(/\D/g, ''),
@@ -416,10 +417,10 @@ export async function POST(req: Request) {
           unitary_value: (parseFloat(order.insuranceValue || '0') / (order.products.length || 1)) || 1.0
         })),
         volumes: {
-          height: Math.max(2, order.boxDimensions?.height || 10),
-          width: Math.max(11, order.boxDimensions?.width || 10),
-          length: Math.max(16, order.boxDimensions?.length || 10),
-          weight: totalWeightKg
+          height: Math.max(4, order.boxDimensions?.height || 10),
+          width: Math.max(16, order.boxDimensions?.width || 16),
+          length: Math.max(24, order.boxDimensions?.length || 24),
+          weight: Math.max(0.3, totalWeightKg)
         },
         options: {
           insurance_value: parseFloat(order.insuranceValue || '0') || null,

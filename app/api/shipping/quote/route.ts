@@ -286,7 +286,7 @@ async function getMelhorEnvioQuotes(destinationCep: string, weight: number, dime
     return [];
   }
 }
-async function getSuperfreteQuotes(destinationCep: string, weight: number, dimensions: any, originCep: string) {
+async function getSuperfreteQuotes(destinationCep: string, weight: number, dimensions: any, originCep: string, insuranceValue: number = 0) {
   if (!SUPERFRETE_TOKEN || !originCep) return [];
 
   try {
@@ -299,6 +299,12 @@ async function getSuperfreteQuotes(destinationCep: string, weight: number, dimen
         height: dimensions.height,
         length: dimensions.length,
         weight: weight / 1000,
+      },
+      options: {
+        own_hand: false,
+        receipt: false,
+        insurance_value: insuranceValue,
+        use_insurance_value: insuranceValue > 0
       }
     };
 
@@ -330,7 +336,7 @@ async function getSuperfreteQuotes(destinationCep: string, weight: number, dimen
     const data = await response.json();
     
     // Superfrete can return an array or an object with a services property
-    const options = Array.isArray(data) ? data : (data.services || []);
+    const options = (Array.isArray(data) ? data : (data.services || [])).filter((o: any) => !o.has_error);
 
     return options.map((option: any) => ({
         id: `sf-${option.id}`,
@@ -412,7 +418,7 @@ export async function POST(req: Request) {
 
     const [meQuotes, sfQuotes, correiosQuotes] = await Promise.all([
       getMelhorEnvioQuotes(cleanDestinationCep, safeWeight, dimensions, selectedOriginCep, safeInsuranceValue, originState, originCity),
-      getSuperfreteQuotes(cleanDestinationCep, safeWeight, dimensions, selectedOriginCep),
+      getSuperfreteQuotes(cleanDestinationCep, safeWeight, dimensions, selectedOriginCep, safeInsuranceValue),
       getCorreiosQuotes(cleanDestinationCep, safeWeight, dimensions, selectedOriginCep, safeInsuranceValue)
     ]);
     
