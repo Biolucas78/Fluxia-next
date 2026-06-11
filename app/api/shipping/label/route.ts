@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
+import { getTotalExpressAuthHeader, TOTAL_EXPRESS_URL, TOTAL_EXPRESS_SENDER_ID, TOTAL_EXPRESS_SERVICE_TYPE } from '@/lib/totalexpress';
 
 const CORREIOS_USER = process.env.CORREIOS_USER;
 const CORREIOS_TOKEN = process.env.CORREIOS_ACCESS_CODE;
@@ -8,6 +9,136 @@ const CORREIOS_CONTRACT = process.env.CORREIOS_CONTRACT;
 
 // Map global para armazenar base64 da DACE temporariamente
 import { daceCache } from '@/lib/daceCache';
+
+async function generateTotalExpressLabel(order: any, origin: any, destCpfCnpj: string, destCep: string, totalWeightKg: number) {
+  const originCnpj = (origin.company_document || '').replace(/\D/g, '');
+  if (!TOTAL_EXPRESS_SENDER_ID || !originCnpj) {
+    throw new Error('TOTAL_EXPRESS_SENDER_ID ou CNPJ do remetente não configurado');
+  }
+
+  const authHeader = getTotalExpressAuthHeader();
+
+  // Detecta se há NF vinculada (chave NFe tem 44 dígitos)
+  const temNF = !!(order.invoiceKey && order.invoiceKey.replace(/\D/g, '').length === 44);
+  const nfeKey = temNF ? order.invoiceKey.replace(/\D/g, '') : '';
+  const totalValue = Math.max(1, parseFloat(order.invoiceValue || order.insuranceValue || '0') || 1);
+
+  let docFiscal: any;
+  if (temNF) {
+    // Extrai série, número e data de emissão diretamente da chave NFe (44 dígitos)
+    // Layout: cUF(2)+AAMM(4)+CNPJ(14)+mod(2)+serie(3)+nNF(9)+tpEmis(1)+cNF(8)+cDV(1)
+    const nfeSerie = parseInt(nfeKey.substring(22, 25), 10) || 1;
+    const nfeNumero = parseInt(order.invoiceNumber || nfeKey.substring(25, 34), 10);
+    const emitYear = '20' + nfeKey.substring(2, 4);
+    const emitMonth = nfeKey.substring(4, 6);
+    const nfeData = `${emitYear}-${emitMonth}-15`;
+
+    docFiscal = {
+      nfe: [{
+        nfeNumero,
+        nfeSerie,
+        nfeData,
+        nfeValTotal: totalValue,
+        nfeValProd: totalValue,
+        nfeChave: nfeKey
+      }]
+    };
+  } else {
+    // DC-e gerado a partir dos produtos
+    const products = (order.products || []).filter((p: any) => p.name);
+    const valPorProd = (totalValue / (products.length || 1));
+    const now = new Date();
+    const dceData = now.toISOString().substring(0, 19); // "aaaa-mm-ddThh:mm:ss"
+    const dceNumero = String(Date.now()).slice(-9);
+
+    docFiscal = {
+      dce: [{
+        dceNumero,
+        dceSerie: '1',
+        dceData,
+        dceValTotal: totalValue.toFixed(2),
+        dceProdutos: products.map((p: any) => ({
+          dceValProd: valPorProd.toFixed(2),
+          dceProd: (p.name || 'Produto').substring(0, 50),
+          dceQuant: String(p.quantity || 1),
+          dceNcm: '09011100' // NCM café
+        }))
+      }]
+    };
+  }
+
+  const addrParts = order.address ? order.address.split(',') : [];
+  const safeStr = (v: any, fallback: string, max: number) =>
+    (typeof v === 'string' && v.trim() ? v.trim() : fallback).substring(0, max);
+  const phone = (order.phone || '').replace(/\D/g, '');
+
+  const payload = {
+    remetenteId: parseInt(TOTAL_EXPRESS_SENDER_ID, 10),
+    cnpj: originCnpj,
+    encomendas: [{
+      servicoTipo: TOTAL_EXPRESS_SERVICE_TYPE,
+      entregaTipo: 0,
+      peso: parseFloat(totalWeightKg.toFixed(2)),
+      volumes: 1,
+      condFrete: 'CIF',
+      pedido: order.id.substring(0, 60),
+      natureza: (order.products?.[0]?.name || 'Café').substring(0, 60),
+      icmsIsencao: 1,
+      destinatario: {
+        nome: order.clientName.substring(0, 60),
+        cpfCnpj: destCpfCnpj,
+        endereco: {
+          logradouro: safeStr(order.addressDetails?.street || addrParts[0], 'Rua nao informada', 150),
+          numero: safeStr(order.addressDetails?.number || addrParts[1], 'SN', 30),
+          complemento: safeStr(order.addressDetails?.complement || addrParts[2], '', 100),
+          bairro: safeStr(order.addressDetails?.district || addrParts[3], 'Centro', 100),
+          cidade: safeStr(order.addressDetails?.city || addrParts[4], 'Cidade', 80),
+          estado: safeStr(order.addressDetails?.state || '', 'SP', 2).replace(/[^A-Za-z]/g, '').toUpperCase() || 'SP',
+          pais: 'Brasil',
+          cep: destCep
+        },
+        ...(order.email ? { email: order.email.substring(0, 80) } : {}),
+        ...(phone.length >= 10 ? { telefone1: parseInt(phone, 10) } : {})
+      },
+      docFiscal
+    }]
+  };
+
+  console.log('Total Express SmartLabel payload:', JSON.stringify(payload, null, 2));
+
+  const response = await fetch(`${TOTAL_EXPRESS_URL}/ics-edi-lv/v1/coleta/smartlabel/registrar`, {
+    method: 'POST',
+    headers: {
+      'Authorization': authHeader,
+      'Content-Type': 'application/json',
+      'Accept': '*/*',
+      'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+  console.log('Total Express SmartLabel resposta:', JSON.stringify(data, null, 2));
+
+  if (!response.ok && response.status !== 206) {
+    const errMsg =
+      data?.retorno?.erros?.[0]?.erro ||
+      data?.message ||
+      data?.error ||
+      'Erro ao registrar etiqueta Total Express';
+    throw new Error(errMsg);
+  }
+
+  const encomendas = data.retorno?.encomendas || data.retorno?.sucesso || [];
+  if (!encomendas.length) throw new Error('Sem retorno de AWB da Total Express');
+
+  const firstVolume = encomendas[0]?.volumes?.[0];
+  const awb = firstVolume?.awb;
+  const rota = firstVolume?.rota;
+  if (!awb) throw new Error('AWB não retornada pela Total Express');
+
+  return { awb, rota, docFiscalType: temNF ? 'nfe' : 'dce' };
+}
 
 async function generateCorreiosLabel(order: any, selectedOption: any, token: string, origin: any, destCpfCnpj: string, destCep: string, totalWeightKg: number) {
   // 1. Extrair e formatar o código do serviço (ex: "03220")
@@ -505,6 +636,18 @@ export async function POST(req: Request) {
         trackingNumber,
         shipmentId: String(sfOrderId),
         shippingProvider: 'superfrete'
+      });
+    }
+
+    if (selectedOption.provider === 'Total Express') {
+      const texData = await generateTotalExpressLabel(order, origin, destCpfCnpj, destCep, totalWeightKg);
+      return NextResponse.json({
+        success: true,
+        labelUrl: null, // endpoint de impressão pendente
+        trackingNumber: texData.awb,
+        rota: texData.rota,
+        shippingProvider: 'totalexpress',
+        docFiscalType: texData.docFiscalType
       });
     }
 
