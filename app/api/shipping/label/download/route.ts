@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
-import { daceCache } from '../route';
+import { daceCache } from '@/lib/daceCache';
 
 export const dynamic = 'force-dynamic';
 

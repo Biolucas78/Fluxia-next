@@ -7,7 +7,7 @@ const CORREIOS_CARD = process.env.CORREIOS_POSTAGE_CARD;
 const CORREIOS_CONTRACT = process.env.CORREIOS_CONTRACT;
 
 // Map global para armazenar base64 da DACE temporariamente
-export const daceCache = new Map();
+import { daceCache } from '@/lib/daceCache';
 
 async function generateCorreiosLabel(order: any, selectedOption: any, token: string, origin: any, destCpfCnpj: string, destCep: string, totalWeightKg: number) {
   // 1. Extrair e formatar o código do serviço (ex: "03220")
