@@ -292,7 +292,8 @@ async function trackMelhorEnvio(trackingNumber: string) {
         if (!contentType || !contentType.includes('application/json')) return null;
         
         const searchData = await searchResponse.json();
-        const shipment = (Array.isArray(searchData.data) ? searchData.data[0] : searchData.data) || searchData;
+        const results = Array.isArray(searchData) ? searchData : (searchData.data || []);
+        const shipment = results[0];
 
         if (shipment && shipment.id && isUUID(shipment.id)) {
           shipmentId = shipment.id;

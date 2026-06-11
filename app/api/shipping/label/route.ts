@@ -298,20 +298,35 @@ export async function POST(req: Request) {
 
     // Lógica para definir a origem (remetente)
     const isMelhorEnvio = selectedOption.provider === 'Melhor Envio';
+    const selectedOriginType: string = order.originType || (isMelhorEnvio ? 'BH' : 'CRV');
     let origin: any = {};
+    let isOriginPJ = false;
+    let originCnpj = '';
+    let originCpf = '';
     try {
-        if (isMelhorEnvio) {
-            origin = JSON.parse(process.env.ORIGIN_BH_JSON || '{}');
-        } else {
-            origin = JSON.parse(process.env.ORIGIN_CRV_JSON || '{}');
-        }
-        
+        origin = JSON.parse(selectedOriginType === 'BH'
+            ? process.env.ORIGIN_BH_JSON || '{}'
+            : process.env.ORIGIN_CRV_JSON || '{}');
+
+        // Detect PF vs PJ by digit count (14 = CNPJ, 11 = CPF).
+        // Handles cases where CNPJ is stored in the "document" field (common misconfiguration).
+        const jsonCompanyDoc = (origin.company_document || '').replace(/\D/g, '');
+        const jsonDoc = (origin.document || '').replace(/\D/g, '');
+        const envCnpj = (process.env.ORIGIN_DOCUMENT || '').replace(/\D/g, '');
+
+        originCnpj = jsonCompanyDoc.length === 14 ? jsonCompanyDoc
+                   : jsonDoc.length === 14 ? jsonDoc
+                   : envCnpj;
+        originCpf = jsonDoc.length === 11 ? jsonDoc
+                  : (process.env.ORIGIN_CPF || '').replace(/\D/g, '');
+        isOriginPJ = originCnpj.length === 14;
+
         origin.country_id = 'BR';
-        const cnpj = process.env.ORIGIN_DOCUMENT || origin.company_document || '00000000000000';
-        const cpf = process.env.ORIGIN_CPF || origin.document || '00000000000';
-        origin.document = cpf;
-        origin.company_document = cnpj;
-        
+        // PJ: leave document empty so Correios falls through to company_document via ||
+        // PF: set document to CPF
+        origin.document = isOriginPJ ? '' : originCpf;
+        origin.company_document = originCnpj;
+
         // Fallbacks for required fields
         origin.name = origin.name || 'Remetente Padrão';
         origin.phone = origin.phone || '11999999999';
@@ -503,11 +518,40 @@ export async function POST(req: Request) {
     const productCount = order.products.length || 1;
     const unitValue = (insuranceTotal / productCount).toFixed(2);
 
+    // Service IDs suportados pelo Pegaki (pontos multi-carrier: Loggi, Buslog, J&T, etc.)
+    const PEGAKI_SERVICE_IDS = new Set([1, 2, 12, 17, 22, 27, 31, 33]);
+    // Service IDs exclusivos do Jadlog (.Package e .Com) — requerem agência Jadlog parceira
+    const JADLOG_SERVICE_IDS = new Set([3, 4]);
+    const meServiceId = parseInt(serviceId, 10);
+
     const cartPayload = {
-      service: parseInt(serviceId.toString(), 10),
-      agency: selectedOption.agency?.id,
+      service: meServiceId,
+      agency: (() => {
+        if (!isMelhorEnvio) return selectedOption.agency?.id;
+
+        if (PEGAKI_SERVICE_IDS.has(meServiceId)) {
+          // Ponto Pegaki multi-carrier (Reobot 38686 para BH)
+          const envId = selectedOriginType === 'BH'
+            ? process.env.MELHOR_ENVIO_AGENCY_BH_ID
+            : process.env.MELHOR_ENVIO_AGENCY_CRV_ID;
+          return envId ? parseInt(envId) : selectedOption.agency?.id;
+        }
+
+        if (JADLOG_SERVICE_IDS.has(meServiceId)) {
+          // Agência Jadlog exclusiva (Reobot parceiro Jadlog 33729 para BH)
+          const envId = selectedOriginType === 'BH'
+            ? process.env.MELHOR_ENVIO_JADLOG_AGENCY_BH_ID
+            : process.env.MELHOR_ENVIO_JADLOG_AGENCY_CRV_ID;
+          return envId ? parseInt(envId) : selectedOption.agency?.id;
+        }
+
+        // Para outros serviços (Loggi Ponto exclusivo, etc.), usa agência da cotação
+        return selectedOption.agency?.id;
+      })(),
       from: {
         ...origin,
+        document: isOriginPJ ? undefined : (originCpf || undefined),
+        company_document: isOriginPJ ? (originCnpj || undefined) : undefined,
         state_register: isNonCommercial ? 'ISENTO' : '',
       },
       to: {
@@ -560,8 +604,8 @@ export async function POST(req: Request) {
 
     if (!cartResponse.ok) {
         const errorData = await cartResponse.text();
-        console.error('Erro ao adicionar ao carrinho:', cartResponse.status, errorData);
-        return NextResponse.json({ error: 'Erro ao adicionar ao carrinho.' }, { status: 500 });
+        console.error('ME /cart error:', cartResponse.status, errorData);
+        return NextResponse.json({ error: `Erro ao adicionar ao carrinho: ${errorData.substring(0, 300)}` }, { status: 500 });
     }
 
     const cartData = JSON.parse(await cartResponse.text());
@@ -592,7 +636,74 @@ export async function POST(req: Request) {
         });
     }
 
-    // 3. Print label
+    // 3. Generate label (required before print)
+    const generateResponse = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/shipment/generate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
+      },
+      body: JSON.stringify({ orders: [cartId] })
+    });
+
+    if (!generateResponse.ok) {
+        const errorData = await generateResponse.text();
+        console.warn('ME /generate error:', generateResponse.status, errorData);
+        return NextResponse.json({
+            success: true,
+            inCart: true,
+            shipmentId: cartId,
+            shippingProvider: 'melhorenvio',
+            message: 'Pagamento processado, mas a geração da etiqueta falhou. Acesse o Melhor Envio para gerá-la manualmente.'
+        });
+    }
+
+    // 3b. Fetch tracking number and DACE URL — both assigned after generate
+    let meTrackingNumber: string | null = null;
+    let meDaceUrl: string | null = null;
+    try {
+        const orderRes = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/orders/${cartId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
+            }
+        });
+        if (orderRes.ok) {
+            const orderData = await orderRes.json();
+            meTrackingNumber = orderData.tracking || null;
+        }
+    } catch (e) {
+        console.warn('ME: falha ao buscar tracking após generate:', e);
+    }
+
+    if (isNonCommercial) {
+        try {
+            const daceRes = await fetch(
+                `${MELHOR_ENVIO_URL}/api/v2/me/imprimir/dace/pdf/${cartId}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json',
+                        'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
+                    }
+                }
+            );
+            if (daceRes.ok) {
+                const daceData = await daceRes.json();
+                meDaceUrl = daceData.pdf || daceData.url || null;
+                console.log('ME DACE URL obtida:', meDaceUrl);
+            } else {
+                console.warn('ME: DACE não disponível ainda:', daceRes.status);
+            }
+        } catch (e) {
+            console.warn('ME: falha ao buscar DACE:', e);
+        }
+    }
+
+    // 4. Print label
     const printResponse = await fetch(`${MELHOR_ENVIO_URL}/api/v2/me/shipment/print`, {
       method: 'POST',
       headers: {
@@ -606,22 +717,25 @@ export async function POST(req: Request) {
 
     if (!printResponse.ok) {
         const errorData = await printResponse.text();
-        console.warn('Erro ao imprimir, mas checkout feito:', printResponse.status, errorData);
-        return NextResponse.json({ 
-            success: true, 
+        console.warn('ME /print error:', printResponse.status, errorData);
+        return NextResponse.json({
+            success: true,
             inCart: true,
+            trackingNumber: meTrackingNumber,
+            dceUrl: meDaceUrl,
             shipmentId: cartId,
             shippingProvider: 'melhorenvio',
-            message: 'O pagamento da etiqueta foi processado ou está no carrinho, mas a impressão falhou. Acesse o site do Melhor Envio para tentar imprimir.'
+            message: 'Etiqueta gerada e paga, mas a impressão falhou. Acesse o Melhor Envio para imprimir.'
         });
     }
 
     const printData = JSON.parse(await printResponse.text());
-    
-    return NextResponse.json({ 
-        success: true, 
+
+    return NextResponse.json({
+        success: true,
         labelUrl: printData.url,
-        trackingNumber: printData.tracking_number,
+        trackingNumber: meTrackingNumber,
+        dceUrl: meDaceUrl,
         shipmentId: cartId,
         shippingProvider: 'melhorenvio'
     });
