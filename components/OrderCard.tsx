@@ -76,7 +76,20 @@ export default function OrderCard({
     if (c.includes('braspress')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
     if (c.includes('melhorenvio') || c.includes('melhor envio')) return 'bg-blue-100 text-blue-700 border-blue-200';
     if (c.includes('lalamove')) return 'bg-orange-100 text-orange-700 border-orange-200';
+    if (c.includes('superfrete')) return 'bg-violet-100 text-violet-700 border-violet-200';
+    if (c.includes('loggi')) return 'bg-indigo-100 text-indigo-700 border-indigo-200';
     return 'bg-slate-100 text-slate-600 border-slate-200';
+  };
+
+  const abbreviateCarrier = (carrier: string) => {
+    const c = carrier.toLowerCase();
+    if (c.includes('melhor envio') || c.includes('melhorenvio')) return 'Melhor Envio';
+    if (c.includes('total')) return 'Total';
+    if (c.includes('superfrete')) return 'Superfrete';
+    if (c.includes('jadlog')) return 'Jadlog';
+    if (c.includes('loggi')) return 'Loggi';
+    if (c.includes('correio')) return 'Correios';
+    return carrier;
   };
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -461,30 +474,28 @@ export default function OrderCard({
             <Calendar className="size-2.5" />
             {new Date(order.createdAt).toLocaleDateString('pt-BR')} às {new Date(order.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
           </div>
-          <div className={`flex items-center justify-between mt-1 ${isExpanded ? 'hidden' : 'flex'}`}>
-            <div className="flex items-center gap-2">
-              {getStatusBadge()}
-              {getOriginBadge()}
-              {order.isSample && (
-                <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter shrink-0 border border-amber-200 dark:border-amber-800">
-                  Amostra
-                </span>
-              )}
-              {order.carrier && (
-                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase border ${getCarrierColor(order.carrier)}`}>
-                  {order.carrier}
-                </span>
-              )}
-              {order.deliveryDate ? (
-                <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-tighter flex items-center gap-0.5">
-                  <Calendar className="size-2" /> {new Date(order.deliveryDate).toLocaleDateString('pt-BR')}
-                </span>
-              ) : order.trackingStatus && (
-                <span className="text-[8px] font-bold text-primary uppercase tracking-tighter truncate max-w-[80px]">
-                  {order.trackingStatus}
-                </span>
-              )}
-            </div>
+          <div className={`flex flex-wrap items-center gap-1 mt-1 pr-8 ${isExpanded ? 'hidden' : ''}`}>
+            {getStatusBadge()}
+            {getOriginBadge()}
+            {order.isSample && (
+              <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter shrink-0 border border-amber-200 dark:border-amber-800">
+                Amostra
+              </span>
+            )}
+            {order.carrier && (
+              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase border ${getCarrierColor(order.carrier)}`}>
+                {abbreviateCarrier(order.carrier)}
+              </span>
+            )}
+            {order.deliveryDate ? (
+              <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-tighter flex items-center gap-0.5 whitespace-nowrap">
+                <Calendar className="size-2" /> {new Date(order.deliveryDate).toLocaleDateString('pt-BR')}
+              </span>
+            ) : order.trackingStatus && (
+              <span className="text-[8px] font-bold text-primary uppercase tracking-tighter truncate max-w-[80px]">
+                {order.trackingStatus}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -512,10 +523,10 @@ export default function OrderCard({
             )}
             {order.carrier && (
               <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase border ${getCarrierColor(order.carrier)}`}>
-                {order.carrier}
+                {abbreviateCarrier(order.carrier)}
               </span>
             )}
-            <button 
+            <button
               onClick={handleDelete}
               onPointerDown={(e) => e.stopPropagation()}
               className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 rounded-lg transition-all"
