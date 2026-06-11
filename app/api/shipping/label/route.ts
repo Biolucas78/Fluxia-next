@@ -35,7 +35,7 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
   };
   const temNF = !!(order.invoiceKey && order.invoiceKey.length > 10);
 
-  const declaracaoConteudo = temNF ? [] : order.products
+  const declaracaoConteudo = order.products
     .filter((p: any) => p.name)
     .map((p: any) => ({
       descricao: p.name.substring(0, 50),
@@ -44,7 +44,7 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
       peso: (parseFloat(p.weight?.toString().replace(/\D/g, '') || '0') / 1000) * (p.quantity || 1)
     }));
 
-  if (!temNF && declaracaoConteudo.length === 0) {
+  if (declaracaoConteudo.length === 0) {
     throw new Error('Declaração de conteúdo obrigatória para os Correios');
   }
 
@@ -103,16 +103,15 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
     larguraInformada: Math.round(volumes[0].largura).toString(),
     alturaInformada: Math.round(volumes[0].altura).toString(),
     diametroInformado: "",
+    itensDeclaracaoConteudo: declaracaoConteudo.map((item: any) => ({
+      conteudo: item.descricao,
+      quantidade: String(item.quantidade || 1),
+      valor: item.valor.toFixed(2)
+    })),
     ...(temNF ? {
       chaveNFe: order.invoiceKey,
       numeroNotaFiscal: order.invoiceNumber || '',
-    } : {
-      itensDeclaracaoConteudo: declaracaoConteudo.map((item: any) => ({
-        conteudo: item.descricao,
-        quantidade: String(item.quantidade || 1),
-        valor: item.valor.toFixed(2)
-      })),
-    }),
+    } : {}),
     cienteObjetoNaoProibido: 1
   };
 
