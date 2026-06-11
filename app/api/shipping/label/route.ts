@@ -33,16 +33,18 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
     uf: safeStr(order.addressDetails?.state || addrParts[5], 'MG', 2).replace(/[^A-Za-z]/g, '').toUpperCase() || 'MG',
     cep: destCep.replace(/\D/g, '')
   };
-  const declaracaoConteudo = order.products
+  const temNF = !!(order.invoiceKey && order.invoiceKey.length > 10);
+
+  const declaracaoConteudo = temNF ? [] : order.products
     .filter((p: any) => p.name)
     .map((p: any) => ({
-      descricao: p.name.substring(0, 50), // Limite de caracteres dos Correios
+      descricao: p.name.substring(0, 50),
       quantidade: p.quantity || 1,
       valor: (parseFloat(order.insuranceValue || '0') / (order.products.length || 1)) || 1.0,
       peso: (parseFloat(p.weight?.toString().replace(/\D/g, '') || '0') / 1000) * (p.quantity || 1)
     }));
 
-  if (declaracaoConteudo.length === 0) {
+  if (!temNF && declaracaoConteudo.length === 0) {
     throw new Error('Declaração de conteúdo obrigatória para os Correios');
   }
 
@@ -101,11 +103,16 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
     larguraInformada: Math.round(volumes[0].largura).toString(),
     alturaInformada: Math.round(volumes[0].altura).toString(),
     diametroInformado: "",
-    itensDeclaracaoConteudo: declaracaoConteudo.map((item: any) => ({
-      conteudo: item.descricao,
-      quantidade: item.quantidade,
-      valor: Number(item.valor.toFixed(2))
-    })),
+    ...(temNF ? {
+      chaveNFe: order.invoiceKey,
+      numeroNotaFiscal: order.invoiceNumber || '',
+    } : {
+      itensDeclaracaoConteudo: declaracaoConteudo.map((item: any) => ({
+        conteudo: item.descricao,
+        quantidade: String(item.quantidade || 1),
+        valor: item.valor.toFixed(2)
+      })),
+    }),
     cienteObjetoNaoProibido: 1
   };
 
@@ -117,7 +124,7 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
     requestBody.listaServicoAdicional = [
       {
         codigoServicoAdicional: vdCode,
-        valorDeclarado: Number(insuranceValue.toFixed(2))
+        valorDeclarado: insuranceValue.toFixed(2)
       }
     ];
   }
@@ -228,7 +235,6 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
   }
 
   // Gerar DC-e se nao tiver NF vinculada
-  const temNF = !!(order.invoiceKey && order.invoiceKey.length > 10);
   console.log("[DC-e] invoiceKey:", JSON.stringify(order.invoiceKey), "temNF:", temNF, "invoiceLinked:", order.invoiceLinked);
   if (!temNF) {
     console.log('Sem NF - gerando DACE (Declaracao de Conteudo Eletronica)...');
