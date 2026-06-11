@@ -464,7 +464,7 @@ export default function OrderCard({
 
       {/* Collapsed View (Always visible) */}
       <div className="flex justify-between items-start gap-2">
-        <div className="flex-1 min-w-0 max-w-[70%]">
+        <div className="flex-1 min-w-0 max-w-[80%]">
           <div className="flex items-center gap-2 truncate pr-2">
             <h4 className="font-bold text-slate-900 dark:text-white leading-tight truncate" title={order.tradeName || order.clientName}>
               {abbreviateName(order.tradeName || order.clientName)}
