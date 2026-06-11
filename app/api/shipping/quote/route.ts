@@ -464,21 +464,7 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  if (searchParams.get('debug') === 'loggi-agencies' && MELHOR_ENVIO_TOKEN) {
-    try {
-      const res = await fetch(
-        `${MELHOR_ENVIO_URL}/api/v2/me/shipment/agencies?company=14&country=BR&state=MG&city=Belo%20Horizonte`,
-        { headers: { 'Authorization': `Bearer ${MELHOR_ENVIO_TOKEN.trim()}`, 'Accept': 'application/json', 'User-Agent': 'CoffeeCRM (biolucas@gmail.com)' } }
-      );
-      const agencies = res.ok ? await res.json() : { error: res.status };
-      return NextResponse.json({ agencies });
-    } catch (e) {
-      return NextResponse.json({ error: String(e) });
-    }
-  }
-
+export async function GET() {
   return NextResponse.json({
     status: 'ok',
     config: {

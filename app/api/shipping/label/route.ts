@@ -522,6 +522,8 @@ export async function POST(req: Request) {
     const PEGAKI_SERVICE_IDS = new Set([1, 2, 12, 17, 22, 27, 31, 33]);
     // Service IDs exclusivos do Jadlog (.Package e .Com) — requerem agência Jadlog parceira
     const JADLOG_SERVICE_IDS = new Set([3, 4]);
+    // Service IDs exclusivos do Loggi Ponto (drop-off na agência Loggi, não Pegaki)
+    const LOGGI_PONTO_SERVICE_IDS = new Set([32, 34]);
     const meServiceId = parseInt(serviceId, 10);
 
     const cartPayload = {
@@ -545,7 +547,14 @@ export async function POST(req: Request) {
           return envId ? parseInt(envId) : selectedOption.agency?.id;
         }
 
-        // Para outros serviços (Loggi Ponto exclusivo, etc.), usa agência da cotação
+        if (LOGGI_PONTO_SERVICE_IDS.has(meServiceId)) {
+          // Agência Loggi Ponto exclusiva (Buritis Cartuchos 31220 para BH)
+          const envId = selectedOriginType === 'BH'
+            ? process.env.MELHOR_ENVIO_LOGGI_PONTO_AGENCY_BH_ID
+            : process.env.MELHOR_ENVIO_LOGGI_PONTO_AGENCY_CRV_ID;
+          return envId ? parseInt(envId) : selectedOption.agency?.id;
+        }
+
         return selectedOption.agency?.id;
       })(),
       from: {
