@@ -172,21 +172,24 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
   console.log(`Aguardando processamento da pré-postagem ${prePostageId}...`);
   let statusReady = false;
   for (let i = 0; i < 5; i++) {
-    const statusResponse = await fetch(`https://api.correios.com.br/prepostagem/v1/prepostagens/lista`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
-      },
-      body: JSON.stringify({ idsPrePostagem: [prePostageId] })
-    });
+    const statusResponse = await fetch(
+      `https://api.correios.com.br/prepostagem/v2/prepostagens?id=${encodeURIComponent(prePostageId)}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
+        }
+      }
+    );
 
     if (statusResponse.ok) {
       const statusData = await statusResponse.json();
-      console.log(`Status atual da pré-postagem ${prePostageId}: ${statusData.status}`);
-      const statusItem = (statusData.itens || statusData)[0] || statusData; if (statusItem.status === "CRIADA" || statusItem.status === "FINALIZADA" || statusItem.descStatusAtual === "Criada") {
+      const statusItem = statusData.itens?.[0];
+      const desc = statusItem?.descStatusAtual || '';
+      console.log(`Status atual da pré-postagem ${prePostageId}: ${desc}`);
+      if (desc && desc.toUpperCase() !== 'PENDENTE') {
         statusReady = true;
         break;
       }
