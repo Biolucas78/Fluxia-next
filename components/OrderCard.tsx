@@ -474,7 +474,7 @@ export default function OrderCard({
             <Calendar className="size-2.5" />
             {new Date(order.createdAt).toLocaleDateString('pt-BR')} às {new Date(order.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
           </div>
-          <div className={`flex flex-wrap items-center gap-1 mt-1 pr-8 ${isExpanded ? 'hidden' : ''}`}>
+          <div className={`flex flex-wrap items-center gap-1 mt-1 ${isExpanded ? 'hidden' : ''}`}>
             {getStatusBadge()}
             {getOriginBadge()}
             {order.isSample && (
