@@ -354,9 +354,18 @@ async function trackMelhorEnvio(trackingNumber: string) {
 }
 
 async function trackTotalExpress(trackingNumber: string) {
-  try {
-    const authHeader = getTotalExpressApiAuthHeader();
+  if (!trackingNumber) return null;
 
+  let authHeader: string;
+  try {
+    authHeader = getTotalExpressApiAuthHeader();
+  } catch (e: any) {
+    console.error('Total Express: credenciais não configuradas —', e.message);
+    return null;
+  }
+
+  try {
+    // Envia o AWB como recebido — TEX é case-sensitive (termina em 'tx' minúsculo)
     const response = await fetch(`${TOTAL_EXPRESS_URL}/ics-tracking-encomenda-lv/v1/tracking`, {
       method: 'POST',
       headers: {
@@ -366,7 +375,7 @@ async function trackTotalExpress(trackingNumber: string) {
         'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
       },
       body: JSON.stringify({
-        awbs: [trackingNumber.toUpperCase()],
+        awbs: [trackingNumber],
         comprovanteEntrega: false
       })
     });
@@ -479,7 +488,7 @@ export async function POST(req: Request) {
 
     // PRIORIDADE 3: Total Express (AWB termina em "tx" ou shippingProvider = totalexpress)
     const isTEXCode = (str: string) => /^[A-Za-z0-9]+tx$/i.test(str);
-    if (!result && (shippingProvider === 'totalexpress' || isTEXCode(trimmedTracking))) {
+    if (!result && trimmedTracking && (shippingProvider === 'totalexpress' || isTEXCode(trimmedTracking))) {
       console.log(`Rastreio Total Express: ${trimmedTracking}`);
       result = await trackTotalExpress(trimmedTracking);
     }
