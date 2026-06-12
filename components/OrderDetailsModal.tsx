@@ -473,17 +473,16 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       const response = await fetch('/api/shipping/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify({ 
           trackingNumber: order.trackingNumber,
           shipmentId: order.shipmentId,
           shippingProvider: order.shippingProvider,
-          carrier: order.carrier,
-          invoiceNumber: order.invoiceNumber
+          carrier: order.carrier
         })
       });
 
       const toastWithLink = (msg: string, link: string) => {
-        const siteLabel = link.includes('poupup_track') ? 'Total Express'
+        const siteLabel = link.includes('totalconecta') ? 'TotalConecta'
           : link.includes('melhorrastreio') ? 'Melhor Rastreio'
           : link.includes('superfrete') ? 'Superfrete'
           : 'Site da transportadora';
@@ -606,16 +605,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     return 'bg-slate-100 text-slate-600 border-slate-200';
   };
 
-  const getTrackingLink = (carrier: string | undefined, trackingNumber: string | undefined, invoiceNumber?: string) => {
+  const getTrackingLink = (carrier: string | undefined, trackingNumber: string | undefined) => {
     if (!trackingNumber) return '#';
     const c = (carrier || '').toLowerCase();
     if (c.includes('melhor') || c.includes('envio')) {
       return `https://melhorrastreio.com.br/rastreio/${trackingNumber}`;
     }
     if (c.includes('total')) {
-      const awb = encodeURIComponent(trackingNumber);
-      const nf = encodeURIComponent(invoiceNumber || trackingNumber);
-      return `https://tracking.totalexpress.com.br/poupup_track.php?reid=65818&pedido=${awb}&nfiscal=${nf}`;
+      return `https://totalconecta.totalexpress.com.br/rastreamento`;
     }
     return `https://www.siterastreio.com.br/${trackingNumber}`;
   };
@@ -635,8 +632,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     if (c.includes('melhor') || c.includes('envio')) {
       msg = `https://melhorrastreio.com.br/rastreio/${trackingNumber}`;
     } else if (c.includes('total')) {
-      const awb = encodeURIComponent(trackingNumber);
-      msg = `https://tracking.totalexpress.com.br/poupup_track.php?reid=65818&pedido=${awb}&nfiscal=${awb}`;
+      msg = `https://totalconecta.totalexpress.com.br/rastreamento\nCódigo: ${trackingNumber}`;
     } else {
       msg = `https://www.siterastreio.com.br/${trackingNumber}`;
     }
@@ -2710,7 +2706,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             <div className="flex items-center gap-2">
                               <p className="text-sm font-mono font-bold text-slate-900 dark:text-white">{order.trackingNumber}</p>
                               <a 
-                                href={getTrackingLink(order.carrier, order.trackingNumber, order.invoiceNumber)}
+                                href={getTrackingLink(order.carrier, order.trackingNumber)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-primary"
@@ -3008,7 +3004,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             />
                             {order.trackingNumber && (
                               <a 
-                                href={getTrackingLink(order.carrier, order.trackingNumber, order.invoiceNumber)}
+                                href={getTrackingLink(order.carrier, order.trackingNumber)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center justify-center bg-primary text-white rounded-xl px-4 hover:bg-primary/90 transition-colors"
@@ -3044,7 +3040,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           {order.trackingNumber}
                         </p>
                         <a 
-                          href={getTrackingLink(order.carrier, order.trackingNumber, order.invoiceNumber)}
+                          href={getTrackingLink(order.carrier, order.trackingNumber)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center justify-center bg-primary text-white rounded-xl px-4 hover:bg-primary/90 transition-colors"
