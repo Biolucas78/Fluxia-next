@@ -17,7 +17,8 @@ export function getTotalExpressApiAuthHeader(): string {
   if (!TOTAL_EXPRESS_API_USER || !TOTAL_EXPRESS_API_PASSWORD) {
     throw new Error('Credenciais API Total Express não configuradas (TOTAL_EXPRESS_API_USER / TOTAL_EXPRESS_API_PASSWORD)');
   }
-  return `Basic ${Buffer.from(`${TOTAL_EXPRESS_API_USER}:${TOTAL_EXPRESS_API_PASSWORD}`).toString('base64')}`;
+  // TEX exige formato não-padrão "Basic Auth <base64>" — confirmado via debug
+  return `Basic Auth ${Buffer.from(`${TOTAL_EXPRESS_API_USER}:${TOTAL_EXPRESS_API_PASSWORD}`).toString('base64')}`;
 }
 
 export const TOTAL_EXPRESS_URL = (process.env.TOTAL_EXPRESS_URL || 'https://apis.totalexpress.com.br').replace(/\/$/, '');
