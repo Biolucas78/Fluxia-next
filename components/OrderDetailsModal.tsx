@@ -481,25 +481,28 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         })
       });
 
+      const toastWithLink = (msg: string, link: string) => {
+        const siteLabel = link.includes('totalconecta') ? 'TotalConecta'
+          : link.includes('melhorrastreio') ? 'Melhor Rastreio'
+          : link.includes('superfrete') ? 'Superfrete'
+          : 'Site da transportadora';
+        toast.error(
+          <div className="flex flex-col gap-2">
+            <p>{msg}</p>
+            <a href={link} target="_blank" rel="noopener noreferrer" className="text-white underline font-bold">
+              Rastrear no {siteLabel}
+            </a>
+          </div>,
+          { duration: 6000 }
+        );
+      };
+
       if (response.ok) {
         const data = await response.json();
-        
+
         if (data.error) {
           if (data.directLink) {
-            toast.error(
-              <div className="flex flex-col gap-2">
-                <p>{data.error}</p>
-                <a 
-                  href={data.directLink} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-white underline font-bold"
-                >
-                  Clique aqui para rastrear no LinkCorreios
-                </a>
-              </div>,
-              { duration: 6000 }
-            );
+            toastWithLink(data.error, data.directLink);
           } else {
             toast.error(data.error);
           }
@@ -527,7 +530,11 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         toast.success('Rastreio sincronizado com sucesso!');
       } else {
         const data = await response.json();
-        toast.error(data.error || 'Rastreio não encontrado ou indisponível no momento.');
+        if (data.directLink) {
+          toastWithLink(data.error || 'Rastreio não disponível no sistema automático.', data.directLink);
+        } else {
+          toast.error(data.error || 'Rastreio não encontrado ou indisponível no momento.');
+        }
       }
     } catch (error) {
       console.error('Error syncing tracking:', error);
