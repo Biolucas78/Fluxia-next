@@ -23,6 +23,10 @@ async function generateTotalExpressLabel(order: any, origin: any, destCpfCnpj: s
   const nfeKey = temNF ? order.invoiceKey.replace(/\D/g, '') : '';
   const totalValue = Math.max(1, parseFloat(order.invoiceValue || order.insuranceValue || '0') || 1);
 
+  // CFOP: 5101 para destino MG (intraestadual), 6101 para demais estados
+  const destState = (order.addressDetails?.state || '').trim().toUpperCase().replace(/[^A-Z]/g, '') || 'SP';
+  const cfop = destState === 'MG' ? '5101' : '6101';
+
   let docFiscal: any;
   if (temNF) {
     // Extrai série, número e data de emissão diretamente da chave NFe (44 dígitos)
@@ -38,6 +42,7 @@ async function generateTotalExpressLabel(order: any, origin: any, destCpfCnpj: s
         nfeNumero,
         nfeSerie,
         nfeData,
+        nfeCfop: parseInt(cfop, 10),
         nfeValTotal: totalValue,
         nfeValProd: totalValue,
         nfeChave: nfeKey
@@ -81,9 +86,9 @@ async function generateTotalExpressLabel(order: any, origin: any, destCpfCnpj: s
       peso: parseFloat(totalWeightKg.toFixed(2)),
       volumes: 1,
       condFrete: 'CIF',
-      pedido: order.id.substring(0, 60),
+      pedido: (order.invoiceNumber || order.id).substring(0, 60),
       natureza: (order.products?.[0]?.name || 'Café').substring(0, 60),
-      icmsIsencao: 1,
+      icmsIsencao: 0,
       destinatario: {
         nome: order.clientName.substring(0, 60),
         cpfCnpj: destCpfCnpj,

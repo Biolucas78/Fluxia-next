@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
+import { getTotalExpressApiAuthHeader, TOTAL_EXPRESS_URL } from '@/lib/totalexpress';
 
 const MELHOR_ENVIO_TOKEN = process.env.MELHOR_ENVIO_TOKEN;
 const MELHOR_ENVIO_URL = (process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br')
@@ -352,6 +353,73 @@ async function trackMelhorEnvio(trackingNumber: string) {
   }
 }
 
+async function trackTotalExpress(trackingNumber: string) {
+  try {
+    const authHeader = getTotalExpressApiAuthHeader();
+
+    const response = await fetch(`${TOTAL_EXPRESS_URL}/ics-tracking-encomenda-lv/v1/tracking`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
+      },
+      body: JSON.stringify({
+        awbs: [trackingNumber.toUpperCase()],
+        comprovanteEntrega: false
+      })
+    });
+
+    if (response.status === 404) {
+      console.warn(`Total Express: AWB ${trackingNumber} não encontrado (404)`);
+      return null;
+    }
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Total Express Tracking error (${response.status}):`, errText.substring(0, 300));
+      return null;
+    }
+
+    const data = await response.json();
+    console.log('Total Express tracking raw:', JSON.stringify(data).substring(0, 600));
+
+    const encomendas = data.data || data.encomendas || [];
+    const encomenda = Array.isArray(encomendas) ? encomendas[0] : encomendas;
+
+    if (!encomenda) {
+      console.warn('Total Express: Nenhum registro para', trackingNumber);
+      return null;
+    }
+
+    const eventos: any[] = encomenda.ocorrencias || encomenda.eventos || encomenda.historico || [];
+
+    const history = eventos.map((e: any) => ({
+      status: e.descricao || e.status || e.titulo || 'Em trânsito',
+      message: e.complemento || e.detalhe || e.descricao || e.status || '',
+      date: e.data || e.dataHora || e.dtHr || e.created_at,
+      location: [e.cidade, e.uf].filter(Boolean).join('/') || e.local || e.unidade || ''
+    }));
+
+    const lastStatus = encomenda.status || encomenda.situacao || history[0]?.status || 'Em trânsito';
+    const isDelivered =
+      String(lastStatus).toUpperCase().includes('ENTREGUE') ||
+      String(lastStatus).toUpperCase().includes('DELIVERED');
+
+    return {
+      status: lastStatus,
+      message: history[0]?.message || String(lastStatus),
+      history,
+      delivered: isDelivered,
+      deliveryDate: encomenda.dataEntrega || encomenda.dtEntrega || encomenda.previsaoEntrega || null
+    };
+  } catch (e) {
+    console.error('Total Express tracking error:', e);
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { trackingNumber, shipmentId, shippingProvider, carrier } = await req.json();
@@ -409,13 +477,20 @@ export async function POST(req: Request) {
       result = await trackMelhorEnvioById(shipmentId);
     }
 
-    // PRIORIDADE 3: trackingNumber é UUID (Melhor Envio)
+    // PRIORIDADE 3: Total Express (AWB termina em "tx" ou shippingProvider = totalexpress)
+    const isTEXCode = (str: string) => /^[A-Za-z0-9]+tx$/i.test(str);
+    if (!result && (shippingProvider === 'totalexpress' || isTEXCode(trimmedTracking))) {
+      console.log(`Rastreio Total Express: ${trimmedTracking}`);
+      result = await trackTotalExpress(trimmedTracking);
+    }
+
+    // PRIORIDADE 4: trackingNumber é UUID (Melhor Envio)
     if (!result && isUUID(trimmedTracking)) {
       console.log(`Rastreio via Melhor Envio UUID: ${trimmedTracking}`);
       result = await trackMelhorEnvio(trimmedTracking);
     }
 
-    // PRIORIDADE 4: Busca genérica no Melhor Envio
+    // PRIORIDADE 5: Busca genérica no Melhor Envio
     if (!result && !isCorreiosCode(upperTracking) && !isUUID(trimmedTracking) && trimmedTracking) {
       console.log(`Busca genérica no Melhor Envio: ${trimmedTracking}`);
       result = await trackMelhorEnvio(trimmedTracking);
