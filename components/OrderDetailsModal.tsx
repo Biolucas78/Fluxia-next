@@ -613,8 +613,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       return `https://melhorrastreio.com.br/rastreio/${trackingNumber}`;
     }
     if (c.includes('total')) {
-      const ref = encodeURIComponent(invoiceNumber || trackingNumber);
-      return `https://tracking.totalexpress.com.br/poupup_track.php?reid=65818&pedido=${ref}&nfiscal=${ref}`;
+      const awb = encodeURIComponent(trackingNumber);
+      const nf = encodeURIComponent(invoiceNumber || trackingNumber);
+      return `https://tracking.totalexpress.com.br/poupup_track.php?reid=65818&pedido=${awb}&nfiscal=${nf}`;
     }
     return `https://www.siterastreio.com.br/${trackingNumber}`;
   };
@@ -634,8 +635,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     if (c.includes('melhor') || c.includes('envio')) {
       msg = `https://melhorrastreio.com.br/rastreio/${trackingNumber}`;
     } else if (c.includes('total')) {
-      const ref = encodeURIComponent(trackingNumber);
-      msg = `https://tracking.totalexpress.com.br/poupup_track.php?reid=65818&pedido=${ref}&nfiscal=${ref}`;
+      const awb = encodeURIComponent(trackingNumber);
+      msg = `https://tracking.totalexpress.com.br/poupup_track.php?reid=65818&pedido=${awb}&nfiscal=${awb}`;
     } else {
       msg = `https://www.siterastreio.com.br/${trackingNumber}`;
     }
