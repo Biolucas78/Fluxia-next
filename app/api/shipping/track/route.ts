@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
-import { getTotalExpressApiAuthHeader, TOTAL_EXPRESS_URL } from '@/lib/totalexpress';
+import { getTotalExpressApiAuthHeader, TOTAL_EXPRESS_URL, TOTAL_EXPRESS_SENDER_ID } from '@/lib/totalexpress';
 
 const MELHOR_ENVIO_TOKEN = process.env.MELHOR_ENVIO_TOKEN;
 const MELHOR_ENVIO_URL = (process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br')
@@ -430,7 +430,7 @@ async function trackTotalExpress(trackingNumber: string) {
 
 export async function POST(req: Request) {
   try {
-    const { trackingNumber, shipmentId, shippingProvider, carrier } = await req.json();
+    const { trackingNumber, shipmentId, shippingProvider, carrier, invoiceNumber } = await req.json();
 
     if (!trackingNumber && !shipmentId) {
       return NextResponse.json({ error: 'Código de rastreio ou ID de envio ausente.' }, { status: 400 });
@@ -443,13 +443,16 @@ export async function POST(req: Request) {
 
     let result = null;
 
-    const getTrackingDirectLink = (c: string, code: string) => {
+    const getTrackingDirectLink = (c: string, code: string, nfiscal?: string) => {
       const lowerC = (c || '').toLowerCase();
       if (lowerC.includes('melhor') || lowerC.includes('envio')) {
         return `https://melhorrastreio.com.br/rastreio/${code}`;
       }
       if (lowerC.includes('total')) {
-        return `https://totalconecta.totalexpress.com.br/rastreamento`;
+        const reid = TOTAL_EXPRESS_SENDER_ID || '86818';
+        const pedido = encodeURIComponent(code);
+        const nf = encodeURIComponent(nfiscal || code);
+        return `https://tracking.totalexpress.com.br/poupup_track.php?reid=${reid}&pedido=${pedido}&nfiscal=${nf}`;
       }
       return `https://www.siterastreio.com.br/${code}`;
     };
@@ -510,7 +513,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       error: 'Rastreio não encontrado no sistema automático.',
-      directLink: getTrackingDirectLink(carrier || shippingProvider || '', trimmedTracking || shipmentId || '')
+      directLink: getTrackingDirectLink(carrier || shippingProvider || '', trimmedTracking || shipmentId || '', invoiceNumber)
     }, { status: 404 });
 
   } catch (e: any) {
