@@ -375,8 +375,7 @@ async function trackTotalExpress(trackingNumber: string) {
         'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
       },
       body: JSON.stringify({
-        awbs: [trackingNumber],
-        comprovanteEntrega: false
+        awbs: [trackingNumber]
       })
     });
 
