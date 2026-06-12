@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
 import { getTotalExpressAuthHeader, TOTAL_EXPRESS_URL, TOTAL_EXPRESS_SENDER_ID, TOTAL_EXPRESS_SERVICE_TYPE } from '@/lib/totalexpress';
+import { generateTexLabelPdf } from '@/lib/tex-label';
+import { texLabelCache } from '@/lib/texLabelCache';
 
 const CORREIOS_USER = process.env.CORREIOS_USER;
 const CORREIOS_TOKEN = process.env.CORREIOS_ACCESS_CODE;
@@ -9,6 +11,8 @@ const CORREIOS_CONTRACT = process.env.CORREIOS_CONTRACT;
 
 // Map global para armazenar base64 da DACE temporariamente
 import { daceCache } from '@/lib/daceCache';
+
+const TEX_SERVICE_CODE: Record<number, string> = { 1: 'EXP', 2: 'ESP', 3: 'STD', 4: 'SXP', 5: 'PRM' };
 
 async function generateTotalExpressLabel(order: any, origin: any, destCpfCnpj: string, destCep: string, totalWeightKg: number) {
   const originCnpj = (origin.company_document || '').replace(/\D/g, '');
@@ -646,9 +650,37 @@ export async function POST(req: Request) {
 
     if (selectedOption.provider === 'Total Express') {
       const texData = await generateTotalExpressLabel(order, origin, destCpfCnpj, destCep, totalWeightKg);
+
+      let labelUrl: string | null = null;
+      try {
+        const serviceCode = TEX_SERVICE_CODE[TOTAL_EXPRESS_SERVICE_TYPE] || 'EXP';
+        const pdfBuffer = await generateTexLabelPdf({
+          awb:                texData.awb,
+          rota:               texData.rota,
+          serviceCode,
+          orderNumber:        order.invoiceNumber || order.id,
+          destCep,
+          senderName:         origin.name         || 'Cafe Fazenda Itaoca',
+          senderCity:         origin.city          || '',
+          senderState:        origin.state_abbr    || 'MG',
+          recipientName:      order.clientName,
+          recipientStreet:    order.addressDetails?.street      || '',
+          recipientNumber:    order.addressDetails?.number      || '',
+          recipientComplement:order.addressDetails?.complement  || '',
+          recipientDistrict:  order.addressDetails?.district    || '',
+          recipientCity:      order.addressDetails?.city        || '',
+          recipientState:     order.addressDetails?.state       || '',
+        });
+        texLabelCache.set(texData.awb, pdfBuffer);
+        setTimeout(() => texLabelCache.delete(texData.awb), 30 * 60 * 1000);
+        labelUrl = `/api/shipping/label/download?tipo=tex&token=${encodeURIComponent(texData.awb)}`;
+      } catch (pdfErr) {
+        console.error('Erro ao gerar PDF etiqueta TEX:', pdfErr);
+      }
+
       return NextResponse.json({
         success: true,
-        labelUrl: null, // endpoint de impressão pendente
+        labelUrl,
         trackingNumber: texData.awb,
         rota: texData.rota,
         shippingProvider: 'totalexpress',

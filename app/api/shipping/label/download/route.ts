@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
 import { daceCache } from '@/lib/daceCache';
+import { texLabelCache } from '@/lib/texLabelCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,20 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const idRecibo = searchParams.get('idRecibo');
   const tipo = searchParams.get('tipo') || 'rotulo';
+
+  // Handler TEX — etiqueta PDF gerada localmente, armazenada em texLabelCache
+  if (tipo === 'tex') {
+    const token = searchParams.get('token');
+    if (!token) return NextResponse.json({ error: 'Token não informado.' }, { status: 400 });
+    const pdfBuffer = texLabelCache.get(token);
+    if (!pdfBuffer) return NextResponse.json({ error: 'Etiqueta TEX não encontrada ou expirada (30 min).' }, { status: 404 });
+    return new Response(new Uint8Array(pdfBuffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="etiqueta-tex-${token}.pdf"`
+      }
+    });
+  }
 
   // Handler especial para DACE - base64 ja em memoria
   if (tipo === 'dce') {
