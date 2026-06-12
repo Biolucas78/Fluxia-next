@@ -449,10 +449,10 @@ export async function POST(req: Request) {
         return `https://melhorrastreio.com.br/rastreio/${code}`;
       }
       if (lowerC.includes('total')) {
-        const reid = TOTAL_EXPRESS_SENDER_ID || '86818';
-        const pedido = encodeURIComponent(code);
+        const reid = TOTAL_EXPRESS_SENDER_ID || '65818';
+        const ref = encodeURIComponent(nfiscal || code); // pedido = invoiceNumber (referência que enviamos ao criar etiqueta)
         const nf = encodeURIComponent(nfiscal || code);
-        return `https://tracking.totalexpress.com.br/poupup_track.php?reid=${reid}&pedido=${pedido}&nfiscal=${nf}`;
+        return `https://tracking.totalexpress.com.br/poupup_track.php?reid=${reid}&pedido=${ref}&nfiscal=${nf}`;
       }
       return `https://www.siterastreio.com.br/${code}`;
     };
