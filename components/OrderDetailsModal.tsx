@@ -489,8 +489,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         toast.error(
           <div className="flex flex-col gap-2">
             <p>{msg}</p>
-            <a href={link} target="_blank" rel="noopener noreferrer" className="text-white underline font-bold">
-              Rastrear no {siteLabel}
+            <a href={link} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-bold hover:text-blue-800">
+              Rastrear no {siteLabel} →
             </a>
           </div>,
           { duration: 6000 }
