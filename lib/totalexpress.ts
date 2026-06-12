@@ -17,12 +17,20 @@ export function getTotalExpressApiAuthHeader(): string {
   if (!TOTAL_EXPRESS_API_USER || !TOTAL_EXPRESS_API_PASSWORD) {
     throw new Error('Credenciais API Total Express não configuradas (TOTAL_EXPRESS_API_USER / TOTAL_EXPRESS_API_PASSWORD)');
   }
-  // TEX exige formato não-padrão "Basic Auth <base64>" — confirmado via debug
+  // TEX exige formato não-padrão "Basic Auth <base64>" — confirmado via debug (endpoint SOAP de frete)
   return `Basic Auth ${Buffer.from(`${TOTAL_EXPRESS_API_USER}:${TOTAL_EXPRESS_API_PASSWORD}`).toString('base64')}`;
 }
 
+export function getTotalExpressLegacyTrackingAuthHeader(): string {
+  if (!TOTAL_EXPRESS_API_USER || !TOTAL_EXPRESS_API_PASSWORD) {
+    throw new Error('Credenciais API Total Express não configuradas (TOTAL_EXPRESS_API_USER / TOTAL_EXPRESS_API_PASSWORD)');
+  }
+  // Endpoint legado de tracking (edi.totalexpress.com.br) usa Basic padrão
+  return `Basic ${Buffer.from(`${TOTAL_EXPRESS_API_USER}:${TOTAL_EXPRESS_API_PASSWORD}`).toString('base64')}`;
+}
+
 export const TOTAL_EXPRESS_URL = (process.env.TOTAL_EXPRESS_URL || 'https://apis.totalexpress.com.br').replace(/\/$/, '');
-// remetenteId: 86818 (CAFE ITAOCA B2B Parcel)
-export const TOTAL_EXPRESS_SENDER_ID = process.env.TOTAL_EXPRESS_SENDER_ID || '';
+// remetenteId: 65818 (Café Fazenda Itaoca — login cafeitao65818)
+export const TOTAL_EXPRESS_SENDER_ID = process.env.TOTAL_EXPRESS_SENDER_ID || '65818';
 // servicoTipo: 1 = Expresso (confirmado pela Total Express)
 export const TOTAL_EXPRESS_SERVICE_TYPE = parseInt(process.env.TOTAL_EXPRESS_SERVICE_TYPE || '1', 10);

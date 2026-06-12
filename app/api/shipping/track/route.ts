@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
-import { getTotalExpressApiAuthHeader, TOTAL_EXPRESS_URL } from '@/lib/totalexpress';
+import { getTotalExpressLegacyTrackingAuthHeader, TOTAL_EXPRESS_SENDER_ID } from '@/lib/totalexpress';
 
 const MELHOR_ENVIO_TOKEN = process.env.MELHOR_ENVIO_TOKEN;
 const MELHOR_ENVIO_URL = (process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br')
@@ -358,31 +358,24 @@ async function trackTotalExpress(trackingNumber: string) {
 
   let authHeader: string;
   try {
-    authHeader = getTotalExpressApiAuthHeader();
+    authHeader = getTotalExpressLegacyTrackingAuthHeader();
   } catch (e: any) {
     console.error('Total Express: credenciais não configuradas —', e.message);
     return null;
   }
 
+  const senderId = TOTAL_EXPRESS_SENDER_ID;
+
   try {
-    // Envia o AWB como recebido — TEX é case-sensitive (termina em 'tx' minúsculo)
-    const response = await fetch(`${TOTAL_EXPRESS_URL}/ics-tracking-encomenda-lv/v1/tracking`, {
+    const response = await fetch('https://edi.totalexpress.com.br/previsao_entrega_atualizada.php', {
       method: 'POST',
       headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'User-Agent': 'CoffeeCRM (biolucas@gmail.com)'
       },
-      body: JSON.stringify({
-        awbs: [trackingNumber]
-      })
+      body: JSON.stringify({ remetenteId: senderId, awb: trackingNumber })
     });
-
-    if (response.status === 404) {
-      console.warn(`Total Express: AWB ${trackingNumber} não encontrado (404)`);
-      return null;
-    }
 
     if (!response.ok) {
       const errText = await response.text();
@@ -391,36 +384,33 @@ async function trackTotalExpress(trackingNumber: string) {
     }
 
     const data = await response.json();
-    console.log('Total Express tracking raw:', JSON.stringify(data).substring(0, 600));
+    console.log('Total Express tracking:', JSON.stringify(data).substring(0, 300));
 
-    const encomendas = data.data || data.encomendas || [];
-    const encomenda = Array.isArray(encomendas) ? encomendas[0] : encomendas;
-
-    if (!encomenda) {
-      console.warn('Total Express: Nenhum registro para', trackingNumber);
+    const statusList: any[] = data.detalhes?.statusDeEncomenda || [];
+    if (!statusList.length) {
+      console.warn('Total Express: nenhum status para', trackingNumber);
       return null;
     }
 
-    const eventos: any[] = encomenda.ocorrencias || encomenda.eventos || encomenda.historico || [];
+    // statusDeEncomenda vem em ordem cronológica (mais antigo → mais recente)
+    const lastStatus = statusList[statusList.length - 1];
+    const isDelivered = lastStatus?.statusid === '1' ||
+      String(lastStatus?.status || '').toUpperCase().includes('ENTREGA REALIZADA');
 
-    const history = eventos.map((e: any) => ({
-      status: e.descricao || e.status || e.titulo || 'Em trânsito',
-      message: e.complemento || e.detalhe || e.descricao || e.status || '',
-      date: e.data || e.dataHora || e.dtHr || e.created_at,
-      location: [e.cidade, e.uf].filter(Boolean).join('/') || e.local || e.unidade || ''
+    const history = [...statusList].reverse().map((e: any) => ({
+      status: e.status || 'Em trânsito',
+      message: e.status || 'Em trânsito',
+      date: e.data,
+      location: ''
     }));
 
-    const lastStatus = encomenda.status || encomenda.situacao || history[0]?.status || 'Em trânsito';
-    const isDelivered =
-      String(lastStatus).toUpperCase().includes('ENTREGUE') ||
-      String(lastStatus).toUpperCase().includes('DELIVERED');
-
     return {
-      status: lastStatus,
-      message: history[0]?.message || String(lastStatus),
+      status: lastStatus?.status || 'Em trânsito',
+      message: lastStatus?.status || 'Em trânsito',
       history,
       delivered: isDelivered,
-      deliveryDate: encomenda.dataEntrega || encomenda.dtEntrega || encomenda.previsaoEntrega || null
+      deliveryDate: data.detalhes?.dataPrev?.PrevEntregaAtualizada ||
+                    data.detalhes?.dataPrev?.PrevEntrega || null
     };
   } catch (e) {
     console.error('Total Express tracking error:', e);
