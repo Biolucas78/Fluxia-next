@@ -873,6 +873,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
             destinationCep,
             weight: totalWeightG,
             boxDimensions: targetOrder.boxDimensions,
+            insuranceValue: targetOrder.insuranceValue || targetOrder.invoiceValue,
           })
         })
       ]);
@@ -892,12 +893,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
               price: q.price,
               currency: 'BRL',
               deliveryTime: q.deliveryTime,
+              delivery_time: q.delivery_time,
               error: null,
-              company: { name: q.name, picture: "https://totalexpress.com.br/images/logo.png" },
+              company: q.company || { name: 'Total Express', picture: '/images/total-express-logo.svg' },
             } as any));
           }
         } catch (_) {}
       }
+      quotes.sort((a, b) => (a.price || 0) - (b.price || 0));
       onUpdateOrder({ ...targetOrder, shippingQuote: quotes });
     } catch (err: any) {
       setQuoteError(err.message);

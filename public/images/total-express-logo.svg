@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80">
+  <!-- TOTAL em vermelho, negrito, levemente itálico -->
+  <text x="10" y="52" font-family="Arial Black,Arial,sans-serif" font-size="46" font-weight="900"
+        fill="#D62B2B" font-style="italic" letter-spacing="-1">TOTAL</text>
+  <!-- express em azul escuro -->
+  <text x="112" y="68" font-family="Arial,sans-serif" font-size="20" font-weight="400"
+        fill="#1B2A6B" letter-spacing="0.5">express</text>
+  <!-- Arco azul sob o texto -->
+  <path d="M8 62 Q100 82 192 62" stroke="#1B2A6B" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+</svg>

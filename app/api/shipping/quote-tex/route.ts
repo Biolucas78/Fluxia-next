@@ -124,7 +124,7 @@ export async function POST(req: Request) {
       delivery_time: prazo,
       company: {
         name: 'Total Express',
-        picture: '/images/total-express-logo.png',
+        picture: '/images/total-express-logo.svg',
       },
       rota,
     }];
