@@ -183,7 +183,7 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
     { label: 'TP',   value: nfNum },
     { label: 'DT',   value: san(p.shipDate, 10) },
     { label: 'KG',   value: p.weightKg.toFixed(3) },
-    { label: 'PECA', value: '1/1' },
+    { label: 'PECA', value: `1/${p.volumes || 1}` },
   ];
   const rowH = 13;
 
