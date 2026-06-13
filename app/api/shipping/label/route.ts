@@ -654,22 +654,33 @@ export async function POST(req: Request) {
       let labelUrl: string | null = null;
       try {
         const serviceCode = TEX_SERVICE_CODE[TOTAL_EXPRESS_SERVICE_TYPE] || 'EXP';
+        const { todayShipDate } = await import('@/lib/tex-label');
         const pdfBuffer = await generateTexLabelPdf({
-          awb:                texData.awb,
-          rota:               texData.rota,
+          awb:                 texData.awb,
+          rota:                texData.rota,
           serviceCode,
-          orderNumber:        order.invoiceNumber || order.id,
+          orderNumber:         order.invoiceNumber || order.id,
           destCep,
-          senderName:         origin.name         || 'Cafe Fazenda Itaoca',
-          senderCity:         origin.city          || '',
-          senderState:        origin.state_abbr    || 'MG',
-          recipientName:      order.clientName,
-          recipientStreet:    order.addressDetails?.street      || '',
-          recipientNumber:    order.addressDetails?.number      || '',
-          recipientComplement:order.addressDetails?.complement  || '',
-          recipientDistrict:  order.addressDetails?.district    || '',
-          recipientCity:      order.addressDetails?.city        || '',
-          recipientState:     order.addressDetails?.state       || '',
+          // Sender
+          senderName:          origin.name         || 'Cafe Fazenda Itaoca',
+          senderStreet:        [origin.address || '', origin.number || ''].filter(Boolean).join(', '),
+          senderDistrict:      origin.district     || '',
+          senderCity:          origin.city         || '',
+          senderState:         origin.state_abbr   || 'MG',
+          senderCep:           (origin.postal_code || origin.zip || '').replace(/\D/g, ''),
+          senderCnpj:          (origin.company_document || '').replace(/\D/g, ''),
+          // Recipient
+          recipientName:       order.clientName,
+          recipientStreet:     order.addressDetails?.street      || '',
+          recipientNumber:     order.addressDetails?.number      || '',
+          recipientComplement: order.addressDetails?.complement  || '',
+          recipientDistrict:   order.addressDetails?.district    || '',
+          recipientCity:       order.addressDetails?.city        || '',
+          recipientState:      order.addressDetails?.state       || '',
+          // Info table
+          volumes:             1,
+          weightKg:            totalWeightKg,
+          shipDate:            todayShipDate(),
         });
         texLabelCache.set(texData.awb, pdfBuffer);
         setTimeout(() => texLabelCache.delete(texData.awb), 30 * 60 * 1000);
