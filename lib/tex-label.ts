@@ -151,7 +151,7 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
   page.drawRectangle({ x: rotaBoxX, y: rotaBoxY, width: rotaBoxW, height: 20, borderColor: BLACK, borderWidth: 1.2 });
   const rotaClean = san(p.rota, 40);
   const rotaTxtX  = rotaBoxX + rotaBoxW / 2 - rotaClean.length * 3.5;
-  t(p.rota, Math.max(rotaBoxX + 3, rotaTxtX), rotaBoxY + 4, 12, bold);
+  t(p.rota, Math.max(rotaBoxX + 3, rotaTxtX), rotaBoxY + 4, 13, bold);
 
   // CEP texto (mesma linha da Rota, lado esquerdo)
   t(cepFmt, M, 167, 8, bold);
@@ -161,7 +161,7 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // SEÇÃO 1 — Cabeçalho com informações (y: SEP3=245 → H=425)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const TOP_BAR_Y = Math.round(H - 18);  // ≈ 407
+  const TOP_BAR_Y = Math.round(H - M - 18);  // respeita margem superior ≈ 384
 
   // ── Coluna direita: caixa EXP + tabela de informações ─────
   const rightColX  = Math.round(W - M - 80);  // ≈ 180
@@ -193,12 +193,12 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
     page.drawRectangle({ x: rightColX, y: rowY, width: labelColW, height: rowH, color: BLACK, borderColor: BLACK, borderWidth: 0.3 });
     // Célula valor: borda somente
     page.drawRectangle({ x: rightColX + labelColW, y: rowY, width: valueColW, height: rowH, borderColor: BLACK, borderWidth: 0.3 });
-    t(row.label, rightColX + 2, rowY + 2.5, 7.5, bold, WHITE);   // +1 pt nos labels (era 6.5)
+    t(row.label, rightColX + 2, rowY + 2, 8, bold, WHITE);
     t(row.value, rightColX + labelColW + 3, rowY + 3, 7, regular); // valores mantêm 7 pt
   });
 
   // ── Coluna esquerda: remetente + destinatário ──────────────
-  let ly = TOP_BAR_Y - 12;   // começa logo abaixo da barra superior
+  let ly = Math.round(H - M - 6);  // começa dentro da margem superior
 
   t('REMETENTE:', M, ly, 7, bold);
   ly -= 11;
@@ -247,9 +247,9 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
   // ── Barra superior: sem "REMETENTE" (aparecia duplicado) ──
   // Lado esquerdo: vazio (branco)
   // Lado direito: fundo preto, "TOTAL EXPRESS" branco
-  const splitX = W * 0.5;
+  const splitX = rightColX;  // barra alinhada com a coluna direita
   page.drawRectangle({ x: splitX, y: TOP_BAR_Y, width: W - splitX, height: 18, color: BLACK });
-  t('TOTAL EXPRESS', splitX + 6, TOP_BAR_Y + 5, 8, bold, WHITE);
+  t('TOTAL EXPRESS', splitX + 6, TOP_BAR_Y + 4, 10, bold, WHITE);
 
   // Borda externa
   page.drawRectangle({ x: 0, y: 0, width: W, height: H, borderColor: BLACK, borderWidth: 1 });
