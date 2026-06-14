@@ -121,7 +121,9 @@ export default function ImportarBlingPage() {
       const res = await fetch('/api/bling/importar-pedidos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataInicial, dataFinal, dryRun }),
+        // apenasNovos:true garante que NENHUM pedido existente no Fluxia será alterado.
+        // Apenas blingOrderId é usado como deduplicação (evitar re-importar o mesmo pedido).
+        body: JSON.stringify({ dataInicial, dataFinal, dryRun, apenasNovos: true }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Erro desconhecido');
@@ -188,11 +190,16 @@ export default function ImportarBlingPage() {
           </div>
 
           {/* Info box */}
-          <div className="bg-indigo-950/50 border border-indigo-800/40 rounded-lg px-4 py-3 text-xs text-indigo-300 mb-5 space-y-1">
-            <p>• Pedidos <strong>cancelados</strong> no Bling são ignorados automaticamente.</p>
-            <p>• Pedidos que já existem no Fluxia são <strong>atualizados</strong> (apenas campos faltantes), sem duplicar.</p>
-            <p>• Novos pedidos são criados como <strong>Entregues</strong>, visíveis no Kanban e computados no Dashboard e Financeiro.</p>
-            <p>• Nota fiscal é vinculada automaticamente quando disponível no Bling.</p>
+          <div className="bg-green-950/40 border border-green-800/50 rounded-lg px-4 py-3 text-xs text-green-300 mb-3 space-y-1">
+            <p className="font-semibold text-green-200">Modo seguro ativo — pedidos existentes no Fluxia não serão alterados.</p>
+            <p>• Nenhum pedido já existente será tocado (notas, boletos e dados permanecem intactos).</p>
+            <p>• Apenas <strong>blingOrderId</strong> é checado: se o mesmo pedido Bling já foi importado antes, é ignorado. Caso contrário, é criado como novo.</p>
+          </div>
+          <div className="bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 text-xs text-gray-400 mb-5 space-y-1">
+            <p>• Pedidos <strong>cancelados</strong> no Bling são ignorados.</p>
+            <p>• Novos pedidos chegam como <strong>Entregues</strong> no Kanban, computados no Dashboard e Financeiro.</p>
+            <p>• Nota fiscal vinculada automaticamente quando disponível no Bling.</p>
+            <p>• Boleto Sicoob vinculado automaticamente quando <code className="bg-gray-700 px-1 rounded">seuNumero</code> coincide com número da NF.</p>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
@@ -253,7 +260,7 @@ export default function ImportarBlingPage() {
                 {[
                   { label: 'Bling (ativos)', value: result.resumo.blingAtivos },
                   { label: 'Novos a criar', value: result.resumo.criados, highlight: true },
-                  { label: 'Já existentes (atualiz.)', value: result.resumo.matched },
+                  { label: 'Já importados (ignorados)', value: result.resumo.matched },
                   { label: 'Erros', value: result.resumo.erros, warn: result.resumo.erros > 0 },
                 ].map(({ label, value, highlight, warn }) => (
                   <div key={label} className={`rounded-xl px-3 py-2 text-center ${highlight ? 'bg-indigo-500/20' : warn && value > 0 ? 'bg-red-500/20' : 'bg-white/5'}`}>
@@ -287,11 +294,11 @@ export default function ImportarBlingPage() {
               ))}
             </CollapseSection>
 
-            {/* Matched */}
+            {/* Matched — com apenasNovos só aparecem por blingOrderId (re-importação) */}
             <CollapseSection
-              title="Já existem no Fluxia (serão atualizados)"
+              title="Já importados antes — serão ignorados"
               count={result.matched.length}
-              color="bg-gray-800/50 border-gray-700 text-gray-300"
+              color="bg-gray-800/50 border-gray-700 text-gray-400"
               icon={User}
             >
               {result.matched.map((o, i) => (
@@ -299,15 +306,7 @@ export default function ImportarBlingPage() {
                   <span className="text-gray-500 shrink-0">#{o.blingNumero}</span>
                   <span className="font-medium flex-1">{o.cliente}</span>
                   <span className="text-gray-400">{fmt(o.valor)}</span>
-                  <span className="text-gray-500 text-xs">{o.matchType}</span>
-                  {o.updates && o.updates.length > 0 && (
-                    <span className="text-yellow-400 text-xs">{o.updates.join(', ')}</span>
-                  )}
-                  {o.temNF && (
-                    <span className="inline-flex items-center gap-1 bg-green-900/40 text-green-300 px-1.5 py-0.5 rounded text-xs">
-                      <FileText className="w-3 h-3" /> NF
-                    </span>
-                  )}
+                  <span className="text-gray-600 text-xs italic">já importado (blingOrderId)</span>
                 </div>
               ))}
             </CollapseSection>

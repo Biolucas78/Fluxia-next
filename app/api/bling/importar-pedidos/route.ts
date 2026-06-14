@@ -136,7 +136,8 @@ function montarEndereco(etiqueta: any, contatoGeral?: any) {
   };
 }
 
-function findFluxiaOrder(blingOrder: any, allFluxiaOrders: any[], usedFluxiaIds: Set<string>) {
+// apenasNovos=true: só usa blingOrderId como deduplicação — nunca toca pedidos existentes por CPF/CNPJ/nome
+function findFluxiaOrder(blingOrder: any, allFluxiaOrders: any[], usedFluxiaIds: Set<string>, apenasNovos = false) {
   const blingId = String(blingOrder.id);
   const numeroLoja = blingOrder.numeroLoja || '';
   const doc = (blingOrder.contato?.numeroDocumento || '').replace(/\D/g, '');
@@ -150,15 +151,21 @@ function findFluxiaOrder(blingOrder: any, allFluxiaOrders: any[], usedFluxiaIds:
     return { order, matchType };
   };
 
-  if (numeroLoja) {
+  // Estratégia 1: numeroLoja == id do pedido Fluxia (pedido criado via integração)
+  if (!apenasNovos && numeroLoja) {
     const byLoja = allFluxiaOrders.find(o => o.id === numeroLoja);
     const r = tryReturn(byLoja, 'numeroLoja');
     if (r) return r;
   }
 
+  // Estratégia 2: blingOrderId já registrado — único match seguro para re-importação
   const byBlingId = allFluxiaOrders.find(o => String(o.blingOrderId) === blingId);
   const r2 = tryReturn(byBlingId, 'blingOrderId');
   if (r2) return r2;
+
+  // As estratégias abaixo são desabilitadas em modo apenasNovos para evitar
+  // que pedidos de meses anteriores sejam confundidos com pedidos de outros meses do mesmo cliente
+  if (apenasNovos) return null;
 
   if (doc.length === 14) {
     const byCnpj = allFluxiaOrders.filter(o => !usedFluxiaIds.has(o.id) && (o.cnpj || '').replace(/\D/g, '') === doc);
@@ -206,6 +213,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const dryRun = body.dryRun === true;
+    // apenasNovos=true: desativa match por CPF/CNPJ/nome — apenas blingOrderId evita duplicata
+    // Use sempre true para importar pedidos históricos de meses anteriores
+    const apenasNovos: boolean = body.apenasNovos !== false; // padrão true
     const dataInicial = body.dataInicial || '2026-03-01';
     const dataFinal = body.dataFinal || new Date().toISOString().substring(0, 10);
 
@@ -278,7 +288,7 @@ export async function POST(request: Request) {
           nfData = await fetchNFDetails(String(blingOrder.notaFiscal.id), headers);
         }
 
-        const match = findFluxiaOrder(blingOrder, allFluxiaOrders, usedFluxiaIds);
+        const match = findFluxiaOrder(blingOrder, allFluxiaOrders, usedFluxiaIds, apenasNovos);
 
         if (match) {
           const { order: fluxiaOrder, matchType } = match;
