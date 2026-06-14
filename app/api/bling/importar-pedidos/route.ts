@@ -325,9 +325,11 @@ export async function POST(request: Request) {
 
         } else {
           const novoId = gerarId();
+          const createdAtISO = `${blingOrder.data}T12:00:00.000Z`;
           const novoPedido: any = {
             id: novoId,
             clientName: contato.nome || 'Cliente Bling',
+            tradeName: contatoCompleto?.fantasia || contato?.fantasia || undefined,
             phone: telefone,
             email: email,
             cpf: doc.length === 11 ? doc : undefined,
@@ -336,22 +338,28 @@ export async function POST(request: Request) {
             addressDetails: addressDetails || undefined,
             products,
             invoiceValue: nfData?.valorNota || blingOrder.total || 0,
-            origin: origem,
+            origin: origem !== 'whatsapp' ? origem : undefined,
             paymentMethod: formaPagamento,
             paymentStatus: 'pago',
+            paymentConfirmedManually: true,
             paymentDate: blingOrder.data,
+            hasInvoice: false,
+            hasBoleto: false,
+            hasOrderDocument: true,
             status: 'entregue',
-            archived: true,
-            archivedAt: new Date().toISOString(),
             blingOrderId: String(blingOrder.id),
             blingOrderNumero: blingOrder.numero,
-            createdAt: `${blingOrder.data}T12:00:00.000Z`,
+            createdAt: createdAtISO,
             updatedAt: new Date().toISOString(),
-            statusHistory: [{ action: 'Importado do Bling', details: `Pedido Bling #${blingOrder.numero}`, timestamp: new Date().toISOString() }],
+            statusHistory: [
+              { status: 'entregue', timestamp: createdAtISO },
+              { action: 'Importado do Bling', details: `Pedido Bling #${blingOrder.numero}`, timestamp: new Date().toISOString() },
+            ],
           };
 
           if (nfData) {
             novoPedido.hasInvoice = true;
+            novoPedido.invoiceLinked = true;
             novoPedido.invoiceNumber = String(nfData.numero || '');
             novoPedido.invoiceKey = nfData.chaveAcesso || '';
             novoPedido.invoiceValue = nfData.valorNota || blingOrder.total;
