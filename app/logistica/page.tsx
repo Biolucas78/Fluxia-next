@@ -319,47 +319,232 @@ export default function LogisticaPage() {
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           <div className="max-w-6xl mx-auto space-y-6">
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="size-10 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-                    <Package className="size-5 text-amber-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Aguardando Coleta</p>
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                      {logisticsOrders.filter(o => o.status === 'caixa_montada').length}
-                    </h3>
-                  </div>
+            {/* Quick Quote Tool */}
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="size-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center">
+                  <Calculator className="size-4 text-indigo-600" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Cotação Rápida de Frete</h4>
+                  <p className="text-[10px] text-slate-500">Simule um frete em todas as transportadoras rapidamente</p>
                 </div>
               </div>
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="size-10 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                    <Truck className="size-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Em Trânsito</p>
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                      {logisticsOrders.filter(o => o.status === 'enviado').length}
-                    </h3>
-                  </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                <div className="col-span-2 md:col-span-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">CEP de Destino *</label>
+                  <input
+                    type="text"
+                    placeholder="00000-000"
+                    value={quoteCep}
+                    onChange={e => setQuoteCep(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleQuickQuote()}
+                    maxLength={9}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Altura (cm)</label>
+                  <input
+                    type="number"
+                    value={quoteHeight}
+                    onChange={e => setQuoteHeight(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Largura (cm)</label>
+                  <input
+                    type="number"
+                    value={quoteWidth}
+                    onChange={e => setQuoteWidth(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Comprimento (cm)</label>
+                  <input
+                    type="number"
+                    value={quoteLength}
+                    onChange={e => setQuoteLength(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                  />
                 </div>
               </div>
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="size-10 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                    <MapPin className="size-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Entregues</p>
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                      {logisticsOrders.filter(o => o.status === 'entregue').length}
-                    </h3>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Peso (kg)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={quoteWeightKg}
+                    onChange={e => setQuoteWeightKg(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Valor do Pedido (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={quoteValue}
+                    onChange={e => setQuoteValue(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Origem</label>
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 h-[42px]">
+                    <button
+                      onClick={() => setQuoteOrigin('CRV')}
+                      className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${quoteOrigin === 'CRV' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
+                    >
+                      CRV
+                    </button>
+                    <button
+                      onClick={() => setQuoteOrigin('BH')}
+                      className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${quoteOrigin === 'BH' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
+                    >
+                      BH
+                    </button>
                   </div>
                 </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={() => handleQuickQuote()}
+                    disabled={isQuoting || !quoteCep}
+                    className="w-full py-2.5 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20 text-sm"
+                  >
+                    {isQuoting ? <Loader2 className="size-4 animate-spin" /> : <Calculator className="size-4" />}
+                    {isQuoting ? 'Cotando...' : 'Cotar Frete'}
+                  </button>
+                </div>
               </div>
+            </div>
+
+            {/* Quick Tracking Tool */}
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <RefreshCw className="size-4 text-primary" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Rastreio Rápido</h4>
+                  <p className="text-[10px] text-slate-500">Cole um código de rastreio para verificar o status em qualquer transportadora</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Cole o código de rastreio..."
+                  value={testTracking}
+                  onChange={(e) => { setTestTracking(e.target.value); setTrackingResult(null); }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleQuickTracking()}
+                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                />
+                <button
+                  onClick={handleQuickTracking}
+                  disabled={isTesting || !testTracking}
+                  className="bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isTesting ? <Loader2 className="size-4 animate-spin" /> : 'Rastrear'}
+                </button>
+              </div>
+
+              {trackingResult && !trackingResult.error && (
+                <div className="mt-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      {trackingResult.status}
+                      {trackingResult.delivered && <CheckCircle2 className="size-4 text-emerald-500" />}
+                    </p>
+                    {trackingResult.trackingUrl && (
+                      <a
+                        href={trackingResult.trackingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-primary hover:underline font-bold flex items-center gap-1"
+                      >
+                        Ver detalhes <ExternalLink className="size-3" />
+                      </a>
+                    )}
+                  </div>
+                  {trackingResult.history?.[0] && (
+                    <div className="flex gap-2 mt-2">
+                      <div className="size-2 rounded-full bg-primary mt-1.5 shrink-0" />
+                      <div>
+                        <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-snug">{trackingResult.history[0].message}</p>
+                        {trackingResult.history[0].location && (
+                          <p className="text-[10px] text-slate-400 italic">{trackingResult.history[0].location}</p>
+                        )}
+                        <p className="text-[9px] text-slate-400 mt-0.5">
+                          {new Date(trackingResult.history[0].date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {trackingResult?.error && (
+                <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-xl p-3">
+                  <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">{trackingResult.error}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Stats — clicáveis para filtrar */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                {
+                  status: 'caixa_montada',
+                  label: 'Aguardando Coleta',
+                  count: orders.filter(o => ['caixa_montada', 'enviado', 'entregue'].includes(o.status) && o.status === 'caixa_montada').length,
+                  icon: <Package className="size-5 text-amber-600" />,
+                  bg: 'bg-amber-50 dark:bg-amber-900/20',
+                  ring: 'ring-amber-400',
+                },
+                {
+                  status: 'enviado',
+                  label: 'Em Trânsito',
+                  count: orders.filter(o => o.status === 'enviado').length,
+                  icon: <Truck className="size-5 text-blue-600" />,
+                  bg: 'bg-blue-50 dark:bg-blue-900/20',
+                  ring: 'ring-blue-400',
+                },
+                {
+                  status: 'entregue',
+                  label: 'Entregues',
+                  count: orders.filter(o => o.status === 'entregue').length,
+                  icon: <MapPin className="size-5 text-emerald-600" />,
+                  bg: 'bg-emerald-50 dark:bg-emerald-900/20',
+                  ring: 'ring-emerald-400',
+                },
+              ].map(({ status, label, count, icon, bg, ring }) => (
+                <button
+                  key={status}
+                  onClick={() => setFilterStatus(prev => prev === status ? 'all' : status)}
+                  className={`bg-white dark:bg-slate-900 p-6 rounded-3xl border shadow-sm text-left transition-all hover:shadow-md ${
+                    filterStatus === status
+                      ? `border-transparent ring-2 ${ring}`
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`size-10 rounded-2xl flex items-center justify-center ${bg}`}>
+                      {icon}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{label}</p>
+                      <h3 className="text-2xl font-black text-slate-900 dark:text-white">{count}</h3>
+                    </div>
+                  </div>
+                  {filterStatus === status && (
+                    <p className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Clique para ver todos</p>
+                  )}
+                </button>
+              ))}
             </div>
 
             {/* Filters */}
@@ -406,7 +591,22 @@ export default function LogisticaPage() {
             </div>
 
             {/* Orders List */}
-            <div className="space-y-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Pedidos em Logística
+                  <span className="ml-2 text-xs font-normal text-slate-500">({logisticsOrders.length})</span>
+                </h4>
+                {filterStatus !== 'all' && (
+                  <button
+                    onClick={() => setFilterStatus('all')}
+                    className="text-[10px] font-bold text-primary hover:underline"
+                  >
+                    Ver todos
+                  </button>
+                )}
+              </div>
+              <div className="p-4 space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
               {logisticsOrders.map((order) => {
                 const o = order as any;
                 const lastEvent = o.trackingHistory?.[0];
@@ -589,185 +789,11 @@ export default function LogisticaPage() {
               })}
 
               {logisticsOrders.length === 0 && (
-                <div className="bg-white dark:bg-slate-900 p-12 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">
+                <div className="py-12 text-center">
                   <Package className="size-10 text-slate-300 mx-auto mb-3" />
                   <p className="text-sm text-slate-500 italic">Nenhum pedido em logística no momento.</p>
                 </div>
               )}
-            </div>
-
-            {/* Quick Tracking Tool */}
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <RefreshCw className="size-4 text-primary" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Rastreio Rápido</h4>
-                  <p className="text-[10px] text-slate-500">Cole um código de rastreio para verificar o status em qualquer transportadora</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Cole o código de rastreio..."
-                  value={testTracking}
-                  onChange={(e) => { setTestTracking(e.target.value); setTrackingResult(null); }}
-                  onKeyDown={(e) => e.key === 'Enter' && handleQuickTracking()}
-                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all"
-                />
-                <button
-                  onClick={handleQuickTracking}
-                  disabled={isTesting || !testTracking}
-                  className="bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2"
-                >
-                  {isTesting ? <Loader2 className="size-4 animate-spin" /> : 'Rastrear'}
-                </button>
-              </div>
-
-              {trackingResult && !trackingResult.error && (
-                <div className="mt-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                      {trackingResult.status}
-                      {trackingResult.delivered && <CheckCircle2 className="size-4 text-emerald-500" />}
-                    </p>
-                    {trackingResult.trackingUrl && (
-                      <a
-                        href={trackingResult.trackingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] text-primary hover:underline font-bold flex items-center gap-1"
-                      >
-                        Ver detalhes <ExternalLink className="size-3" />
-                      </a>
-                    )}
-                  </div>
-                  {trackingResult.history?.[0] && (
-                    <div className="flex gap-2 mt-2">
-                      <div className="size-2 rounded-full bg-primary mt-1.5 shrink-0" />
-                      <div>
-                        <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-snug">{trackingResult.history[0].message}</p>
-                        {trackingResult.history[0].location && (
-                          <p className="text-[10px] text-slate-400 italic">{trackingResult.history[0].location}</p>
-                        )}
-                        <p className="text-[9px] text-slate-400 mt-0.5">
-                          {new Date(trackingResult.history[0].date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              {trackingResult?.error && (
-                <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-xl p-3">
-                  <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">{trackingResult.error}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Quick Quote Tool */}
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="size-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center">
-                  <Calculator className="size-4 text-indigo-600" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Cotação Rápida de Frete</h4>
-                  <p className="text-[10px] text-slate-500">Simule um frete em todas as transportadoras rapidamente</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                <div className="col-span-2 md:col-span-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">CEP de Destino *</label>
-                  <input
-                    type="text"
-                    placeholder="00000-000"
-                    value={quoteCep}
-                    onChange={e => setQuoteCep(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleQuickQuote()}
-                    maxLength={9}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Altura (cm)</label>
-                  <input
-                    type="number"
-                    value={quoteHeight}
-                    onChange={e => setQuoteHeight(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Largura (cm)</label>
-                  <input
-                    type="number"
-                    value={quoteWidth}
-                    onChange={e => setQuoteWidth(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Comprimento (cm)</label>
-                  <input
-                    type="number"
-                    value={quoteLength}
-                    onChange={e => setQuoteLength(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Peso (kg)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={quoteWeightKg}
-                    onChange={e => setQuoteWeightKg(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Valor do Pedido (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={quoteValue}
-                    onChange={e => setQuoteValue(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Origem</label>
-                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 h-[42px]">
-                    <button
-                      onClick={() => setQuoteOrigin('CRV')}
-                      className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${quoteOrigin === 'CRV' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
-                    >
-                      CRV
-                    </button>
-                    <button
-                      onClick={() => setQuoteOrigin('BH')}
-                      className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${quoteOrigin === 'BH' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
-                    >
-                      BH
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-end">
-                  <button
-                    onClick={() => handleQuickQuote()}
-                    disabled={isQuoting || !quoteCep}
-                    className="w-full py-2.5 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20 text-sm"
-                  >
-                    {isQuoting ? <Loader2 className="size-4 animate-spin" /> : <Calculator className="size-4" />}
-                    {isQuoting ? 'Cotando...' : 'Cotar Frete'}
-                  </button>
-                </div>
               </div>
             </div>
 
