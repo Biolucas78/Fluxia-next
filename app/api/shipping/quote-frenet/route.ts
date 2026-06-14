@@ -25,7 +25,9 @@ export async function POST(req: Request) {
         originType === 'BH' ? (process.env.ORIGIN_BH_JSON || '{}') : (process.env.ORIGIN_CRV_JSON || '{}')
       );
       originCep = (originJson.postal_code || originJson.zip || '').replace(/\D/g, '');
-      sellerDoc = (originJson.company_document || originJson.document || '').replace(/\D/g, '');
+      const jsonDoc = (originJson.company_document || originJson.document || '').replace(/\D/g, '');
+      const envDoc = (process.env.ORIGIN_DOCUMENT || '').replace(/\D/g, '');
+      sellerDoc = jsonDoc || envDoc;
     } catch (e) {
       console.error('Frenet: erro ao parsear JSON de origem', e);
     }
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
     });
 
     const responseText = await response.text();
-    console.log('Frenet Legacy Quote:', responseText.substring(0, 600));
+    console.log('Frenet Legacy Quote (sellerDoc length:', sellerDoc.length, '):', responseText.substring(0, 600));
 
     if (!response.ok) {
       return NextResponse.json({ error: `Frenet: HTTP ${response.status}` }, { status: 502 });
