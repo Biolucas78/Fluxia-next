@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { getValidBlingTokenServer } from '@/lib/bling-server';
 import { fetchWithRetry } from '@/lib/bling-utils';
+import { getSicoobToken, makeSicoobRequest, getSicoobCert } from '@/lib/sicoob';
 
 const BLING_BASE = 'https://api.bling.com.br/Api/v3';
 const SITUACOES_CANCELADAS = [12, 11, 10];
@@ -371,10 +372,43 @@ export async function POST(request: Request) {
             }
           }
 
+          // Tentar vincular boleto Sicoob via seuNumero == invoiceNumber (apenas na importação real)
+          if (!dryRun && novoPedido.paymentMethod === 'boleto' && novoPedido.invoiceNumber && doc) {
+            try {
+              const sicoobCert = getSicoobCert();
+              const sicoobToken = await getSicoobToken('boletos_consulta');
+              const numeroCliente = process.env.SICOOB_NUMERO_CLIENTE!;
+              const sicoobResult = await makeSicoobRequest(
+                {
+                  hostname: 'api.sicoob.com.br',
+                  port: 443,
+                  path: `/cobranca-bancaria/v3/pagadores/${doc}/boletos?numeroCliente=${numeroCliente}`,
+                  method: 'GET',
+                  headers: { 'Authorization': 'Bearer ' + sicoobToken },
+                },
+                null, sicoobCert.pfxBuffer, sicoobCert.certPassword
+              );
+              const sicoobBoletos = sicoobResult.body?.resultado || [];
+              if (Array.isArray(sicoobBoletos)) {
+                const invoiceNum = String(novoPedido.invoiceNumber).replace(/^0+/, '');
+                const boletoAchado = sicoobBoletos.find((b: any) =>
+                  String(b.seuNumero || '').replace(/^0+/, '') === invoiceNum
+                );
+                if (boletoAchado) {
+                  novoPedido.boletoNossoNumero = String(boletoAchado.nossoNumero);
+                  novoPedido.hasBoleto = true;
+                  novoPedido.boletoLinked = true;
+                }
+              }
+            } catch (sicoobErr: any) {
+              console.warn('[Importar Bling] Sicoob lookup falhou para', contato.nome, ':', sicoobErr.message);
+            }
+          }
+
           results.criados.push({
             blingId: blingOrder.id, blingNumero: blingOrder.numero,
             cliente: contato.nome, valor: blingOrder.total,
-            origem, temNF: !!nfData, produtos: products.length,
+            origem, temNF: !!nfData, temBoleto: !!novoPedido.boletoNossoNumero, produtos: products.length,
           });
 
           if (!dryRun) {
