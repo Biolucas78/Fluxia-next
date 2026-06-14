@@ -53,7 +53,7 @@ function getWhatsAppTrackingLink(
 }
 
 export default function LogisticaPage() {
-  const { orders, handleUpdateOrder, isLoaded } = useOrders();
+  const { activeOrders: orders, handleUpdateOrder, isLoaded } = useOrders();
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
