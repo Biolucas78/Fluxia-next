@@ -50,19 +50,25 @@ export async function POST(req: Request) {
       return NextResponse.json(cached.data);
     }
 
+    const shippingItem: any = {
+      Weight: weightKg,
+      Length: length,
+      Height: height,
+      Width: width,
+      Quantity: 1,
+    };
+    if (declaredValue > 0) {
+      shippingItem.InsuredDeclaredValue = declaredValue;
+    }
+
     const payload = {
       SellerCPFCNPJ: sellerDoc,
       ShipFrom: { Zipcode: originCep },
       ShipTo: { Zipcode: destCep },
-      ShippingItemArray: [{
-        Weight: weightKg,
-        Length: length,
-        Height: height,
-        Width: width,
-        Quantity: 1,
-        InsuredDeclaredValue: declaredValue.toFixed(2)
-      }]
+      ShippingItemArray: [shippingItem]
     };
+
+    console.log('Frenet payload:', JSON.stringify(payload));
 
     const response = await fetch(`${FRENET_LEGACY_URL}/shipping/quote`, {
       method: 'POST',
@@ -75,7 +81,7 @@ export async function POST(req: Request) {
     });
 
     const responseText = await response.text();
-    console.log('Frenet Legacy Quote (sellerDoc length:', sellerDoc.length, '):', responseText.substring(0, 600));
+    console.log('Frenet Legacy Quote:', responseText.substring(0, 600));
 
     if (!response.ok) {
       return NextResponse.json({ error: `Frenet: HTTP ${response.status}` }, { status: 502 });
