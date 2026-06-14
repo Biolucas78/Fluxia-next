@@ -418,8 +418,11 @@ async function generateCorreiosLabel(order: any, selectedOption: any, token: str
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const order = body.order;
+    const rawOrder = body.order;
     const selectedOption = body.selectedOption;
+    const withInsurance: boolean = body.withInsurance !== false;
+    // Se sem seguro, zera insuranceValue para que todas as transportadoras omitam o seguro
+    const order = withInsurance ? rawOrder : { ...rawOrder, insuranceValue: '0' };
 
     const destCpfCnpj = (order.cnpj || order.cpf || '').replace(/\D/g, '');
     if (!destCpfCnpj || (destCpfCnpj.length !== 11 && destCpfCnpj.length !== 14)) {
@@ -699,6 +702,137 @@ export async function POST(req: Request) {
       });
     }
 
+    if (selectedOption.provider === 'Frenet') {
+      const frenetToken = process.env.FRENET_TOKEN;
+      const frenetPartnerToken = process.env.FRENET_PARTNER_TOKEN;
+      const frenetOrdersUrl = (process.env.FRENET_ORDERS_URL || 'https://whitelabel.frenet.com.br/v1').replace(/\/$/, '');
+
+      if (!frenetToken || !frenetPartnerToken) {
+        return NextResponse.json({ error: 'Credenciais Frenet não configuradas.' }, { status: 500 });
+      }
+
+      const addrParts = order.address ? order.address.split(',') : [];
+      const safeStr = (v: any, fallback: string, max: number) =>
+        (typeof v === 'string' && v.trim() ? v.trim() : fallback).substring(0, max);
+
+      const orderValue = Math.max(1, parseFloat(order.insuranceValue || '0') || 1);
+      const products = (order.products || []).filter((p: any) => p.name);
+      const perItemValue = orderValue / (products.length || 1);
+
+      const oneclickPayload = [{
+        Order: {
+          Id: (order.invoiceNumber || order.id || String(Date.now())).substring(0, 50),
+          Value: orderValue,
+          Items: products.map((p: any) => ({
+            Name: (p.name || 'Produto').substring(0, 50),
+            Quantity: p.quantity || 1,
+            Value: perItemValue
+          })),
+          To: {
+            Name: order.clientName,
+            Email: order.email || '',
+            Document: destCpfCnpj,
+            Phone: (order.phone || '').replace(/\D/g, ''),
+            ZipCode: destCep,
+            Address: safeStr(order.addressDetails?.street || addrParts[0], 'Rua nao informada', 100),
+            Number: safeStr(order.addressDetails?.number || addrParts[1], 'SN', 20),
+            Complement: safeStr(order.addressDetails?.complement || addrParts[2], '', 50),
+            District: safeStr(order.addressDetails?.district || addrParts[3], 'Centro', 50),
+            City: safeStr(order.addressDetails?.city || addrParts[4], 'Cidade', 50),
+            State: safeStr(order.addressDetails?.state || '', 'SP', 2).replace(/[^A-Za-z]/g, '').toUpperCase() || 'SP'
+          },
+          From: {
+            Name: origin.name || 'Cafe Fazenda Itaoca',
+            Email: origin.email || 'contato@cafefazendaitaoca.com.br',
+            Document: (origin.company_document || origin.document || '').replace(/\D/g, ''),
+            Phone: (origin.phone || '').replace(/\D/g, ''),
+            ZipCode: (origin.postal_code || origin.zip || '').replace(/\D/g, ''),
+            Address: origin.address || 'Rua Padrao',
+            Number: origin.number || 'SN',
+            Complement: origin.complement || '',
+            District: origin.district || 'Centro',
+            City: origin.city || 'Conceicao do Rio Verde',
+            State: (origin.state_abbr || 'MG').toUpperCase()
+          },
+          ...(order.invoiceKey && order.invoiceKey.replace(/\D/g, '').length === 44 ? {
+            Invoice: { Key: order.invoiceKey.replace(/\D/g, '') }
+          } : {})
+        },
+        Volumes: [{
+          Weight: totalWeightKg,
+          Length: Math.max(16, order.boxDimensions?.length || 15),
+          Height: Math.max(2, order.boxDimensions?.height || 10),
+          Width: Math.max(11, order.boxDimensions?.width || 15),
+          DeclaredValue: orderValue
+        }],
+        Quotation: {
+          ShippingServiceCode: selectedOption.frenetServiceCode,
+          ShippingServiceName: selectedOption.frenetServiceName,
+          Carrier: selectedOption.frenetCarrier,
+          CarrierCode: selectedOption.frenetCarrierCode,
+          ShippingPrice: selectedOption.frenetShippingPrice || selectedOption.price,
+          DeliveryTime: selectedOption.delivery_time || 0,
+          SessionId: selectedOption.frenetSessionId
+        }
+      }];
+
+      console.log('Frenet oneclick payload:', JSON.stringify(oneclickPayload, null, 2));
+
+      const frenetRes = await fetch(`${frenetOrdersUrl}/shipments/oneclick`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'token': frenetToken,
+          'x-partner-token': frenetPartnerToken
+        },
+        body: JSON.stringify(oneclickPayload)
+      });
+
+      const frenetText = await frenetRes.text();
+      console.log('Frenet oneclick response:', frenetText.substring(0, 600));
+
+      let frenetData: any;
+      try {
+        frenetData = JSON.parse(frenetText);
+      } catch {
+        throw new Error('Resposta inválida da Frenet ao gerar etiqueta.');
+      }
+
+      if (!frenetRes.ok) {
+        const detail = frenetData?.Details?.[0];
+        if (detail?.Code === 3000) {
+          return NextResponse.json({
+            error: 'Saldo insuficiente na carteira Frenet.',
+            transactionUrl: frenetData?.TransactionUrl || null
+          }, { status: 402 });
+        }
+        const errMsg = frenetData?.Message || detail?.Message || `Frenet HTTP ${frenetRes.status}`;
+        throw new Error(errMsg);
+      }
+
+      // StatusBatch 2 = saldo insuficiente, retorna TransactionUrl para recarregar
+      if (frenetData.StatusBatch === 2) {
+        return NextResponse.json({
+          error: 'Saldo insuficiente na carteira Frenet.',
+          transactionUrl: frenetData.TransactionUrl || frenetData.Items?.[0]?.TransactionUrl || null
+        }, { status: 402 });
+      }
+
+      const item = frenetData?.Items?.[0];
+      if (!item) throw new Error('Frenet não retornou dados do envio.');
+
+      return NextResponse.json({
+        success: true,
+        labelUrl: item.LabelUrl || null,
+        trackingUrl: item.TrackingUrl || null,
+        declarationUrl: item.DeclarationUrl || null,
+        shipmentId: String(item.ShipmentId || ''),
+        trackingNumber: String(item.ShipmentId || ''),
+        shippingProvider: 'frenet'
+      });
+    }
+
     // Lógica existente para Melhor Envio
     const token = process.env.MELHOR_ENVIO_TOKEN;
     if (!token) return NextResponse.json({ error: 'Token Melhor Envio não configurado.' }, { status: 500 });
@@ -714,9 +848,10 @@ export async function POST(req: Request) {
     }
     
     const isNonCommercial = !order.invoiceKey;
-    const insuranceTotal = Math.max(1, parseFloat(order.insuranceValue || '0'));
+    const orderValue = parseFloat(rawOrder.insuranceValue || rawOrder.invoiceValue || '1') || 1;
+    const insuranceTotal = withInsurance ? Math.max(1, orderValue) : 0;
     const productCount = order.products.length || 1;
-    const unitValue = (insuranceTotal / productCount).toFixed(2);
+    const unitValue = (orderValue / productCount).toFixed(2);
 
     // Service IDs suportados pelo Pegaki (pontos multi-carrier: Loggi, Buslog, J&T, etc.)
     const PEGAKI_SERVICE_IDS = new Set([1, 2, 12, 17, 22, 27, 31, 33]);

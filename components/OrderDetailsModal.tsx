@@ -142,6 +142,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [originType, setOriginType] = useState(order.originType || 'CRV');
   const [isSyncingTracking, setIsSyncingTracking] = useState(false);
   const [showWhatsAppMenu, setShowWhatsAppMenu] = useState(false);
+  const [withInsurance, setWithInsurance] = useState(true);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -828,13 +829,21 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     }
   };
 
-  const handleFetchQuotes = async (updatedOrder?: Order) => {
+  const handleSetInsurance = (value: boolean) => {
+    if (value === withInsurance) return;
+    setWithInsurance(value);
+    handleFetchQuotes(undefined, value);
+  };
+
+  const handleFetchQuotes = async (updatedOrder?: Order, insuranceOverride?: boolean) => {
     setIsQuoting(true);
     setQuoteError(null);
     setIsQuoteModalOpen(true);
     setIsReviewModalOpen(false);
 
     const targetOrder = updatedOrder || order;
+    const useInsurance = insuranceOverride ?? withInsurance;
+    const effectiveInsurance = useInsurance ? (targetOrder.insuranceValue || targetOrder.invoiceValue || '0') : '0';
 
     try {
       let destinationCep = '';
@@ -851,16 +860,24 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         throw new Error('CEP não encontrado no endereço.');
       }
 
-      const totalWeightG = targetOrder.boxWeight 
-        ? targetOrder.boxWeight 
+      const totalWeightG = targetOrder.boxWeight
+        ? targetOrder.boxWeight
         : targetOrder.products.reduce((acc, p) => {
             const w = parseFloat(p.weight) || 0;
             if (p.weight.toLowerCase().includes('kg')) return acc + w * 1000 * p.quantity;
             return acc + w * p.quantity;
           }, 0);
 
-      // Buscar cotacoes em paralelo (transportadoras + TEX)
-      const [response, texResponse] = await Promise.all([
+      const quoteBody = JSON.stringify({
+        destinationCep,
+        weight: totalWeightG,
+        boxDimensions: targetOrder.boxDimensions,
+        originType: originType,
+        insuranceValue: effectiveInsurance
+      });
+
+      // Buscar cotacoes em paralelo (transportadoras + TEX + Frenet)
+      const [response, texResponse, frenetResponse] = await Promise.all([
         fetch('/api/shipping/quote', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -870,18 +887,18 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
             products: targetOrder.products,
             boxDimensions: targetOrder.boxDimensions,
             originType: originType,
-            insuranceValue: targetOrder.insuranceValue || targetOrder.invoiceValue
+            insuranceValue: effectiveInsurance
           })
         }),
         fetch('/api/shipping/quote-tex', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            destinationCep,
-            weight: totalWeightG,
-            boxDimensions: targetOrder.boxDimensions,
-            insuranceValue: targetOrder.insuranceValue || targetOrder.invoiceValue,
-          })
+          body: quoteBody
+        }),
+        fetch('/api/shipping/quote-frenet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: quoteBody
         })
       ]);
       if (!response.ok) {
@@ -903,6 +920,30 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
               delivery_time: q.delivery_time,
               error: null,
               company: q.company || { name: 'Total Express', picture: '/images/total-express-logo.svg' },
+            } as any));
+          }
+        } catch (_) {}
+      }
+      if (frenetResponse.ok) {
+        try {
+          const frenetQuotes = await frenetResponse.json();
+          if (Array.isArray(frenetQuotes)) {
+            frenetQuotes.forEach((q: any) => quotes.push({
+              id: q.id,
+              provider: 'Frenet',
+              name: q.name,
+              price: q.price,
+              currency: 'BRL',
+              deliveryTime: q.deliveryTime,
+              delivery_time: q.delivery_time,
+              error: null,
+              company: q.company || { name: q.frenetCarrier || 'Frenet', picture: '/images/frenet-logo.svg' },
+              frenetSessionId: q.frenetSessionId,
+              frenetServiceCode: q.frenetServiceCode,
+              frenetCarrierCode: q.frenetCarrierCode,
+              frenetCarrier: q.frenetCarrier,
+              frenetServiceName: q.frenetServiceName,
+              frenetShippingPrice: q.frenetShippingPrice,
             } as any));
           }
         } catch (_) {}
@@ -958,7 +999,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       const response = await fetch('/api/shipping/label', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: finalOrder, selectedOption: order.selectedShippingOption })
+        body: JSON.stringify({ order: finalOrder, selectedOption: order.selectedShippingOption, withInsurance })
       });
       
       const data = await response.json();
@@ -3084,6 +3125,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
             selectedQuote={order.selectedShippingOption}
             onGenerateLabel={handleGenerateLabel}
             isGeneratingLabel={isGeneratingLabel}
+            withInsurance={withInsurance}
+            onSetInsurance={handleSetInsurance}
           />
 
           <LabelGenerationModal

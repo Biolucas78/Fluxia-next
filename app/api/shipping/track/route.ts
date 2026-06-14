@@ -353,6 +353,64 @@ async function trackMelhorEnvio(trackingNumber: string) {
   }
 }
 
+async function trackFrenet(trackingNumber: string) {
+  const frenetToken = process.env.FRENET_TOKEN;
+  if (!frenetToken) {
+    console.warn('Frenet: Token não configurado para rastreamento.');
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://api.frenet.com.br/tracking/trackinginfo', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'token': frenetToken
+      },
+      body: JSON.stringify({ TrackingNumber: trackingNumber })
+    });
+
+    if (!response.ok) {
+      console.warn(`Frenet Tracking error (${response.status})`);
+      return null;
+    }
+
+    const data = await response.json();
+    console.log('Frenet tracking:', JSON.stringify(data).substring(0, 300));
+
+    const events: any[] = data.TrackingEvents || data.Events || data.Shippings?.[0]?.Events || [];
+    if (!events.length) {
+      console.warn('Frenet: Nenhum evento para', trackingNumber);
+      return null;
+    }
+
+    const history = events.map((e: any) => ({
+      status: e.Status || e.EventDescription || e.Description || 'Em trânsito',
+      message: e.Message || e.EventDescription || e.Description || 'Em trânsito',
+      date: e.Date || e.EventDate || e.DateTime,
+      location: e.Location || e.EventLocation || e.City || ''
+    }));
+
+    const lastEvent = history[0];
+    const isDelivered =
+      lastEvent?.status?.toUpperCase().includes('ENTREGUE') ||
+      lastEvent?.status?.toUpperCase().includes('DELIVERED');
+
+    return {
+      status: lastEvent?.status || 'Em trânsito',
+      message: lastEvent?.message || 'Em trânsito',
+      history,
+      delivered: isDelivered,
+      deliveryDate: null,
+      trackingUrl: data.TrackingUrl || null
+    };
+  } catch (e) {
+    console.error('Frenet tracking error:', e);
+    return null;
+  }
+}
+
 async function trackTotalExpress(trackingNumber: string) {
   if (!trackingNumber) return null;
 
@@ -475,7 +533,13 @@ export async function POST(req: Request) {
       result = await trackMelhorEnvioById(shipmentId);
     }
 
-    // PRIORIDADE 3: Total Express (AWB termina em "tx" ou shippingProvider = totalexpress)
+    // PRIORIDADE 3: Frenet (shippingProvider = frenet)
+    if (!result && shippingProvider === 'frenet' && trimmedTracking) {
+      console.log(`Rastreio Frenet: ${trimmedTracking}`);
+      result = await trackFrenet(trimmedTracking);
+    }
+
+    // PRIORIDADE 4: Total Express (AWB termina em "tx" ou shippingProvider = totalexpress)
     const isTEXCode = (str: string) => /^[A-Za-z0-9]+tx$/i.test(str);
     if (!result && trimmedTracking && (shippingProvider === 'totalexpress' || isTEXCode(trimmedTracking))) {
       console.log(`Rastreio Total Express: ${trimmedTracking}`);

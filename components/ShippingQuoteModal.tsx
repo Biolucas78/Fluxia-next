@@ -14,26 +14,56 @@ interface ShippingQuoteModalProps {
   selectedQuote?: ShippingOption | null;
   onGenerateLabel?: () => void;
   isGeneratingLabel?: boolean;
+  withInsurance?: boolean;
+  onSetInsurance?: (value: boolean) => void;
 }
 
-export default function ShippingQuoteModal({ 
-  isOpen, 
-  onClose, 
-  quotes, 
-  onSelect, 
+export default function ShippingQuoteModal({
+  isOpen,
+  onClose,
+  quotes,
+  onSelect,
   isQuoting,
   selectedQuote,
   onGenerateLabel,
-  isGeneratingLabel
+  isGeneratingLabel,
+  withInsurance = true,
+  onSetInsurance
 }: ShippingQuoteModalProps) {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl p-6 shadow-xl flex flex-col max-h-[90vh]">
-        <div className="flex justify-between items-center mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Cotação de Frete</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+        <div className="flex justify-between items-center mb-6 border-b border-slate-100 dark:border-slate-800 pb-4 gap-3">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white shrink-0">Cotação de Frete</h3>
+          {onSetInsurance && (
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-full p-0.5">
+              <button
+                onClick={() => !isQuoting && onSetInsurance(true)}
+                disabled={isQuoting}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  withInsurance
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+              >
+                Com seguro
+              </button>
+              <button
+                onClick={() => !isQuoting && onSetInsurance(false)}
+                disabled={isQuoting}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  !withInsurance
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+              >
+                Sem seguro
+              </button>
+            </div>
+          )}
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 shrink-0">
             <X className="size-6" />
           </button>
         </div>
