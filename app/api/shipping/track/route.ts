@@ -379,17 +379,17 @@ async function trackFrenet(trackingNumber: string) {
     const data = await response.json();
     console.log('Frenet tracking:', JSON.stringify(data).substring(0, 300));
 
-    const events: any[] = data.TrackingEvents || data.Events || data.Shippings?.[0]?.Events || [];
+    const events: any[] = data.TrackingEvents || [];
     if (!events.length) {
       console.warn('Frenet: Nenhum evento para', trackingNumber);
       return null;
     }
 
     const history = events.map((e: any) => ({
-      status: e.Status || e.EventDescription || e.Description || 'Em trânsito',
-      message: e.Message || e.EventDescription || e.Description || 'Em trânsito',
-      date: e.Date || e.EventDate || e.DateTime,
-      location: e.Location || e.EventLocation || e.City || ''
+      status: e.EventDescription || e.EventType || 'Em trânsito',
+      message: e.EventDescription || 'Em trânsito',
+      date: e.EventDateTime,
+      location: e.EventLocation || ''
     }));
 
     const lastEvent = history[0];

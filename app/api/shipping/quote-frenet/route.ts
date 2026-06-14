@@ -19,15 +19,11 @@ export async function POST(req: Request) {
     }
 
     let originCep = '';
-    let sellerDoc = '';
     try {
       const originJson = JSON.parse(
         originType === 'BH' ? (process.env.ORIGIN_BH_JSON || '{}') : (process.env.ORIGIN_CRV_JSON || '{}')
       );
       originCep = (originJson.postal_code || originJson.zip || '').replace(/\D/g, '');
-      const jsonDoc = (originJson.company_document || originJson.document || '').replace(/\D/g, '');
-      const envDoc = (process.env.ORIGIN_DOCUMENT || '').replace(/\D/g, '');
-      sellerDoc = jsonDoc || envDoc;
     } catch (e) {
       console.error('Frenet: erro ao parsear JSON de origem', e);
     }
@@ -38,34 +34,29 @@ export async function POST(req: Request) {
 
     const destCep = destinationCep.replace(/\D/g, '');
     const weightKg = Math.max(0.1, weight / 1000);
-    const declaredValue = Math.max(0, parseFloat(insuranceValue || '0'));
+    const invoiceValue = Math.max(0, parseFloat(insuranceValue || '0'));
     const height = Math.max(2, boxDimensions?.height || 10);
     const width = Math.max(11, boxDimensions?.width || 15);
     const length = Math.max(16, boxDimensions?.length || 15);
 
-    const cacheKey = `${originCep}-${destCep}-${weightKg.toFixed(3)}-${height}-${width}-${length}-${declaredValue.toFixed(2)}`;
+    const cacheKey = `${originCep}-${destCep}-${weightKg.toFixed(3)}-${height}-${width}-${length}-${invoiceValue.toFixed(2)}`;
     const now = Date.now();
     const cached = cache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
       return NextResponse.json(cached.data);
     }
 
-    const shippingItem: any = {
-      Weight: weightKg,
-      Length: length,
-      Height: height,
-      Width: width,
-      Quantity: 1,
-    };
-    if (declaredValue > 0) {
-      shippingItem.InsuredDeclaredValue = declaredValue;
-    }
-
-    const payload = {
-      SellerCPFCNPJ: sellerDoc,
-      ShipFrom: { Zipcode: originCep },
-      ShipTo: { Zipcode: destCep },
-      ShippingItemArray: [shippingItem]
+    const payload: any = {
+      SellerCEP: originCep,
+      RecipientCEP: destCep,
+      ShipmentInvoiceValue: invoiceValue,
+      ShippingItemArray: [{
+        Weight: weightKg,
+        Length: length,
+        Height: height,
+        Width: width,
+        Quantity: 1
+      }]
     };
 
     console.log('Frenet payload:', JSON.stringify(payload));
@@ -116,7 +107,7 @@ export async function POST(req: Request) {
         picture: '/images/frenet-logo.svg'
       },
       frenetServiceCode: s.ServiceCode,
-      frenetCarrierCode: s.Carrier,
+      frenetCarrierCode: s.CarrierCode || s.Carrier,
       frenetCarrier: s.Carrier,
       frenetServiceName: s.ServiceDescription || s.ServiceCode,
       frenetShippingPrice: parseFloat(s.ShippingPrice)
