@@ -17,8 +17,7 @@ export function getTotalExpressApiAuthHeader(): string {
   if (!TOTAL_EXPRESS_API_USER || !TOTAL_EXPRESS_API_PASSWORD) {
     throw new Error('Credenciais API Total Express não configuradas (TOTAL_EXPRESS_API_USER / TOTAL_EXPRESS_API_PASSWORD)');
   }
-  // TEX exige formato não-padrão "Basic Auth <base64>" — confirmado via debug (endpoint SOAP de frete)
-  return `Basic Auth ${Buffer.from(`${TOTAL_EXPRESS_API_USER}:${TOTAL_EXPRESS_API_PASSWORD}`).toString('base64')}`;
+  return `Basic ${Buffer.from(`${TOTAL_EXPRESS_API_USER}:${TOTAL_EXPRESS_API_PASSWORD}`).toString('base64')}`;
 }
 
 export function getTotalExpressLegacyTrackingAuthHeader(): string {
