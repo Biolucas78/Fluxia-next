@@ -425,7 +425,7 @@ export default function OrderCard({
               {(order as any).noInvoiceLinked && (
                 <span className="text-[8px] font-black text-amber-600 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-1 py-0.5 rounded-md" title="Pedido Bling vinculado">P</span>
               )}
-              {order.paymentMethod && <PaymentTag method={order.paymentMethod} />}
+              {order.paymentMethod && !(order as any).boletoLinked && <PaymentTag method={order.paymentMethod} />}
             </div>
           )}
         </div>
