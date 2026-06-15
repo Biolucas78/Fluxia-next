@@ -24,6 +24,27 @@ interface OrderCardProps {
 
 const CARRIERS = ['Correio', 'Braspress', 'MelhorEnvio', 'Lalamove', 'Total Express'];
 
+const PAYMENT_TAG_MAP: Record<string, { label: string; cls: string }> = {
+  pix:                 { label: 'PIX', cls: 'text-violet-600 bg-violet-50 dark:bg-violet-900/30 border-violet-200 dark:border-violet-800' },
+  boleto:              { label: 'BOL', cls: 'text-sky-600 bg-sky-50 dark:bg-sky-900/30 border-sky-200 dark:border-sky-800' },
+  dinheiro:            { label: 'DIN', cls: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800' },
+  transferencia:       { label: 'TRF', cls: 'text-slate-500 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700' },
+  cartao:              { label: 'CDT', cls: 'text-purple-600 bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-800' },
+  deposito_amazon:     { label: 'AMZ', cls: 'text-orange-600 bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800' },
+  deposito_meli:       { label: 'MLI', cls: 'text-yellow-700 bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800' },
+  deposito_fazendinha: { label: 'FAZ', cls: 'text-green-700 bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800' },
+  deposito_wix:        { label: 'WIX', cls: 'text-pink-600 bg-pink-50 dark:bg-pink-900/30 border-pink-200 dark:border-pink-800' },
+};
+
+function PaymentTag({ method }: { method: string }) {
+  const entry = PAYMENT_TAG_MAP[method] ?? { label: method.slice(0, 3).toUpperCase(), cls: 'text-slate-500 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700' };
+  return (
+    <span className={`text-[8px] font-black px-1 py-0.5 rounded-md border ${entry.cls}`} title={`Pagamento: ${method}`}>
+      {entry.label}
+    </span>
+  );
+}
+
 export default function OrderCard({ 
   order, 
   onUpdateOrder, 
@@ -386,13 +407,15 @@ export default function OrderCard({
           : 'border-slate-200 dark:border-slate-800 hover:border-primary'
       }`}
     >
-      {locationInfo && (
+      {(locationInfo || (order as any).invoiceLinked || (order as any).boletoLinked || (order as any).noInvoiceLinked || order.paymentMethod) && (
         <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1 max-w-[30%]">
-          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-700 truncate w-full text-right" title={locationInfo}>
-            {locationInfo}
-          </span>
-          {((order as any).invoiceLinked || (order as any).boletoLinked || (order as any).noInvoiceLinked) && (
-            <div className="flex gap-0.5 justify-end">
+          {locationInfo && (
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-700 truncate w-full text-right" title={locationInfo}>
+              {locationInfo}
+            </span>
+          )}
+          {((order as any).invoiceLinked || (order as any).boletoLinked || (order as any).noInvoiceLinked || order.paymentMethod) && (
+            <div className="flex gap-0.5 justify-end flex-wrap">
               {(order as any).invoiceLinked && (
                 <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 px-1 py-0.5 rounded-md" title="Nota Fiscal vinculada">N</span>
               )}
@@ -402,6 +425,7 @@ export default function OrderCard({
               {(order as any).noInvoiceLinked && (
                 <span className="text-[8px] font-black text-amber-600 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-1 py-0.5 rounded-md" title="Pedido Bling vinculado">P</span>
               )}
+              {order.paymentMethod && <PaymentTag method={order.paymentMethod} />}
             </div>
           )}
         </div>
