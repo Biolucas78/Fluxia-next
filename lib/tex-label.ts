@@ -153,8 +153,10 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
   const rotaTxtX  = rotaBoxX + rotaBoxW / 2 - rotaClean.length * 3.5;
   t(p.rota, Math.max(rotaBoxX + 3, rotaTxtX), rotaBoxY + 4, 13, bold);
 
-  // CEP texto (mesma linha da Rota, lado esquerdo)
-  t(cepFmt, M, 167, 8, bold);
+  // CEP em caixa preta alinhada com a caixa da Rota (mesma linha, lado esquerdo)
+  const cepBoxW = 92;
+  page.drawRectangle({ x: M, y: rotaBoxY, width: cepBoxW, height: 20, color: BLACK, borderColor: BLACK, borderWidth: 1.2 });
+  t(cepFmt, M + 8, rotaBoxY + 5, 10, bold, WHITE);
 
   sep(SEP3);
 
@@ -224,7 +226,7 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
   page.drawLine({ start: { x: M, y: innerSepY }, end: { x: rightColX - 5, y: innerSepY }, thickness: 0.3, color: BLACK });
   ly = innerSepY - 9;
 
-  t('DESTINATARIO:', M, ly, 7, bold);
+  t('DESTINATARIO:', M, ly, 8, bold);
   ly -= 12;
 
   // Destinatário nome: +1 pt (9 pt, era 8 pt)
@@ -232,17 +234,17 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
   t(rName, M, ly, 9, bold); ly -= 12;
 
   const rStreet = [san(p.recipientStreet, 28), san(p.recipientNumber, 8)].filter(Boolean).join(', ');
-  if (rStreet) { t(rStreet, M, ly, 7, regular); ly -= 10; }
+  if (rStreet) { t(rStreet, M, ly, 8, regular); ly -= 10; }
 
   const rComp = san(p.recipientComplement, 34);
-  if (rComp) { t(rComp, M, ly, 7, regular); ly -= 10; }
+  if (rComp) { t(rComp, M, ly, 8, regular); ly -= 10; }
 
   const rDist = san(p.recipientDistrict, 20);
-  t(`Bairro: ${rDist}  CEP: ${cepFmt}`, M, ly, 7, regular); ly -= 10;
+  t(`Bairro: ${rDist}  CEP: ${cepFmt}`, M, ly, 8, regular); ly -= 10;
 
   const rCity  = san(p.recipientCity, 20);
   const rState = (p.recipientState || '').toUpperCase().slice(0, 2);
-  t(`Cidade: ${rCity}   Estado: ${rState}`, M, ly, 7, regular);
+  t(`Cidade: ${rCity}   Estado: ${rState}`, M, ly, 8, regular);
 
   // ── Barra superior: sem "REMETENTE" (aparecia duplicado) ──
   // Lado esquerdo: vazio (branco)
