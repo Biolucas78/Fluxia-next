@@ -144,19 +144,21 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
   // Data Matrix (direita)
   page.drawImage(dmImg,  { x: dmX, y: 186, width: dmSz, height: dmSz });
 
-  // Rota: caixa 6 cm no lado direito, fonte 12 pt
-  const rotaBoxW = Math.round((60 / 25.4) * 72);  // 6 cm ≈ 170 pt
-  const rotaBoxX = W - M - rotaBoxW;               // alinhado à margem direita
-  const rotaBoxY = 163;
+  // CEP (25%) + Rota (75%) — mesma linha, lado a lado, cobrindo iW completo
+  const rotaBoxY  = 163;
+  const cepBoxW   = Math.round(iW * 0.25);   // ≈ 59 pt
+  const rotaBoxW  = iW - cepBoxW;            // ≈ 178 pt
+  const rotaBoxX  = M + cepBoxW;
+
+  // Caixa CEP — fundo preto, texto branco 10 pt
+  page.drawRectangle({ x: M, y: rotaBoxY, width: cepBoxW, height: 20, color: BLACK, borderColor: BLACK, borderWidth: 1.2 });
+  t(cepFmt, M + 5, rotaBoxY + 5, 10, bold, WHITE);
+
+  // Caixa Rota — borda preta, texto preto 13 pt
   page.drawRectangle({ x: rotaBoxX, y: rotaBoxY, width: rotaBoxW, height: 20, borderColor: BLACK, borderWidth: 1.2 });
   const rotaClean = san(p.rota, 40);
   const rotaTxtX  = rotaBoxX + rotaBoxW / 2 - rotaClean.length * 3.5;
   t(p.rota, Math.max(rotaBoxX + 3, rotaTxtX), rotaBoxY + 4, 13, bold);
-
-  // CEP em caixa preta alinhada com a caixa da Rota (mesma linha, lado esquerdo)
-  const cepBoxW = 92;
-  page.drawRectangle({ x: M, y: rotaBoxY, width: cepBoxW, height: 20, color: BLACK, borderColor: BLACK, borderWidth: 1.2 });
-  t(cepFmt, M + 8, rotaBoxY + 5, 10, bold, WHITE);
 
   sep(SEP3);
 
