@@ -112,8 +112,12 @@ export default function RecorrenciaPage() {
 
     clientsMap.forEach((data, identifier) => {
       const sortedOrders = [...data.orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
-      const latestOrder = sortedOrders[0];
+
+      // Ignorar amostras — clientes em prospecção não entram na recorrência
+      const realOrders = sortedOrders.filter(o => !o.isSample);
+      if (realOrders.length === 0) return;
+
+      const latestOrder = realOrders[0];
 
       if (latestOrder.status !== 'entregue') return;
       if (latestOrder.recurrenceRemoved) return;
@@ -145,7 +149,7 @@ export default function RecorrenciaPage() {
         cpf: latestOrder.cpf || '',
         cnpj: latestOrder.cnpj || '',
         origin: latestOrder.origin || 'N/A',
-        totalOrders: sortedOrders.length,
+        totalOrders: realOrders.length,
         latestOrder,
         daysSinceDelivered,
         daysSinceContact
