@@ -33,13 +33,16 @@ export async function POST(request: Request) {
 
     const allMatches: any[] = [];
 
+    // Busca a partir de 01/01/2026 para cobrir todo o ano atual
+    const DATA_INICIAL = '2026-01-01';
+    const MAX_PAGES = 10;
+
     // Busca por CPF/CNPJ (principal) — paginada
     if (docClean) {
-      console.log(`[Bling] Buscando pedidos por CNPJ/CPF: ${docClean}`);
-      const MAX_PAGES = 5;
+      console.log(`[Bling] Buscando pedidos por CNPJ/CPF: ${docClean} a partir de ${DATA_INICIAL}`);
       for (let page = 1; page <= MAX_PAGES; page++) {
         const res = await fetchWithRetry(
-          `https://api.bling.com.br/Api/v3/pedidos/vendas?limite=100&pagina=${page}`,
+          `https://api.bling.com.br/Api/v3/pedidos/vendas?dataInicial=${DATA_INICIAL}&limite=100&pagina=${page}`,
           { headers }
         );
         if (!res.ok) break;
@@ -59,22 +62,29 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fallback por nome se não achou nada por CNPJ
-    if (allMatches.length === 0 && clientName && !docClean) {
-      console.log(`[Bling] Fallback por nome: ${clientName}`);
-      const res = await fetchWithRetry(
-        `https://api.bling.com.br/Api/v3/pedidos/vendas?limite=100&pagina=1`,
-        { headers }
-      );
-      if (res.ok) {
+    // Fallback por nome — paginado, cobre todo o ano
+    if (allMatches.length === 0 && clientName) {
+      console.log(`[Bling] Fallback por nome: ${clientName} a partir de ${DATA_INICIAL}`);
+      const searchName = clientName.toLowerCase().trim();
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const res = await fetchWithRetry(
+          `https://api.bling.com.br/Api/v3/pedidos/vendas?dataInicial=${DATA_INICIAL}&limite=100&pagina=${page}`,
+          { headers }
+        );
+        if (!res.ok) break;
         const data = await res.json();
-        const searchName = clientName.toLowerCase().trim();
-        (data.data || []).filter((p: any) => {
+        const pedidos: any[] = data.data || [];
+        if (pedidos.length === 0) break;
+
+        pedidos.filter((p: any) => {
           const pName = (p.contato?.nome || '').toLowerCase().trim();
           return pName === searchName || pName.startsWith(searchName);
         }).forEach((p: any) => {
           if (!allMatches.find((m: any) => m.id === p.id)) allMatches.push(p);
         });
+
+        if (pedidos.length < 100) break;
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
@@ -88,7 +98,7 @@ export async function POST(request: Request) {
     // Filtrar os já vinculados a outros cards
     const lista = allMatches
       .filter((p: any) => !lockedIds.has(norm(String(p.id || ''))))
-      .slice(0, 15)
+      .slice(0, 30)
       .map((p: any) => ({
         id: p.id,
         numero: p.numero,
