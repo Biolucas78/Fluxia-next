@@ -25,6 +25,8 @@ interface BlingOrderSummary {
   valor: number;
   origem?: string;
   temNF: boolean;
+  semNFVinculado?: boolean;
+  temBoletoSicoob?: boolean;
   produtos: number;
   updates?: string[];
   matchType?: string;
@@ -284,12 +286,11 @@ export default function ImportarBlingPage() {
                   <span className="font-medium flex-1">{o.cliente}</span>
                   <span className="text-indigo-300">{fmt(o.valor)}</span>
                   <span className="text-gray-500">{o.origem || '—'}</span>
-                  {o.temNF && (
-                    <span className="inline-flex items-center gap-1 bg-green-900/40 text-green-300 px-1.5 py-0.5 rounded text-xs">
-                      <FileText className="w-3 h-3" /> NF
-                    </span>
-                  )}
-                  <span className="text-gray-500">{o.produtos} prod.</span>
+                  {o.temNF
+                    ? <span className="inline-flex items-center gap-1 bg-green-900/40 text-green-300 px-1.5 py-0.5 rounded text-xs shrink-0"><FileText className="w-3 h-3" /> NF</span>
+                    : <span className="inline-flex items-center gap-1 bg-amber-900/40 text-amber-300 px-1.5 py-0.5 rounded text-xs shrink-0"><FileText className="w-3 h-3" /> P</span>
+                  }
+                  <span className="text-gray-500 shrink-0">{o.produtos} prod.</span>
                 </div>
               ))}
             </CollapseSection>

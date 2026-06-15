@@ -374,6 +374,15 @@ export async function POST(request: Request) {
             novoPedido.invoiceNumber = String(nfData.numero || '');
             novoPedido.invoiceKey = nfData.chaveAcesso || '';
             novoPedido.invoiceValue = nfData.valorNota || blingOrder.total;
+          } else {
+            // Sem NF: vincular automaticamente ao pedido Bling (equivalente à ação manual "Sem Nota Fiscal")
+            novoPedido.noInvoiceLinked = true;
+            novoPedido.noInvoiceBlingOrderId = String(blingOrder.id);
+            novoPedido.noInvoiceValue = blingOrder.total;
+            novoPedido.statusHistory = [
+              ...novoPedido.statusHistory,
+              { action: 'Pedido Bling vinculado (Sem NF)', details: `Pedido: ${blingOrder.numero} | Valor: ${blingOrder.total}`, timestamp: new Date().toISOString() },
+            ];
           }
           if (blingOrder.parcelas?.length > 0) {
             const ultima = blingOrder.parcelas[blingOrder.parcelas.length - 1];
@@ -418,7 +427,8 @@ export async function POST(request: Request) {
           results.criados.push({
             blingId: blingOrder.id, blingNumero: blingOrder.numero,
             cliente: contato.nome, valor: blingOrder.total,
-            origem, temNF: !!nfData, temBoleto: !!novoPedido.boletoNossoNumero, produtos: products.length,
+            origem, temNF: !!nfData, temBoletoSicoob: !!novoPedido.boletoNossoNumero,
+            semNFVinculado: !nfData, produtos: products.length,
           });
 
           if (!dryRun) {
