@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useOrders, useUser, useRecurrenceMessages, RecurrenceMessages } from '@/lib/hooks';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
-import { Loader2, Calendar, MessageSquare, AlertCircle, Filter, Search, Edit2, X, Send, EyeOff, Save, CheckCircle2, RefreshCw, Settings, Clock } from 'lucide-react';
+import { Loader2, Calendar, MessageSquare, AlertCircle, Filter, Search, Edit2, X, Send, EyeOff, Save, CheckCircle2, RefreshCw, Settings, Clock, Users } from 'lucide-react';
 import Login from '@/components/Login';
 import { motion, AnimatePresence } from 'motion/react';
 import { Order } from '@/lib/types';
@@ -29,6 +29,17 @@ const normalizeString = (str?: string) => {
   if (!str) return '';
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 };
+
+function getOriginTag(origin: string): { label: string; cls: string } {
+  const o = (origin || '').toLowerCase();
+  if (o.includes('amazon'))   return { label: 'Amazon',      cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 border-orange-200 dark:border-orange-800' };
+  if (o.includes('meli') || o.includes('mercado')) return { label: 'Meli', cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800' };
+  if (o.includes('wix'))      return { label: 'Wix',         cls: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300 border-pink-200 dark:border-pink-800' };
+  if (o === 'whatsapp pf')    return { label: 'WhatsApp PF', cls: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300 border-teal-200 dark:border-teal-800' };
+  if (o.includes('whatsapp')) return { label: 'WhatsApp',    cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 border-green-200 dark:border-green-800' };
+  if (o.includes('crm'))      return { label: 'CRM',         cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800' };
+  return { label: origin || 'N/A', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700' };
+}
 
 export default function RecorrenciaPage() {
   const { allOrders, isLoaded, handleUpdateOrder } = useOrders();
@@ -281,6 +292,48 @@ export default function RecorrenciaPage() {
   };
 
   const [clientToRemove, setClientToRemove] = useState<typeof recurrenceData[0] | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false);
+
+  // Limpar seleção quando filtros mudam
+  useEffect(() => { setSelectedIds(new Set()); }, [filterOrigin, filterStatus, searchTerm]);
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredData.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredData.map(c => c.identifier)));
+    }
+  };
+
+  const handleBulkSnooze = async () => {
+    const clients = recurrenceData.filter(c => selectedIds.has(c.identifier));
+    await Promise.all(clients.map(client =>
+      handleUpdateOrder({ ...client.latestOrder, lastRecurrenceContact: new Date().toISOString(),
+        statusHistory: [...(client.latestOrder.statusHistory || []), { action: 'Ocultar 10 dias (em massa)', timestamp: new Date().toISOString() }] })
+    ));
+    setSelectedIds(new Set());
+    toast.success(`${clients.length} clientes ocultados por 10 dias.`);
+  };
+
+  const handleBulkRemove = async () => {
+    const clients = recurrenceData.filter(c => selectedIds.has(c.identifier));
+    await Promise.all(clients.map(client =>
+      handleUpdateOrder({ ...client.latestOrder, recurrenceRemoved: true,
+        statusHistory: [...(client.latestOrder.statusHistory || []), { action: 'Removido da Recorrência (em massa)', timestamp: new Date().toISOString() }] })
+    ));
+    setSelectedIds(new Set());
+    setBulkRemoveConfirm(false);
+    toast.success(`${clients.length} clientes removidos da recorrência.`);
+  };
 
   const confirmRemove = async () => {
     if (!clientToRemove) return;
@@ -442,6 +495,32 @@ export default function RecorrenciaPage() {
               </div>
             </div>
 
+            {/* Contagem + Selecionar todos + Ações em massa */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300">
+                  <Users className="size-4 text-slate-400" />
+                  {filteredData.length} cliente{filteredData.length !== 1 ? 's' : ''}
+                </span>
+                {filteredData.length > 0 && (
+                  <button onClick={handleSelectAll} className="text-xs font-bold text-primary hover:text-primary/80 transition-colors">
+                    {selectedIds.size === filteredData.length ? 'Desmarcar todos' : 'Selecionar todos'}
+                  </button>
+                )}
+              </div>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 font-medium">{selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}</span>
+                  <button onClick={handleBulkSnooze} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
+                    <Clock className="size-3.5" /> Ocultar 10 dias
+                  </button>
+                  <button onClick={() => setBulkRemoveConfirm(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
+                    <EyeOff className="size-3.5" /> Remover selecionados
+                  </button>
+                </div>
+              )}
+            </div>
+
             {!isLoaded ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="animate-spin size-8 text-primary" />
@@ -454,29 +533,38 @@ export default function RecorrenciaPage() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 < 1 ? index * 0.05 : 0 }}
-                    className={`p-5 rounded-2xl shadow-sm border flex flex-col justify-between group hover:border-primary transition-all relative overflow-hidden ${
-                      client.daysSinceContact && client.daysSinceContact < 10 
-                        ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60 hover:opacity-100'
-                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
+                    className={`p-5 rounded-2xl shadow-sm border flex flex-col justify-between group transition-all relative overflow-hidden ${
+                      selectedIds.has(client.identifier)
+                        ? 'bg-primary/5 dark:bg-primary/10 border-primary ring-1 ring-primary/30'
+                        : client.daysSinceContact && client.daysSinceContact < 10
+                          ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60 hover:opacity-100'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-primary'
                     }`}
                   >
                     {client.daysSinceContact === null && client.daysSinceDelivered > 30 && (
                       <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 dark:bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
                     )}
 
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(client.identifier)}
+                        onChange={() => handleToggleSelect(client.identifier)}
+                        onClick={e => e.stopPropagation()}
+                        className="mt-1 size-4 rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary cursor-pointer shrink-0"
+                      />
                       <div className={`size-12 rounded-xl flex items-center justify-center font-bold text-lg shrink-0 ${
                         client.daysSinceDelivered > 40 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-light'
                       }`}>
                         {client.clientName.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start">
-                          <h4 className="font-bold text-slate-900 dark:text-white truncate pr-2" title={client.clientName}>
+                        <div className="flex justify-between items-start gap-2">
+                          <h4 className="font-bold text-slate-900 dark:text-white truncate" title={client.clientName}>
                             {client.clientName}
                           </h4>
-                          <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full shrink-0">
-                            {client.origin}
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getOriginTag(client.origin).cls}`}>
+                            {getOriginTag(client.origin).label}
                           </span>
                         </div>
                         
@@ -849,6 +937,35 @@ export default function RecorrenciaPage() {
                     className="py-2.5 px-6 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20"
                   >
                     Sim, remover cliente
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Modal confirmação remoção em massa */}
+        <AnimatePresence>
+          {bulkRemoveConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setBulkRemoveConfirm(false)}
+                className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                <div className="p-6">
+                  <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mb-4">
+                    <EyeOff className="size-6" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Remover {selectedIds.size} cliente{selectedIds.size !== 1 ? 's' : ''} da Recorrência</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Esses clientes não aparecerão mais na lista de recorrência. Esta ação pode ser desfeita reabrindo o pedido mais recente do cliente.</p>
+                </div>
+                <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex justify-end gap-3">
+                  <button onClick={() => setBulkRemoveConfirm(false)} className="py-2.5 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all">
+                    Cancelar
+                  </button>
+                  <button onClick={handleBulkRemove} className="py-2.5 px-6 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20">
+                    Sim, remover todos
                   </button>
                 </div>
               </motion.div>
