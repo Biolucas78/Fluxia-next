@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, PDFFont } from 'pdf-lib';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const bwipjs = require('bwip-js') as {
@@ -32,6 +32,25 @@ const san = (s: string, max: number) =>
     .replace(/[^\x20-\x7E]/g, '')
     .trim()
     .slice(0, max);
+
+// Quebra texto em linhas que não ultrapassam maxWidth (pt), por largura real da fonte
+function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = text.split(' ').filter(Boolean);
+  if (words.length === 0) return [];
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (!current || font.widthOfTextAtSize(test, size) <= maxWidth) {
+      current = test;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
 
 /** Retorna data de hoje no formato "12/Jun" */
 export function todayShipDate(): string {
@@ -231,22 +250,36 @@ export async function generateTexLabelPdf(p: TexLabelParams): Promise<Buffer> {
   t('DESTINATARIO:', M, ly, 8, bold);
   ly -= 12;
 
-  // Destinatário nome: +1 pt (9 pt, era 8 pt)
-  const rName = san(p.recipientName, 36).toUpperCase();
-  t(rName, M, ly, 9, bold); ly -= 12;
+  // Largura máxima do texto do destinatário: até o início da tabela da direita (rightColX),
+  // com pequena folga para não tocar a borda da tabela.
+  const destMaxWidth = rightColX - M - 2;
 
-  const rStreet = [san(p.recipientStreet, 28), san(p.recipientNumber, 8)].filter(Boolean).join(', ');
-  if (rStreet) { t(rStreet, M, ly, 8, regular); ly -= 10; }
+  // Destinatário nome: +1 pt (9 pt, era 8 pt) — quebra em múltiplas linhas se ultrapassar destMaxWidth
+  const rName = san(p.recipientName, 200).toUpperCase();
+  for (const line of wrapText(rName, bold, 9, destMaxWidth)) {
+    t(line, M, ly, 9, bold); ly -= 12;
+  }
 
-  const rComp = san(p.recipientComplement, 34);
-  if (rComp) { t(rComp, M, ly, 8, regular); ly -= 10; }
+  const rStreet = [san(p.recipientStreet, 200), san(p.recipientNumber, 200)].filter(Boolean).join(', ');
+  for (const line of wrapText(rStreet, regular, 8, destMaxWidth)) {
+    t(line, M, ly, 8, regular); ly -= 10;
+  }
 
-  const rDist = san(p.recipientDistrict, 20);
-  t(`Bairro: ${rDist}  CEP: ${cepFmt}`, M, ly, 8, regular); ly -= 10;
+  const rComp = san(p.recipientComplement, 200);
+  for (const line of wrapText(rComp, regular, 8, destMaxWidth)) {
+    t(line, M, ly, 8, regular); ly -= 10;
+  }
 
-  const rCity  = san(p.recipientCity, 20);
+  const rDist = san(p.recipientDistrict, 200);
+  for (const line of wrapText(`Bairro: ${rDist}  CEP: ${cepFmt}`, regular, 8, destMaxWidth)) {
+    t(line, M, ly, 8, regular); ly -= 10;
+  }
+
+  const rCity  = san(p.recipientCity, 200);
   const rState = (p.recipientState || '').toUpperCase().slice(0, 2);
-  t(`Cidade: ${rCity}   Estado: ${rState}`, M, ly, 8, regular);
+  for (const line of wrapText(`Cidade: ${rCity}   Estado: ${rState}`, regular, 8, destMaxWidth)) {
+    t(line, M, ly, 8, regular); ly -= 10;
+  }
 
   // ── Barra superior: sem "REMETENTE" (aparecia duplicado) ──
   // Lado esquerdo: vazio (branco)
