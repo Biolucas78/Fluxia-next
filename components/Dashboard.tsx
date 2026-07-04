@@ -49,7 +49,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
   const [separationHistory, setSeparationHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
-  const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; qty: number; clientes?: string[]} | null>(null);
+  const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; matchKey: string; qty: number; clientes?: string[]} | null>(null);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
   
   // Global Date Filter
@@ -356,7 +356,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
   };
 
   const packagingDemand = useMemo(() => {
-    const demand: Record<string, { displayName: string; qty: number; clientes: string[] }> = {};
+    const demand: Record<string, { displayName: string; matchKey: string; qty: number; clientes: string[] }> = {};
     orders.forEach(order => {
       if (order.status === 'pedidos') {
         order.products.forEach(product => {
@@ -370,6 +370,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
               const grindOrig = grindNorm ? ` (${grindNorm})` : '';
               demand[key] = {
                 displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}${isPersonalizado ? ' · Personalizado' : ''}`,
+                matchKey: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}`,
                 qty: 0,
                 clientes: [],
               };
@@ -962,7 +963,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                   return (
                     <button
                       key={item.displayName}
-                      onClick={() => setSelectedPackagingItem({ name: item.displayName, qty: item.qty, clientes: item.clientes })}
+                      onClick={() => setSelectedPackagingItem({ name: item.displayName, matchKey: item.matchKey, qty: item.qty, clientes: item.clientes })}
                       className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] transition-all hover:scale-105 hover:shadow-md active:scale-95 cursor-pointer ${getCoffeeCardStyle(coffeeName || cleanName)}`}
                     >
                       <span className={`text-lg font-black leading-none ${getCoffeeQtyColor(coffeeName || cleanName)}`}>{item.qty}</span>
@@ -1073,10 +1074,11 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                       const item = selectedPackagingItem;
                       const pedidos = orders.filter(o => o.status === 'pedidos');
                       // Salvar snapshot antes de modificar
+                      const keyToMatch = item.matchKey;
                       const affected = pedidos.filter(order => order.products.some(p => {
                         const grindNorm = normalizeGrindForKey(p.grindType || '');
                         const grind = grindNorm ? ` (${grindNorm})` : '';
-                        return `${p.name.trim()} ${(p.weight || '').trim()}${grind}` === item.name && !p.checked;
+                        return `${p.name.trim()} ${(p.weight || '').trim()}${grind}` === keyToMatch && !p.checked;
                       }));
                       if (affected.length > 0) {
                         await saveToHistory('minicard', `Separou: ${item.qty}x ${item.name}`, affected);
@@ -1087,7 +1089,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                           const grindNorm = normalizeGrindForKey(p.grindType || '');
                           const grind = grindNorm ? ` (${grindNorm})` : '';
                           const productKey = `${p.name.trim()} ${(p.weight || '').trim()}${grind}`;
-                          if (productKey === item.name && !p.checked) {
+                          if (productKey === keyToMatch && !p.checked) {
                             hasChange = true;
                             return { ...p, checked: true };
                           }
