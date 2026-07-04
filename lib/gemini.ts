@@ -38,7 +38,7 @@ export async function parseOrderWithGemini(text: string) {
 
   try {
     const model = withGeminiRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.5-flash",
       contents: `Analise o seguinte texto contendo um ou mais pedidos de café e extraia as informações estruturadas em uma lista de pedidos.
     
     REGRAS DE INTERPRETAÇÃO (CRÍTICO):
@@ -253,7 +253,7 @@ export async function parseAddressWithGemini(addressString: string, viaCepStreet
 
   try {
     const response = await withGeminiRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.5-flash",
       contents: `Analise o seguinte endereço e extraia as informações estruturadas. Procure também por CPF ou CNPJ se estiverem presentes no texto do endereço.${contextPrompt}
       
       TEXTO: "${addressString}"
