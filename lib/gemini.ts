@@ -1,6 +1,28 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { enrichOrderDataAsync } from "./customerService";
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// Tenta executar fn até 2 vezes. Em erro de rate-limit (429/503/congestionamento),
+// aguarda RETRY_DELAY ms antes de tentar novamente.
+const RETRY_DELAY = 6000; // 6 segundos
+async function withGeminiRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e: any) {
+    const msg = (e?.message || '').toLowerCase();
+    const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('rate') ||
+      msg.includes('overload') || msg.includes('unavailable') || msg.includes('congestion') ||
+      msg.includes('503') || msg.includes('resource_exhausted');
+    if (isRateLimit) {
+      console.warn(`[Gemini] Rate limit detectado, aguardando ${RETRY_DELAY / 1000}s antes de retry...`);
+      await sleep(RETRY_DELAY);
+      return await fn();
+    }
+    throw e;
+  }
+}
+
 export async function parseOrderWithGemini(text: string) {
   const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   console.log("Using API Key (first 4 chars):", apiKey ? apiKey.substring(0, 4) : "None");
@@ -15,7 +37,7 @@ export async function parseOrderWithGemini(text: string) {
   if (!sanitizedText) return null;
 
   try {
-    const model = ai.models.generateContent({
+    const model = withGeminiRetry(() => ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Analise o seguinte texto contendo um ou mais pedidos de café e extraia as informações estruturadas em uma lista de pedidos.
     
@@ -142,7 +164,7 @@ export async function parseOrderWithGemini(text: string) {
           required: ["orders"]
         }
       }
-    });
+    }));
 
     const response = await model;
     console.log("Gemini response text:", response.text);
@@ -165,22 +187,24 @@ export async function parseOrderWithGemini(text: string) {
       throw new Error("Falha ao processar a resposta da IA. O formato não é um JSON válido.");
     }
     
-    // Sanitize phone numbers to prevent malformed data and enrich with customer database
+    // Enriquece pedidos sequencialmente (evita burst de chamadas simultâneas à API)
     if (parsed.orders) {
-      parsed.orders = await Promise.all(parsed.orders.map(async (order: any) => {
+      const enrichedOrders = [];
+      for (let i = 0; i < parsed.orders.length; i++) {
+        const order = parsed.orders[i];
         const sanitized = {
           ...order,
           phone: order.phone ? order.phone.toString().slice(0, 50) : ''
         };
-        
+
         // Enrich with customer database and ViaCEP if fields are missing
         let enriched = await enrichOrderDataAsync(sanitized);
-        
+
         // If we have a raw address but missing structured data, use Gemini to extract it
         if (enriched.address && (!enriched.number || !enriched.cpf || !enriched.cnpj)) {
           const viaCepStreet = enriched.addressDetails?.street;
           const extracted = await parseAddressWithGemini(enriched.address, viaCepStreet);
-          
+
           if (extracted) {
             enriched = {
               ...enriched,
@@ -191,17 +215,20 @@ export async function parseOrderWithGemini(text: string) {
               phone: enriched.phone || extracted.phone || '',
               cep: enriched.cep || extracted.cep || ''
             };
-            
-            // Update addressDetails if it exists
+
             if (enriched.addressDetails) {
               enriched.addressDetails.number = enriched.number;
               enriched.addressDetails.complement = enriched.complement;
             }
           }
         }
-        
-        return enriched;
-      }));
+
+        enrichedOrders.push(enriched);
+
+        // Pausa entre pedidos para não saturar a API (exceto no último)
+        if (i < parsed.orders.length - 1) await sleep(300);
+      }
+      parsed.orders = enrichedOrders;
     }
     
     return parsed;
@@ -225,7 +252,7 @@ export async function parseAddressWithGemini(addressString: string, viaCepStreet
     : '';
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await withGeminiRetry(() => ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Analise o seguinte endereço e extraia as informações estruturadas. Procure também por CPF ou CNPJ se estiverem presentes no texto do endereço.${contextPrompt}
       
@@ -260,7 +287,7 @@ export async function parseAddressWithGemini(addressString: string, viaCepStreet
           required: ["number", "complement", "phone", "cnpj", "cpf", "cep"]
         }
       }
-    });
+    }));
 
     let rawText = response.text || '{}';
     rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
