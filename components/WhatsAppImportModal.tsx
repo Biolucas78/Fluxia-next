@@ -11,6 +11,15 @@ import { getValidBlingToken } from '@/lib/bling-client';
 import { toast } from 'react-hot-toast';
 import CustomerSearchForm from './CustomerSearchForm';
 
+// Garante que grindType sempre use a forma canônica, independente do que a IA retornar
+function normalizeGrindType(raw: string | undefined): 'moído' | 'grãos' | 'N/A' {
+  const g = (raw || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  if (g.includes('moido') || g.includes('moida') || g.includes('moldo')) return 'moído';
+  if (g.includes('grao') || g.includes('graos')) return 'grãos';
+  if (g === 'n/a' || g === '') return 'N/A';
+  return 'N/A';
+}
+
 function getSafeDate(dateString: string | undefined | null): string {
   if (!dateString) return new Date().toISOString();
   const d = new Date(dateString);
@@ -184,7 +193,7 @@ export default function WhatsAppImportModal({ onOrdersImported, onClose, existin
             quantity: p.quantity,
             name: p.name,
             weight: p.weight,
-            grindType: p.grindType as any,
+            grindType: normalizeGrindType(p.grindType),
             productionNotes: p.productionNotes,
             checked: false
           }))

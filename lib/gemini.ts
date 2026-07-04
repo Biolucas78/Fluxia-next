@@ -70,7 +70,11 @@ export async function parseOrderWithGemini(text: string) {
        - "Torra media" ou "Torra média" -> "Catuaí".
        - "Bourbon" ou "Bourbon" -> "Bourbon".
        - "Torra intensa" -> "Torra Intensa".
-    6. MOAGEM: Identifique "moído" ou "grãos".
+    6. MOAGEM (CRÍTICO): O campo "grindType" deve conter EXATAMENTE uma das três strings abaixo — sem variações, sem acentuação diferente, sem maiúsculas:
+       - "moído"  → para qualquer variante: moido, Moído, Moido, moido, moldo, etc.
+       - "grãos"  → para qualquer variante: grao, Grão, Graos, Grãos, graos, grão, etc.
+       - "N/A"    → quando não se aplica (ex: DripCoffee)
+       NUNCA retorne: "Grãos", "Moído", "grao", "graos", "moido" ou qualquer outra forma.
     7. NOME DO PRODUTO: Não inclua a palavra "Café".
     8. TELEFONE: O campo "phone" deve conter APENAS o número de telefone. Se o texto for longo e não parecer um telefone, deixe vazio ou extraia apenas os dígitos do telefone.
     9. FLEXIBILIDADE (CRÍTICO): Se o formato da mensagem for incomum ou bagunçado, use o contexto para identificar o que é o nome do cliente, o que é o endereço e o que são os produtos. Priorize a extração correta dos produtos mesmo que o endereço esteja incompleto ou misturado. Se houver dúvidas sobre o que é o nome do cliente, use a primeira linha ou a identificação mais clara de pessoa/empresa.
@@ -150,7 +154,7 @@ export async function parseOrderWithGemini(text: string) {
                         quantity: { type: Type.NUMBER },
                         name: { type: Type.STRING },
                         weight: { type: Type.STRING },
-                        grindType: { type: Type.STRING },
+                        grindType: { type: Type.STRING, enum: ['moído', 'grãos', 'N/A'] },
                         productionNotes: { type: Type.STRING }
                       },
                       required: ["quantity", "name", "weight", "grindType"]
