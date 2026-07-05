@@ -979,6 +979,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     const finalOrder = {
       ...order,
       ...overrides,
+      originType: originType,
       addressDetails: {
         ...order.addressDetails,
         ...(overrides.street || overrides.number || overrides.zip ? {

@@ -449,7 +449,7 @@ export async function POST(req: Request) {
 
     // Lógica para definir a origem (remetente)
     const isMelhorEnvio = selectedOption.provider === 'Melhor Envio';
-    const selectedOriginType: string = order.originType || (isMelhorEnvio ? 'BH' : 'CRV');
+    const selectedOriginType: string = order.originType || 'CRV';
     let origin: any = {};
     let isOriginPJ = false;
     let originCnpj = '';
