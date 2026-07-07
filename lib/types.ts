@@ -210,6 +210,13 @@ export interface Order {
   }[];
   lastRecurrenceContact?: string;
   recurrenceRemoved?: boolean;
+  shelfRemovals?: Array<{
+    productName: string;
+    weight: string;
+    grindType?: string;
+    qty: number;
+    timestamp: string;
+  }>;
   isDeleted?: boolean;
   deletedAt?: string;
 }

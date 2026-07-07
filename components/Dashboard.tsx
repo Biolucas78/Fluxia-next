@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { DashboardStats, Order, ShippingOption, ProductItem } from '@/lib/types';
-import { Coffee, Package, Users, TrendingUp, Scale, CheckCircle, Calendar, Filter, Truck, AlertTriangle, ChevronRight, Info, ArrowRight, Beaker, Layers } from 'lucide-react';
+import { Coffee, Package, Users, TrendingUp, Scale, CheckCircle, Calendar, Filter, Truck, AlertTriangle, ChevronRight, Info, ArrowRight, Beaker, Layers, MinusCircle } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -52,6 +52,8 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
   const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; matchKey: string; qty: number; clientes?: string[]} | null>(null);
   const [selectedSeparadasItem, setSelectedSeparadasItem] = useState<{name: string; matchKey: string; qty: number; clientes?: string[]} | null>(null);
   const [showSeparadasBulkModal, setShowSeparadasBulkModal] = useState(false);
+  const [selectedShelfItem, setSelectedShelfItem] = useState<{name: string; qty: number} | null>(null);
+  const [shelfSubtractQty, setShelfSubtractQty] = useState(1);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
   
   // Global Date Filter
@@ -1388,12 +1390,18 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
               const weight = weightMatch ? weightMatch[0] : '';
               const coffeeName = cleanName.replace(weight, '').trim();
               return (
-                <div key={item.name} className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] ${getCoffeeCardStyle(coffeeName || cleanName)}`}>
+                <button
+                  key={item.name}
+                  onClick={() => { setSelectedShelfItem({ name: item.name, qty: item.qty }); setShelfSubtractQty(1); }}
+                  className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] transition-all hover:scale-105 hover:shadow-md active:scale-95 cursor-pointer relative group/shelf ${getCoffeeCardStyle(coffeeName || cleanName)}`}
+                  title="Clique para retirar pacotes da prateleira"
+                >
                   <span className={`text-lg font-black leading-none ${getCoffeeQtyColor(coffeeName || cleanName)}`}>{item.qty}</span>
                   <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">un</span>
                   <span className="text-[10px] font-black text-slate-900 dark:text-white leading-tight">{coffeeName || cleanName} {weight}</span>
                   {grind && <span className="text-[9px] font-bold text-primary uppercase">{grind}</span>}
-                </div>
+                  <MinusCircle className="absolute top-1 right-1 size-3 text-slate-300 opacity-0 group-hover/shelf:opacity-100 transition-opacity" />
+                </button>
               );
             })}
             {onShelf.length === 0 && (
@@ -1405,6 +1413,159 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
           </div>
         </div>
       </div>
+
+      {/* Modal — Retirada da Prateleira */}
+      {selectedShelfItem && (() => {
+        const keyName = selectedShelfItem.name;
+        const shelfSources = orders.filter(order => {
+          if (order.status === 'embalagens_prontas') {
+            return order.products.some(p => {
+              if (p.checked) return false;
+              const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+              return `${p.name} ${p.weight}${g}` === keyName;
+            });
+          }
+          if (order.status === 'embalagens_separadas') {
+            return order.products.some(p => {
+              if (!p.checked) return false;
+              const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+              return `${p.name} ${p.weight}${g}` === keyName;
+            });
+          }
+          return false;
+        });
+        const maxQty = Math.min(selectedShelfItem.qty, shelfSources.reduce((acc, o) => {
+          const mp = o.products.find(p => {
+            const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+            const key = `${p.name} ${p.weight}${g}`;
+            if (o.status === 'embalagens_prontas') return !p.checked && key === keyName;
+            if (o.status === 'embalagens_separadas') return p.checked && key === keyName;
+            return false;
+          });
+          return acc + (mp?.quantity || 0);
+        }, 0));
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                    <MinusCircle className="size-5 text-red-500" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900 dark:text-white">Retirar da Prateleira</h2>
+                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Pedido urgente / venda direta</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 space-y-5">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Produto</p>
+                  <p className="text-sm font-black text-slate-900 dark:text-white">{selectedShelfItem.name}</p>
+                  <p className="text-[10px] text-slate-400 font-bold mt-0.5">{selectedShelfItem.qty} un. disponíveis na prateleira</p>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">
+                    Quantos pacotes retirar?
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShelfSubtractQty(q => Math.max(1, q - 1))}
+                      className="size-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-black text-lg transition-all"
+                    >−</button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={maxQty}
+                      value={shelfSubtractQty}
+                      onChange={e => setShelfSubtractQty(Math.max(1, Math.min(maxQty, parseInt(e.target.value) || 1)))}
+                      className="flex-1 text-center text-2xl font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 outline-none focus:border-primary transition-all"
+                    />
+                    <button
+                      onClick={() => setShelfSubtractQty(q => Math.min(maxQty, q + 1))}
+                      className="size-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-black text-lg transition-all"
+                    >+</button>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-100 dark:border-amber-800/50">
+                  <p className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-1">
+                    {shelfSources.length} pedido{shelfSources.length !== 1 ? 's' : ''} afetado{shelfSources.length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-[10px] text-amber-600 dark:text-amber-500">
+                    Os pedidos com este produto voltam para <strong>Pedidos</strong> para reposição. Outros produtos do pedido permanecem marcados.
+                  </p>
+                  {shelfSources.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {shelfSources.slice(0, 4).map((o, i) => (
+                        <span key={i} className="text-[9px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-lg border border-amber-200 dark:border-amber-800">
+                          {(o as any).tradeName || o.clientName}
+                        </span>
+                      ))}
+                      {shelfSources.length > 4 && (
+                        <span className="text-[9px] font-bold text-amber-500">+{shelfSources.length - 4}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={() => setSelectedShelfItem(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      let remaining = shelfSubtractQty;
+                      const now = new Date().toISOString();
+                      for (const order of shelfSources) {
+                        if (remaining <= 0) break;
+                        const matchingProduct = order.products.find(p => {
+                          const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+                          const k = `${p.name} ${p.weight}${g}`;
+                          if (order.status === 'embalagens_prontas') return !p.checked && k === keyName;
+                          if (order.status === 'embalagens_separadas') return p.checked && k === keyName;
+                          return false;
+                        });
+                        if (!matchingProduct) continue;
+                        const taken = Math.min(remaining, matchingProduct.quantity);
+                        remaining -= taken;
+                        const updatedProducts = order.products.map(p =>
+                          p.id === matchingProduct.id ? { ...p, checked: false } : p
+                        );
+                        onUpdateOrder!({
+                          ...order,
+                          status: 'pedidos',
+                          products: updatedProducts,
+                          shelfRemovals: [
+                            ...(order.shelfRemovals || []),
+                            { productName: matchingProduct.name, weight: matchingProduct.weight, grindType: matchingProduct.grindType, qty: taken, timestamp: now }
+                          ],
+                          statusHistory: [
+                            ...(order.statusHistory || []),
+                            { status: 'pedidos', action: 'Retirada da prateleira', details: `${taken}× ${matchingProduct.name} ${matchingProduct.weight}${matchingProduct.grindType !== 'N/A' ? ` (${matchingProduct.grindType})` : ''} retirado(s) para pedido urgente`, timestamp: now }
+                          ]
+                        });
+                      }
+                      setSelectedShelfItem(null);
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-black transition-colors"
+                  >
+                    Confirmar retirada
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        );
+      })()}
 
       {/* SECTION: MONITORAMENTO (O que está sendo feito) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

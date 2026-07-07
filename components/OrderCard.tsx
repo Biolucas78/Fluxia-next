@@ -524,6 +524,15 @@ export default function OrderCard({
         </div>
       </div>
 
+      {/* Shelf removal tag - Bottom Left */}
+      {!isExpanded && order.shelfRemovals && order.shelfRemovals.length > 0 && (
+        <div className="absolute bottom-3 left-3">
+          <span className="text-[8px] font-black text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-1.5 py-0.5 rounded-md uppercase tracking-widest">
+            {order.shelfRemovals.reduce((a, r) => a + r.qty, 0)} retirado{order.shelfRemovals.reduce((a, r) => a + r.qty, 0) !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
+
       {/* Product Count - Absolute Bottom Right */}
       {!isExpanded && (
         <div className="absolute bottom-3 right-3 flex items-center gap-1">
