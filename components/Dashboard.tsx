@@ -50,6 +50,8 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
   const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; matchKey: string; qty: number; clientes?: string[]} | null>(null);
+  const [selectedSeparadasItem, setSelectedSeparadasItem] = useState<{name: string; matchKey: string; qty: number; clientes?: string[]} | null>(null);
+  const [showSeparadasBulkModal, setShowSeparadasBulkModal] = useState(false);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
   
   // Global Date Filter
@@ -365,6 +367,38 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
             const grindNorm = normalizeGrindForKey(product.grindType || '');
             const grindSuffix = grindNorm ? ` (${grindNorm})` : '';
             const keyBase = (product.name || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') + ' ' + (product.weight || '').trim().toLowerCase();
+            const key = isPersonalizado ? keyBase + grindSuffix + '_pers' : keyBase + grindSuffix.toLowerCase();
+            if (!demand[key]) {
+              const grindOrig = grindNorm ? ` (${grindNorm})` : '';
+              demand[key] = {
+                displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}${isPersonalizado ? ' · Personalizado' : ''}`,
+                matchKey: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}`,
+                qty: 0,
+                clientes: [],
+              };
+            }
+            demand[key].qty += product.quantity;
+            const clientName = (order as any).tradeName || order.clientName || '';
+            if (clientName && !demand[key].clientes.includes(clientName)) {
+              demand[key].clientes.push(clientName);
+            }
+          }
+        });
+      }
+    });
+    return Object.values(demand).sort((a, b) => b.qty - a.qty);
+  }, [orders]);
+
+  const packagingDemandSeparadas = useMemo(() => {
+    const demand: Record<string, { displayName: string; matchKey: string; qty: number; clientes: string[] }> = {};
+    orders.forEach(order => {
+      if (order.status === 'embalagens_separadas') {
+        order.products.forEach(product => {
+          if (!product.checked) {
+            const isPersonalizado = ((product as any).productionNotes || '').toLowerCase().includes('personaliz') || (product.name || '').toLowerCase().includes('personaliz');
+            const grindNorm = normalizeGrindForKey(product.grindType || '');
+            const grindSuffix = grindNorm ? ` (${grindNorm})` : '';
+            const keyBase = (product.name || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') + ' ' + (product.weight || '').trim().toLowerCase();
             const key = isPersonalizado ? keyBase + grindSuffix + '_pers' : keyBase + grindSuffix.toLowerCase();
             if (!demand[key]) {
               const grindOrig = grindNorm ? ` (${grindNorm})` : '';
@@ -983,40 +1017,55 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
             </div>
           </div>
 
-          {/* Na Prateleira */}
+          {/* Embalagens Separadas */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col flex-1 min-h-0">
             <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
               <div className="flex items-center gap-2">
-                <div className="bg-emerald-100 dark:bg-emerald-900/30 p-1.5 rounded-xl">
-                  <Package className="size-4 text-emerald-600 dark:text-emerald-400" />
+                <div className="bg-orange-100 dark:bg-orange-900/30 p-1.5 rounded-xl">
+                  <Package className="size-4 text-orange-600 dark:text-orange-400" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tight">Na Prateleira</h3>
-                  <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Prontos aguardando caixa</p>
+                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tight">Embalagens Separadas</h3>
+                  <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Itens a embalar (Emb. Separadas)</p>
                 </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {packagingDemandSeparadas.length > 0 && (
+                  <button
+                    onClick={() => setShowSeparadasBulkModal(true)}
+                    className="flex items-center gap-1 px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white text-[9px] font-black rounded-lg transition-all"
+                  >
+                    <Package className="size-3" />
+                    Produzir
+                  </button>
+                )}
               </div>
             </div>
             <div className="flex-1 p-3 overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-3 gap-1.5">
-                {[...onShelf].sort((a, b) => b.qty - a.qty).map((item) => {
-                  const grind = item.name.includes('(') ? item.name.match(/\(([^)]+)\)/)?.[1] || '' : '';
-                  const cleanName = item.name.replace(/\s*\([^)]*\)/, '').trim();
+                {[...packagingDemandSeparadas].sort((a, b) => b.qty - a.qty).map((item) => {
+                  const grind = item.displayName.includes('(') ? item.displayName.match(/\(([^)]+)\)/)?.[1] || '' : '';
+                  const cleanName = item.displayName.replace(/\s*\([^)]*\)/, '').trim();
                   const weightMatch = cleanName.match(/(\d+g|\d+kg)/i);
                   const weight = weightMatch ? weightMatch[0] : '';
                   const coffeeName = cleanName.replace(weight, '').trim();
                   return (
-                    <div key={item.name} className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] ${getCoffeeCardStyle(coffeeName || cleanName)}`}>
+                    <button
+                      key={item.displayName}
+                      onClick={() => setSelectedSeparadasItem({ name: item.displayName, matchKey: item.matchKey, qty: item.qty, clientes: item.clientes })}
+                      className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] transition-all hover:scale-105 hover:shadow-md active:scale-95 cursor-pointer ${getCoffeeCardStyle(coffeeName || cleanName)}`}
+                    >
                       <span className={`text-lg font-black leading-none ${getCoffeeQtyColor(coffeeName || cleanName)}`}>{item.qty}</span>
                       <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">un</span>
                       <span className="text-[10px] font-black text-slate-900 dark:text-white leading-tight">{coffeeName || cleanName} {weight}</span>
-                      {grind && <span className="text-[9px] font-bold text-primary uppercase">{grind}</span>}
-                    </div>
+                      {grind && <span className="text-[9px] font-bold text-orange-500 uppercase">{grind}</span>}
+                    </button>
                   );
                 })}
-                {onShelf.length === 0 && (
-                  <div className="col-span-2 py-8 text-center text-slate-400">
+                {packagingDemandSeparadas.length === 0 && (
+                  <div className="col-span-3 py-8 text-center text-slate-400">
                     <Package className="size-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-xs font-bold">Nenhum item na prateleira</p>
+                    <p className="text-xs font-bold">Nenhuma embalagem separada</p>
                   </div>
                 )}
               </div>
@@ -1198,6 +1247,155 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
             subtitle="Separação em Lote — Dashboard"
           />
         )}
+
+        {/* Modal Confirmação Minicard — Embalagens Separadas */}
+        {selectedSeparadasItem && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                    <Package className="size-5 text-orange-500" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900 dark:text-white">Confirmar produção</h2>
+                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Embalagens Separadas</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-slate-700 dark:text-slate-300 font-medium mb-1">
+                  Marcar como embaladas e prontas:
+                </p>
+                <p className="text-base font-black text-slate-900 dark:text-white mb-6">
+                  {selectedSeparadasItem.qty}× {selectedSeparadasItem.name}
+                {selectedSeparadasItem.clientes && selectedSeparadasItem.clientes.length > 0 && (
+                  <div className="mb-4 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Pedidos de</p>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedSeparadasItem.clientes.map((cliente, i) => (
+                        <span key={i} className="text-[10px] font-bold bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                          {cliente}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSelectedSeparadasItem(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const item = selectedSeparadasItem;
+                      const separadas = orders.filter(o => o.status === 'embalagens_separadas');
+                      const keyToMatch = item.matchKey;
+                      const affected = separadas.filter(order => order.products.some(p => {
+                        const grindNorm = normalizeGrindForKey(p.grindType || '');
+                        const grind = grindNorm ? ` (${grindNorm})` : '';
+                        return `${p.name.trim()} ${(p.weight || '').trim()}${grind}` === keyToMatch && !p.checked;
+                      }));
+                      if (affected.length > 0) {
+                        await saveToHistory('minicard_sep', `Embalou: ${item.qty}x ${item.name}`, affected);
+                      }
+                      separadas.forEach(order => {
+                        let hasChange = false;
+                        const updatedProducts = order.products.map(p => {
+                          const grindNorm = normalizeGrindForKey(p.grindType || '');
+                          const grind = grindNorm ? ` (${grindNorm})` : '';
+                          const productKey = `${p.name.trim()} ${(p.weight || '').trim()}${grind}`;
+                          if (productKey === keyToMatch && !p.checked) {
+                            hasChange = true;
+                            return { ...p, checked: true };
+                          }
+                          return p;
+                        });
+                        if (hasChange) {
+                          const allChecked = updatedProducts.every(p => p.checked);
+                          if (allChecked) {
+                            onUpdateOrder!({
+                              ...order,
+                              status: 'embalagens_prontas',
+                              products: updatedProducts.map(p => ({ ...p, checked: false })),
+                              statusHistory: [
+                                ...(order.statusHistory || []),
+                                { status: 'embalagens_prontas', timestamp: new Date().toISOString() }
+                              ]
+                            });
+                          } else {
+                            onUpdateOrder!({ ...order, products: updatedProducts });
+                          }
+                        }
+                      });
+                      setSelectedSeparadasItem(null);
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-black transition-colors"
+                  >
+                    Confirmar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Modal Produzir Embalagens em Lote */}
+        {showSeparadasBulkModal && (
+          <BulkCheckModal
+            selectedOrders={orders.filter(o => o.status === 'embalagens_separadas')}
+            onClose={() => setShowSeparadasBulkModal(false)}
+            onUpdateOrder={onUpdateOrder!}
+            title="Produzir Embalagens"
+            subtitle="Produção em Lote — Emb. Separadas"
+          />
+        )}
+      </div>
+
+      {/* Na Prateleira — linha completa, máx 3 fileiras de minicards */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2 bg-slate-50/50 dark:bg-slate-800/50">
+          <div className="bg-emerald-100 dark:bg-emerald-900/30 p-1.5 rounded-xl">
+            <Package className="size-4 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div>
+            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tight">Na Prateleira</h3>
+            <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Prontos aguardando caixa (Emb. Prontas)</p>
+          </div>
+        </div>
+        {/* max-h limita a 3 fileiras: 3×80px minicards + 2×6px gaps + 24px padding = 276px */}
+        <div className="p-3 overflow-y-auto custom-scrollbar" style={{ maxHeight: '276px' }}>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-1.5">
+            {[...onShelf].sort((a, b) => b.qty - a.qty).map((item) => {
+              const grind = item.name.includes('(') ? item.name.match(/\(([^)]+)\)/)?.[1] || '' : '';
+              const cleanName = item.name.replace(/\s*\([^)]*\)/, '').trim();
+              const weightMatch = cleanName.match(/(\d+g|\d+kg)/i);
+              const weight = weightMatch ? weightMatch[0] : '';
+              const coffeeName = cleanName.replace(weight, '').trim();
+              return (
+                <div key={item.name} className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] ${getCoffeeCardStyle(coffeeName || cleanName)}`}>
+                  <span className={`text-lg font-black leading-none ${getCoffeeQtyColor(coffeeName || cleanName)}`}>{item.qty}</span>
+                  <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">un</span>
+                  <span className="text-[10px] font-black text-slate-900 dark:text-white leading-tight">{coffeeName || cleanName} {weight}</span>
+                  {grind && <span className="text-[9px] font-bold text-primary uppercase">{grind}</span>}
+                </div>
+              );
+            })}
+            {onShelf.length === 0 && (
+              <div className="col-span-full py-8 text-center text-slate-400">
+                <Package className="size-8 mx-auto mb-2 opacity-30" />
+                <p className="text-xs font-bold">Nenhum item na prateleira</p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* SECTION: MONITORAMENTO (O que está sendo feito) */}
