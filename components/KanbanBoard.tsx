@@ -316,8 +316,12 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         const isMovingForward = newIndex > currentIndex;
         
         let updatedProducts = order.products;
+        const isLeavingPedidosWithRemovals = isMovingForward && order.status === 'pedidos' && order.shelfRemovals && order.shelfRemovals.length > 0;
+
         if (isMovingForward) {
-          if (targetStatus === 'embalagens_separadas' || targetStatus === 'embalagens_prontas') {
+          if (isLeavingPedidosWithRemovals) {
+            // Keep existing checked states so user sees exactly what still needs repacking
+          } else if (targetStatus === 'embalagens_separadas' || targetStatus === 'embalagens_prontas') {
             updatedProducts = order.products.map((p: any) => ({ ...p, checked: false }));
           }
         } else {
@@ -328,6 +332,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
           ...order,
           status: targetStatus,
           products: updatedProducts,
+          ...(isLeavingPedidosWithRemovals ? { shelfRemovals: [] } : {}),
           statusHistory: [
             ...(order.statusHistory || []),
             { status: targetStatus, timestamp: new Date().toISOString() }

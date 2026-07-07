@@ -92,9 +92,12 @@ export default function ProducaoPage() {
       
       let updatedProducts = order.products;
       const isMovingForward = nextIndex > currentIndex;
-      
+      const isLeavingPedidosWithRemovals = isMovingForward && order.status === 'pedidos' && order.shelfRemovals && order.shelfRemovals.length > 0;
+
       if (isMovingForward) {
-        if (nextStatus === 'embalagens_separadas' || nextStatus === 'embalagens_prontas') {
+        if (isLeavingPedidosWithRemovals) {
+          // Keep existing checked states so user sees exactly what still needs repacking
+        } else if (nextStatus === 'embalagens_separadas' || nextStatus === 'embalagens_prontas') {
           updatedProducts = order.products.map((p: any) => ({ ...p, checked: false }));
         }
       } else {
@@ -105,12 +108,13 @@ export default function ProducaoPage() {
         ...order,
         status: nextStatus,
         products: updatedProducts,
+        ...(isLeavingPedidosWithRemovals ? { shelfRemovals: [] } : {}),
         statusHistory: [
           ...(order.statusHistory || []),
-          { 
+          {
             status: nextStatus,
             action: `Moveu o card para a etapa atual`,
-            timestamp: new Date().toISOString() 
+            timestamp: new Date().toISOString()
           }
         ]
       });
