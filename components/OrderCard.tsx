@@ -382,9 +382,9 @@ export default function OrderCard({
     const daysInColumn = Math.floor((new Date().getTime() - new Date(lastUpdate).getTime()) / (1000 * 60 * 60 * 24));
     
     if (daysInColumn >= 3) {
-      return { level: 'critical', message: `Parado há ${daysInColumn} dias` };
+      return { level: 'critical', message: `Parado há ${daysInColumn} dias`, days: daysInColumn };
     } else if (daysInColumn >= 2) {
-      return { level: 'warning', message: `Parado há ${daysInColumn} dias` };
+      return { level: 'warning', message: `Parado há ${daysInColumn} dias`, days: daysInColumn };
     }
     return null;
   }, [order.status, order.createdAt, order.statusHistory]);
@@ -407,15 +407,27 @@ export default function OrderCard({
           : 'border-slate-200 dark:border-slate-800 hover:border-primary'
       }`}
     >
-      {(locationInfo || (order as any).invoiceLinked || (order as any).boletoLinked || (order as any).noInvoiceLinked || order.paymentMethod) && (
-        <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1 max-w-[30%]">
+      {(locationInfo || (order as any).invoiceLinked || (order as any).boletoLinked || (order as any).noInvoiceLinked || order.paymentMethod || delayAlert) && (
+        <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1 max-w-[40%]">
           {locationInfo && (
             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-700 truncate w-full text-right" title={locationInfo}>
               {locationInfo}
             </span>
           )}
-          {((order as any).invoiceLinked || (order as any).boletoLinked || (order as any).noInvoiceLinked || order.paymentMethod) && (
+          {((order as any).invoiceLinked || (order as any).boletoLinked || (order as any).noInvoiceLinked || order.paymentMethod || delayAlert) && (
             <div className="flex gap-0.5 justify-end flex-wrap">
+              {delayAlert && (
+                <span
+                  className={`text-[8px] font-black px-1 py-0.5 rounded-md border whitespace-nowrap ${
+                    delayAlert.level === 'critical'
+                      ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800'
+                      : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:border-amber-800'
+                  }`}
+                  title={delayAlert.message}
+                >
+                  {delayAlert.days}D
+                </span>
+              )}
               {(order as any).invoiceLinked && (
                 <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 px-1 py-0.5 rounded-md" title="Nota Fiscal vinculada">N</span>
               )}
@@ -428,17 +440,6 @@ export default function OrderCard({
               {order.paymentMethod && !(order as any).boletoLinked && <PaymentTag method={order.paymentMethod} />}
             </div>
           )}
-        </div>
-      )}
-      {delayAlert && (
-        <div className={`absolute right-3 z-10 transition-all ${isExpanded ? 'top-12' : 'top-1/2 -translate-y-1/2'}`}>
-          <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border whitespace-nowrap ${
-            delayAlert.level === 'critical' 
-              ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800' 
-              : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:border-amber-800'
-          }`}>
-            {delayAlert.message}
-          </span>
         </div>
       )}
       {onToggleSelect && (
@@ -524,18 +525,17 @@ export default function OrderCard({
         </div>
       </div>
 
-      {/* Shelf removal tag - Bottom Left */}
-      {!isExpanded && order.shelfRemovals && order.shelfRemovals.length > 0 && (
-        <div className="absolute bottom-3 left-3">
-          <span className="text-[8px] font-black text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-1.5 py-0.5 rounded-md uppercase tracking-widest">
-            {order.shelfRemovals.reduce((a, r) => a + r.qty, 0)} retirado{order.shelfRemovals.reduce((a, r) => a + r.qty, 0) !== 1 ? 's' : ''}
-          </span>
-        </div>
-      )}
-
       {/* Product Count - Absolute Bottom Right */}
       {!isExpanded && (
         <div className="absolute bottom-3 right-3 flex items-center gap-1">
+          {order.shelfRemovals && order.shelfRemovals.length > 0 && (
+            <span
+              className="text-[8px] font-black text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-1 py-0.5 rounded-md"
+              title={`${order.shelfRemovals.reduce((a, r) => a + r.qty, 0)} retirado(s) da prateleira`}
+            >
+              {order.shelfRemovals.reduce((a, r) => a + r.qty, 0)}R
+            </span>
+          )}
           <span className="text-[10px] font-bold text-slate-400">
             {order.products.filter(p => p.checked).length}/{order.products.length}
           </span>
