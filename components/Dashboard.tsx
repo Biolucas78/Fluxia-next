@@ -423,12 +423,20 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
 
   const onShelf = useMemo(() => {
     const shelf: Record<string, number> = {};
-    
+
     orders.forEach(order => {
-      // Somente as que os pedidos estiverem na fase "Embalagens prontas"
       if (order.status === 'embalagens_prontas') {
+        // Pedidos prontos: todos os produtos não marcados ainda aguardam caixa
         order.products.forEach(p => {
-          if (p.checked) return; // Saiu da prateleira para a caixa
+          if (p.checked) return; // já saiu para a caixa
+          const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+          const key = `${p.name} ${p.weight}${grind}`;
+          shelf[key] = (shelf[key] || 0) + p.quantity;
+        });
+      } else if (order.status === 'embalagens_separadas') {
+        // Pedidos em separação: produtos já marcados como embalados estão na prateleira
+        order.products.forEach(p => {
+          if (!p.checked) return; // ainda não embalado
           const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
           const key = `${p.name} ${p.weight}${grind}`;
           shelf[key] = (shelf[key] || 0) + p.quantity;
