@@ -52,7 +52,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
   const [selectedPackagingItem, setSelectedPackagingItem] = useState<{name: string; matchKey: string; qty: number; clientes?: string[]} | null>(null);
   const [selectedSeparadasItem, setSelectedSeparadasItem] = useState<{name: string; matchKey: string; qty: number; clientes?: string[]} | null>(null);
   const [showSeparadasBulkModal, setShowSeparadasBulkModal] = useState(false);
-  const [selectedShelfItem, setSelectedShelfItem] = useState<{name: string; qty: number} | null>(null);
+  const [selectedShelfItem, setSelectedShelfItem] = useState<{name: string; displayName: string; qty: number} | null>(null);
   const [shelfSubtractQty, setShelfSubtractQty] = useState(1);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<Order | null>(null);
   
@@ -424,29 +424,29 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
   }, [orders]);
 
   const onShelf = useMemo(() => {
-    const shelf: Record<string, number> = {};
+    const shelf: Record<string, { displayName: string; qty: number }> = {};
+
+    const addToShelf = (p: typeof orders[0]['products'][0]) => {
+      const isPersonalizado = (p.productionNotes || '').toLowerCase().includes('personaliz') || (p.name || '').toLowerCase().includes('personaliz');
+      const nameHasPers = (p.name || '').toLowerCase().includes('personaliz');
+      const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+      // _pers separa produtos personalizados de regulares com mesmo nome/peso/moagem
+      const key = `${p.name} ${p.weight}${grind}${isPersonalizado && !nameHasPers ? '_pers' : ''}`;
+      const displayName = `${p.name} ${p.weight}${grind}${isPersonalizado && !nameHasPers ? ' · Personalizado' : ''}`;
+      if (!shelf[key]) shelf[key] = { displayName, qty: 0 };
+      shelf[key].qty += p.quantity;
+    };
 
     orders.forEach(order => {
       if (order.status === 'embalagens_prontas') {
-        // Pedidos prontos: todos os produtos não marcados ainda aguardam caixa
-        order.products.forEach(p => {
-          if (p.checked) return; // já saiu para a caixa
-          const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
-          const key = `${p.name} ${p.weight}${grind}`;
-          shelf[key] = (shelf[key] || 0) + p.quantity;
-        });
+        order.products.forEach(p => { if (!p.checked) addToShelf(p); });
       } else if (order.status === 'embalagens_separadas') {
-        // Pedidos em separação: produtos já marcados como embalados estão na prateleira
-        order.products.forEach(p => {
-          if (!p.checked) return; // ainda não embalado
-          const grind = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
-          const key = `${p.name} ${p.weight}${grind}`;
-          shelf[key] = (shelf[key] || 0) + p.quantity;
-        });
+        order.products.forEach(p => { if (p.checked) addToShelf(p); });
       }
     });
 
-    return Object.entries(shelf).map(([name, qty]) => ({ name, qty }))
+    return Object.entries(shelf)
+      .map(([name, { displayName, qty }]) => ({ name, displayName, qty }))
       .sort((a, b) => b.qty - a.qty);
   }, [orders]);
 
@@ -1384,15 +1384,17 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
         <div className="p-3 overflow-y-auto custom-scrollbar" style={{ maxHeight: '276px' }}>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-1.5">
             {[...onShelf].sort((a, b) => b.qty - a.qty).map((item) => {
-              const grind = item.name.includes('(') ? item.name.match(/\(([^)]+)\)/)?.[1] || '' : '';
-              const cleanName = item.name.replace(/\s*\([^)]*\)/, '').trim();
+              const isPersonalizado = item.displayName.includes(' · Personalizado');
+              const baseName = item.displayName.replace(' · Personalizado', '');
+              const grind = baseName.includes('(') ? baseName.match(/\(([^)]+)\)/)?.[1] || '' : '';
+              const cleanName = baseName.replace(/\s*\([^)]*\)/, '').trim();
               const weightMatch = cleanName.match(/(\d+g|\d+kg)/i);
               const weight = weightMatch ? weightMatch[0] : '';
               const coffeeName = cleanName.replace(weight, '').trim();
               return (
                 <button
                   key={item.name}
-                  onClick={() => { setSelectedShelfItem({ name: item.name, qty: item.qty }); setShelfSubtractQty(1); }}
+                  onClick={() => { setSelectedShelfItem({ name: item.name, displayName: item.displayName, qty: item.qty }); setShelfSubtractQty(1); }}
                   className={`flex flex-col items-center justify-center px-1 py-2 rounded-xl border text-center min-h-[80px] transition-all hover:scale-105 hover:shadow-md active:scale-95 cursor-pointer relative group/shelf ${getCoffeeCardStyle(coffeeName || cleanName)}`}
                   title="Clique para retirar pacotes da prateleira"
                 >
@@ -1400,6 +1402,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                   <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">un</span>
                   <span className="text-[10px] font-black text-slate-900 dark:text-white leading-tight">{coffeeName || cleanName} {weight}</span>
                   {grind && <span className="text-[9px] font-bold text-primary uppercase">{grind}</span>}
+                  {isPersonalizado && <span className="text-[8px] font-bold text-amber-500 uppercase tracking-wide">Pers.</span>}
                   <MinusCircle className="absolute top-1 right-1 size-3 text-slate-300 opacity-0 group-hover/shelf:opacity-100 transition-opacity" />
                 </button>
               );
@@ -1417,29 +1420,26 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
       {/* Modal — Retirada da Prateleira */}
       {selectedShelfItem && (() => {
         const keyName = selectedShelfItem.name;
+        // Constrói a mesma chave que onShelf usa (com sufixo _pers se necessário)
+        const buildKey = (p: typeof orders[0]['products'][0]) => {
+          const isPersProd = (p.productionNotes || '').toLowerCase().includes('personaliz') || (p.name || '').toLowerCase().includes('personaliz');
+          const nameHasPers = (p.name || '').toLowerCase().includes('personaliz');
+          const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
+          return `${p.name} ${p.weight}${g}${isPersProd && !nameHasPers ? '_pers' : ''}`;
+        };
         const shelfSources = orders.filter(order => {
           if (order.status === 'embalagens_prontas') {
-            return order.products.some(p => {
-              if (p.checked) return false;
-              const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
-              return `${p.name} ${p.weight}${g}` === keyName;
-            });
+            return order.products.some(p => !p.checked && buildKey(p) === keyName);
           }
           if (order.status === 'embalagens_separadas') {
-            return order.products.some(p => {
-              if (!p.checked) return false;
-              const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
-              return `${p.name} ${p.weight}${g}` === keyName;
-            });
+            return order.products.some(p => p.checked && buildKey(p) === keyName);
           }
           return false;
         });
         const maxQty = Math.min(selectedShelfItem.qty, shelfSources.reduce((acc, o) => {
           const mp = o.products.find(p => {
-            const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
-            const key = `${p.name} ${p.weight}${g}`;
-            if (o.status === 'embalagens_prontas') return !p.checked && key === keyName;
-            if (o.status === 'embalagens_separadas') return p.checked && key === keyName;
+            if (o.status === 'embalagens_prontas') return !p.checked && buildKey(p) === keyName;
+            if (o.status === 'embalagens_separadas') return p.checked && buildKey(p) === keyName;
             return false;
           });
           return acc + (mp?.quantity || 0);
@@ -1465,7 +1465,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
               <div className="p-6 space-y-5">
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Produto</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-white">{selectedShelfItem.name}</p>
+                  <p className="text-sm font-black text-slate-900 dark:text-white">{selectedShelfItem.displayName}</p>
                   <p className="text-[10px] text-slate-400 font-bold mt-0.5">{selectedShelfItem.qty} un. disponíveis na prateleira</p>
                 </div>
 
@@ -1528,8 +1528,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                       for (const order of shelfSources) {
                         if (remaining <= 0) break;
                         const matchingProduct = order.products.find(p => {
-                          const g = p.grindType !== 'N/A' ? ` (${p.grindType})` : '';
-                          const k = `${p.name} ${p.weight}${g}`;
+                          const k = buildKey(p);
                           if (order.status === 'embalagens_prontas') return !p.checked && k === keyName;
                           if (order.status === 'embalagens_separadas') return p.checked && k === keyName;
                           return false;
