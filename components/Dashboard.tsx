@@ -1040,15 +1040,14 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                {packagingDemandSeparadas.length > 0 && (
-                  <button
-                    onClick={() => setShowSeparadasBulkModal(true)}
-                    className="flex items-center gap-1 px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white text-[9px] font-black rounded-lg transition-all"
-                  >
-                    <Package className="size-3" />
-                    Produzir
-                  </button>
-                )}
+                <button
+                  onClick={() => { setShowHistoryModal(true); loadHistory(); }}
+                  className="flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-[9px] font-black rounded-lg transition-all"
+                  title="Histórico de embalagens"
+                >
+                  <RotateCcw className="size-3" />
+                  Retornar
+                </button>
               </div>
             </div>
             <div className="flex-1 p-3 overflow-y-auto custom-scrollbar">
