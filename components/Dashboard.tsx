@@ -393,33 +393,39 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
 
   const packagingDemandSeparadas = useMemo(() => {
     const demand: Record<string, { displayName: string; matchKey: string; qty: number; clientes: string[] }> = {};
+
+    const addToDemand = (product: typeof orders[0]['products'][0], order: typeof orders[0]) => {
+      const isPersonalizado = ((product as any).productionNotes || '').toLowerCase().includes('personaliz') || (product.name || '').toLowerCase().includes('personaliz');
+      const grindNorm = normalizeGrindForKey(product.grindType || '');
+      const grindSuffix = grindNorm ? ` (${grindNorm})` : '';
+      const keyBase = (product.name || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') + ' ' + (product.weight || '').trim().toLowerCase();
+      const key = isPersonalizado ? keyBase + grindSuffix + '_pers' : keyBase + grindSuffix.toLowerCase();
+      if (!demand[key]) {
+        const grindOrig = grindNorm ? ` (${grindNorm})` : '';
+        demand[key] = {
+          displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}${isPersonalizado ? ' · Personalizado' : ''}`,
+          matchKey: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}`,
+          qty: 0,
+          clientes: [],
+        };
+      }
+      demand[key].qty += product.quantity;
+      const clientName = (order as any).tradeName || order.clientName || '';
+      if (clientName && !demand[key].clientes.includes(clientName)) {
+        demand[key].clientes.push(clientName);
+      }
+    };
+
     orders.forEach(order => {
-      if (order.status === 'embalagens_separadas') {
-        order.products.forEach(product => {
-          if (!product.checked) {
-            const isPersonalizado = ((product as any).productionNotes || '').toLowerCase().includes('personaliz') || (product.name || '').toLowerCase().includes('personaliz');
-            const grindNorm = normalizeGrindForKey(product.grindType || '');
-            const grindSuffix = grindNorm ? ` (${grindNorm})` : '';
-            const keyBase = (product.name || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') + ' ' + (product.weight || '').trim().toLowerCase();
-            const key = isPersonalizado ? keyBase + grindSuffix + '_pers' : keyBase + grindSuffix.toLowerCase();
-            if (!demand[key]) {
-              const grindOrig = grindNorm ? ` (${grindNorm})` : '';
-              demand[key] = {
-                displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}${isPersonalizado ? ' · Personalizado' : ''}`,
-                matchKey: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}`,
-                qty: 0,
-                clientes: [],
-              };
-            }
-            demand[key].qty += product.quantity;
-            const clientName = (order as any).tradeName || order.clientName || '';
-            if (clientName && !demand[key].clientes.includes(clientName)) {
-              demand[key].clientes.push(clientName);
-            }
-          }
-        });
+      if (order.status === 'pedidos') {
+        // Produtos já marcados em Pedidos = separação confirmada, pedido ainda não avançou
+        order.products.forEach(product => { if (product.checked) addToDemand(product, order); });
+      } else if (order.status === 'embalagens_separadas') {
+        // Produtos ainda não marcados em Emb. Separadas = aguardando embalar
+        order.products.forEach(product => { if (!product.checked) addToDemand(product, order); });
       }
     });
+
     return Object.values(demand).sort((a, b) => b.qty - a.qty);
   }, [orders]);
 
