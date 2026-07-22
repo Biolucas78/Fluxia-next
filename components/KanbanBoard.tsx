@@ -882,7 +882,7 @@ interface KanbanColumnProps {
   isSyncingAll: boolean;
 }
 
-function KanbanColumn({ 
+const KanbanColumn = React.memo(function KanbanColumn({ 
   column, 
   orders, 
   onUpdateOrder, 
@@ -980,4 +980,4 @@ function KanbanColumn({
       </SortableContext>
     </div>
   );
-}
+});

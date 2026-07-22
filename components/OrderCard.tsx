@@ -45,7 +45,7 @@ function PaymentTag({ method }: { method: string }) {
   );
 }
 
-export default function OrderCard({ 
+function OrderCard({ 
   order, 
   onUpdateOrder, 
   onMoveOrder, 
@@ -767,3 +767,5 @@ export default function OrderCard({
     </motion.div>
   );
 }
+
+export default React.memo(OrderCard);

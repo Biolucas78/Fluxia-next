@@ -203,13 +203,37 @@ export function useOrders() {
       await migrateData();
       if (!isMounted) return;
       const q = query(collection(db, collectionName));
+      let isInitialLoad = true;
       unsubscribeOrders = onSnapshot(q, (snapshot) => {
         if (!isMounted) return;
-        const loadedOrders: Order[] = snapshot.docs.map(doc => ({
-          ...doc.data(),
-          id: doc.id
-        } as Order));
-        setOrders(loadedOrders);
+        if (isInitialLoad) {
+          // Carga inicial: mapeia todos os documentos de uma vez
+          isInitialLoad = false;
+          setOrders(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Order)));
+        } else {
+          // Atualizações incrementais: só modifica os pedidos que mudaram.
+          // Pedidos sem alteração mantêm a mesma referência de objeto,
+          // permitindo que React.memo nos cards evite re-renders desnecessários.
+          setOrders(prev => {
+            let next = prev;
+            snapshot.docChanges().forEach(change => {
+              const updated = { ...change.doc.data(), id: change.doc.id } as Order;
+              if (change.type === 'added') {
+                if (!next.find(o => o.id === change.doc.id)) {
+                  next = [...next, updated];
+                }
+              } else if (change.type === 'modified') {
+                const idx = next.findIndex(o => o.id === change.doc.id);
+                if (idx >= 0) {
+                  next = [...next.slice(0, idx), updated, ...next.slice(idx + 1)];
+                }
+              } else if (change.type === 'removed') {
+                next = next.filter(o => o.id !== change.doc.id);
+              }
+            });
+            return next;
+          });
+        }
         setIsLoaded(true);
       }, (error) => {
         if (!isMounted) return;
