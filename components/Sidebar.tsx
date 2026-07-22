@@ -48,8 +48,8 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
   }, [pathname]);
 
   const navItems = [
-    { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'user'] },
-    { id: 'producao', title: 'Produção', icon: Factory, href: '/producao', roles: ['admin', 'user'] },
+    { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'user', 'operador'] },
+    { id: 'producao', title: 'Produção', icon: Factory, href: '/producao', roles: ['admin', 'user', 'operador'] },
     { id: 'crm', title: 'CRM Leads', icon: Kanban, href: '/crm', roles: ['admin', 'gestor_vendas', 'gestor_trafego'] },
     { id: 'recorrencia', title: 'Recorrência', icon: RefreshCcw, href: '/recorrencia', roles: ['admin', 'gestor_vendas'] },
     { id: 'financeiro', title: 'Financeiro', icon: DollarSign, href: '/financeiro', roles: ['admin'] },

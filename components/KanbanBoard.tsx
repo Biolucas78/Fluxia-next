@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { LayoutDashboard, Trash2, CheckSquare, Square, X, RefreshCw, ArrowRight, ChevronDown, Layers, Calendar, Filter, RotateCcw, Download, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-hot-toast';
+import { useUser } from '@/lib/hooks';
 
 import { 
   DndContext, 
@@ -95,6 +96,7 @@ function SortableOrderCard(props: SortableOrderCardProps) {
 
 export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDeleteOrder, onArchiveOrder, onAddOrder, searchQuery }: KanbanBoardProps) {
   const router = useRouter();
+  const { userProfile, effectiveRole } = useUser();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
@@ -168,7 +170,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         products: updatedProducts,
         statusHistory: [
           ...(activeOrder.statusHistory || []),
-          { status: overColumnId, timestamp: new Date().toISOString() }
+          { status: overColumnId, timestamp: new Date().toISOString(), ...(userProfile ? { userId: userProfile.uid, userName: userProfile.email } : {}) }
         ]
       };
       onUpdateOrder(updatedOrder);
@@ -335,7 +337,7 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
           ...(isLeavingPedidosWithRemovals ? { shelfRemovals: [] } : {}),
           statusHistory: [
             ...(order.statusHistory || []),
-            { status: targetStatus, timestamp: new Date().toISOString() }
+            { status: targetStatus, timestamp: new Date().toISOString(), ...(userProfile ? { userId: userProfile.uid, userName: userProfile.email } : {}) }
           ]
         });
       }
@@ -804,8 +806,8 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
                   </div>
                 </div>
 
-                {!isConfirmingDelete ? (
-                  <button 
+                {effectiveRole !== 'operador' && (!isConfirmingDelete ? (
+                  <button
                     onClick={() => setIsConfirmingDelete(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 rounded-xl text-xs font-bold transition-all"
                   >
@@ -814,20 +816,20 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
                 ) : (
                   <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-200">
                     <p className="text-[10px] font-bold text-red-400 uppercase mr-2">Confirmar?</p>
-                    <button 
+                    <button
                       onClick={() => setIsConfirmingDelete(false)}
                       className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-[10px] font-bold"
                     >
                       Não
                     </button>
-                    <button 
+                    <button
                       onClick={handleDeleteSelected}
                       className="px-3 py-1.5 bg-red-500 hover:bg-red-600 rounded-lg text-[10px] font-bold"
                     >
                       Sim, Excluir
                     </button>
                   </div>
-                )}
+                ))}
                 <button 
                   onClick={() => {
                     setSelectedOrderIds(new Set());

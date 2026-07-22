@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
 import { toast } from 'react-hot-toast';
 import { Order, OrderStatus } from '@/lib/types';
-import { useClientData } from '@/lib/hooks';
+import { useClientData, useUser } from '@/lib/hooks';
 import { 
   X, 
   MapPin,
@@ -78,6 +78,7 @@ const STATUS_INSTRUCTIONS: Record<OrderStatus, string> = {
 };
 
 export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArchiveOrder, hasNextOrder, onAdvanceAndNext, onNextOrder }: OrderDetailsModalProps) {
+  const { userProfile } = useUser();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<ProductItem>>({});
@@ -652,9 +653,10 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       products: updatedProducts,
       statusHistory: [
         ...(order.statusHistory || []),
-        { 
+        {
           action: isAllChecked ? 'Desmarcou todos os produtos' : 'Marcou todos os produtos',
-          timestamp: new Date().toISOString() 
+          timestamp: new Date().toISOString(),
+          ...(userProfile ? { userId: userProfile.uid, userName: userProfile.email } : {})
         }
       ]
     });
@@ -670,9 +672,10 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       products: updatedProducts,
       statusHistory: [
         ...(order.statusHistory || []),
-        { 
+        {
           action: `${toggledProduct?.checked ? 'Marcou' : 'Desmarcou'} o produto: ${toggledProduct?.name}`,
-          timestamp: new Date().toISOString() 
+          timestamp: new Date().toISOString(),
+          ...(userProfile ? { userId: userProfile.uid, userName: userProfile.email } : {})
         }
       ]
     });
@@ -2364,6 +2367,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           )}
                           <p className="text-[9px] text-slate-400">
                             {new Date(entry.timestamp).toLocaleString('pt-BR')}
+                            {entry.userName && <span className="ml-1 text-slate-400">· {entry.userName}</span>}
                           </p>
                         </div>
                       </div>

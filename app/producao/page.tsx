@@ -7,7 +7,7 @@ import KanbanBoard from '@/components/KanbanBoard';
 import OrderForm from '@/components/OrderForm';
 import WhatsAppImportModal from '@/components/WhatsAppImportModal';
 import Login from '@/components/Login';
-import { useOrders } from '@/lib/hooks';
+import { useOrders, useUser } from '@/lib/hooks';
 import { OrderStatus, Order } from '@/lib/types';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -28,6 +28,7 @@ export default function ProducaoPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const { userProfile: currentUser } = useUser();
 
   // Legacy data migration: Ensure all orders have a statusHistory
   useEffect(() => {
@@ -114,7 +115,8 @@ export default function ProducaoPage() {
           {
             status: nextStatus,
             action: `Moveu o card para a etapa atual`,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            ...(currentUser ? { userId: currentUser.uid, userName: currentUser.email } : {})
           }
         ]
       });

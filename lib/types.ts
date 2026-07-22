@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'user' | 'gestor_trafego' | 'gestor_vendas';
+export type UserRole = 'admin' | 'user' | 'gestor_trafego' | 'gestor_vendas' | 'operador';
 
 export interface UserPermissions {
   crm_read: boolean;
@@ -207,6 +207,8 @@ export interface Order {
     action?: string;
     details?: string;
     timestamp: string;
+    userId?: string;
+    userName?: string;
   }[];
   lastRecurrenceContact?: string;
   recurrenceRemoved?: boolean;
