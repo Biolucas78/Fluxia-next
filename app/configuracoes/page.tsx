@@ -1025,6 +1025,7 @@ function SettingsContent() {
                       onChange={(e) => setNewRole(e.target.value as UserRole)}
                       className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 outline-none"
                     >
+                      <option value="operador">Operador (Dashboard + Produção)</option>
                       <option value="gestor_trafego">Gestor de Tráfego (CRM Leads - Somente Leitura)</option>
                       <option value="gestor_vendas">Gestora de Vendas (CRM + Recorrência - Edição Total)</option>
                       <option value="admin">Administrador (Acesso Total)</option>
@@ -1071,6 +1072,7 @@ function SettingsContent() {
                                   onChange={(e) => updateAuthorizedRole(email.id, e.target.value as UserRole)}
                                   className="bg-transparent border-none text-xs font-bold text-primary outline-none cursor-pointer"
                                 >
+                                  <option value="operador">Operador</option>
                                   <option value="gestor_trafego">Gestor de Tráfego</option>
                                   <option value="gestor_vendas">Gestora de Vendas</option>
                                   <option value="admin">Administrador</option>
