@@ -2767,7 +2767,13 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                         {step.status}
                                       </p>
                                       <p className="text-[9px] text-slate-400 shrink-0">
-                                        {step.date ? (() => { const d = new Date(step.date); return isNaN(d.getTime()) ? step.date : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); })() : '—'}
+                                        {(() => {
+                                          const raw = step.date;
+                                          if (!raw) return '—';
+                                          const s = typeof raw === 'object' && (raw as any).date ? (raw as any).date : raw;
+                                          const d = new Date(typeof s === 'string' ? s.replace(' ', 'T') : '');
+                                          return isNaN(d.getTime()) ? '—' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                                        })()}
                                       </p>
                                     </div>
                                     <p className="text-[10px] text-slate-400 leading-tight mt-0.5">

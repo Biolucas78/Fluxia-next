@@ -2,16 +2,21 @@ import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
 import { getTotalExpressLegacyTrackingAuthHeader, TOTAL_EXPRESS_SENDER_ID } from '@/lib/totalexpress';
 
-// Normaliza datas vindas das APIs de rastreamento para ISO 8601
-function parseDateToISO(dateStr: string | null | undefined): string | null {
+// Normaliza datas vindas das APIs de rastreamento para ISO 8601.
+// Aceita string ISO, string brasileira DD/MM/YYYY ou objeto PHP DateTime {date, timezone_type, timezone}.
+function parseDateToISO(dateStr: any): string | null {
   if (!dateStr) return null;
-  // Já é ISO (YYYY-MM-DD...) — só garantir que o T está presente
+  // Objeto PHP DateTime: { timezone_type: 3, date: "2024-07-22 10:30:00.000000", timezone: "..." }
+  if (typeof dateStr === 'object' && typeof dateStr.date === 'string') {
+    return parseDateToISO(dateStr.date);
+  }
+  if (typeof dateStr !== 'string') return null;
+  // Já é ISO (YYYY-MM-DD...) — garante separador T
   if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-    const normalized = dateStr.replace(' ', 'T');
-    const d = new Date(normalized);
+    const d = new Date(dateStr.replace(' ', 'T'));
     return isNaN(d.getTime()) ? null : d.toISOString();
   }
-  // Formato brasileiro: DD/MM/YYYY HH:MM:SS ou DD/MM/YYYY HH:MM ou DD/MM/YYYY
+  // Formato brasileiro: DD/MM/YYYY HH:MM:SS ou DD/MM/YYYY
   const brMatch = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (brMatch) {
     const [, dd, mm, yyyy, hh = '00', min = '00', ss = '00'] = brMatch;
