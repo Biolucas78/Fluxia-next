@@ -9,6 +9,7 @@ import LabelGenerationModal from './LabelGenerationModal';
 import ShippingDataReviewModal from './ShippingDataReviewModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { calculateWeightInKg } from '@/lib/parser';
+import { useUser } from '@/lib/hooks';
 
 interface OrderCardProps {
   key?: React.Key;
@@ -55,6 +56,7 @@ function OrderCard({
   selected = false,
   onToggleSelect
 }: OrderCardProps) {
+  const { effectiveRole } = useUser();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -456,7 +458,7 @@ function OrderCard({
         </div>
       )}
       <AnimatePresence>
-        {showDeleteConfirm && (
+        {showDeleteConfirm && effectiveRole !== 'operador' && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -559,14 +561,16 @@ function OrderCard({
                 {abbreviateCarrier(order.carrier)}
               </span>
             )}
-            <button
-              onClick={handleDelete}
-              onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 rounded-lg transition-all"
-              title="Excluir Pedido"
-            >
-              <CloseIcon className="size-3.5" />
-            </button>
+            {effectiveRole !== 'operador' && (
+              <button
+                onClick={handleDelete}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 rounded-lg transition-all"
+                title="Excluir Pedido"
+              >
+                <CloseIcon className="size-3.5" />
+              </button>
+            )}
           </div>
           <div className="text-right">
             <span className="text-[10px] font-bold text-slate-400 block uppercase">#{order.id.toUpperCase()}</span>

@@ -97,6 +97,7 @@ export default function Sidebar({ onNewOrder }: SidebarProps) {
               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs p-1.5 outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="admin">Administrador (Eu)</option>
+              <option value="operador">Operador</option>
               <option value="gestor_trafego">Gestor de Tráfego</option>
               <option value="gestor_vendas">Gestora de Vendas</option>
             </select>
