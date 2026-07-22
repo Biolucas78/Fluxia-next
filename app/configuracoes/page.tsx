@@ -23,7 +23,8 @@ import {
   Plus,
   Download,
   Database,
-  ShieldCheck
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/lib/firebase';
@@ -61,6 +62,81 @@ function SettingsContent() {
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [isSyncingRecentes, setIsSyncingRecentes] = useState(false);
+
+  const handleSyncRecentes = async () => {
+    if (isSyncingRecentes || isLoadingStatus) return;
+    if (!blingStatus?.authenticated) {
+      toast.error('Você precisa conectar o Bling primeiro!');
+      return;
+    }
+    setIsSyncingRecentes(true);
+    const loadingToast = toast.loading('Buscando clientes recentes no Bling...');
+    try {
+      const token = await getValidBlingToken();
+      const { db } = await import('@/lib/firebase');
+      const { writeBatch, doc, collection } = await import('firebase/firestore');
+
+      // Data de 30 dias atrás no formato DD/MM/YYYY que o Bling aceita
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const dd = String(thirtyDaysAgo.getDate()).padStart(2, '0');
+      const mm = String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0');
+      const yyyy = thirtyDaysAgo.getFullYear();
+      const dataInicio = `${dd}/${mm}/${yyyy}`;
+
+      const res = await fetch(
+        `/api/bling/customers/sync?page=1&limite=100&dataInclusaoInicio=${encodeURIComponent(dataInicio)}`,
+        { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao buscar clientes do Bling');
+
+      // Ordena por ID decrescente (maior ID = mais recente) e limita a 20
+      const contacts: any[] = (data.contacts || [])
+        .sort((a: any, b: any) => Number(b.id) - Number(a.id))
+        .slice(0, 20);
+
+      if (contacts.length === 0) {
+        toast.success('Nenhum cliente novo nos últimos 30 dias.', { id: loadingToast });
+        return;
+      }
+
+      toast.loading(`Sincronizando ${contacts.length} cliente(s) recente(s)...`, { id: loadingToast });
+
+      const batch = writeBatch(db);
+      const customersRef = collection(db, 'bling_customers');
+      let synced = 0;
+
+      for (const c of contacts) {
+        try {
+          const detailRes = await fetch(`/api/bling/customers/${c.id}`, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
+          if (detailRes.ok) {
+            const ct = detailRes.headers.get('content-type');
+            if (ct?.includes('application/json')) {
+              const detailData = await detailRes.json();
+              if (detailData.success && detailData.data) {
+                batch.set(doc(customersRef, String(c.id)), { ...detailData.data, updatedAt: Date.now() }, { merge: true });
+                synced++;
+              }
+            }
+          }
+          await new Promise(resolve => setTimeout(resolve, 350));
+        } catch (err) {
+          console.error(`Erro ao buscar cliente ${c.id}:`, err);
+        }
+      }
+
+      await batch.commit();
+      toast.success(`${synced} cliente(s) sincronizado(s) com sucesso!`, { id: loadingToast });
+    } catch (e: any) {
+      toast.error(`Erro ao sincronizar recentes: ${e.message}`, { id: loadingToast });
+    } finally {
+      setIsSyncingRecentes(false);
+    }
+  };
 
   const handleExportBackup = async () => {
     setIsExporting(true);
@@ -574,6 +650,20 @@ function SettingsContent() {
                 <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white">Teste de Busca de Clientes</h3>
+                    <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleSyncRecentes}
+                      disabled={isSyncingRecentes || isLoadingStatus || !blingStatus?.authenticated}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${
+                        isSyncingRecentes || isLoadingStatus || !blingStatus?.authenticated
+                          ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
+                          : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400 hover:bg-sky-200 dark:hover:bg-sky-900/50'
+                      }`}
+                      title="Sincroniza clientes incluídos nos últimos 30 dias (mais rápido)"
+                    >
+                      <Zap className={`size-3 ${isSyncingRecentes ? 'animate-pulse' : ''}`} />
+                      Recentes
+                    </button>
                     <button
                       onClick={async () => {
                         console.log('[Bling Sync] Botão clicado!');
@@ -675,8 +765,9 @@ function SettingsContent() {
                       }`}
                     >
                       <RefreshCw className={`size-3 ${isLoadingStatus ? 'animate-spin' : ''}`} />
-                      Sincronizar Clientes
+                      Sincronizar Tudo
                     </button>
+                    </div>
                     {!showDeleteConfirm ? (
                       <button 
                         onClick={() => setShowDeleteConfirm(true)}

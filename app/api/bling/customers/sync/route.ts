@@ -10,9 +10,12 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
+    const limite = parseInt(searchParams.get('limite') || '100', 10);
+    const dataInclusaoInicio = searchParams.get('dataInclusaoInicio') || '';
 
     console.log(`[Bling Sync API] Buscando página ${page}...`);
-    const url = `https://api.bling.com.br/v3/contatos?limite=100&pagina=${page}`;
+    let url = `https://api.bling.com.br/v3/contatos?limite=${limite}&pagina=${page}`;
+    if (dataInclusaoInicio) url += `&dataInclusaoInicio=${encodeURIComponent(dataInclusaoInicio)}`;
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
     });
