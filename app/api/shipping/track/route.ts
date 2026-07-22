@@ -2,6 +2,25 @@ import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
 import { getTotalExpressLegacyTrackingAuthHeader, TOTAL_EXPRESS_SENDER_ID } from '@/lib/totalexpress';
 
+// Normaliza datas vindas das APIs de rastreamento para ISO 8601
+function parseDateToISO(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  // Já é ISO (YYYY-MM-DD...) — só garantir que o T está presente
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    const normalized = dateStr.replace(' ', 'T');
+    const d = new Date(normalized);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  // Formato brasileiro: DD/MM/YYYY HH:MM:SS ou DD/MM/YYYY HH:MM ou DD/MM/YYYY
+  const brMatch = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (brMatch) {
+    const [, dd, mm, yyyy, hh = '00', min = '00', ss = '00'] = brMatch;
+    const d = new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
+}
+
 const MELHOR_ENVIO_TOKEN = process.env.MELHOR_ENVIO_TOKEN;
 const MELHOR_ENVIO_URL = (process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br')
   .replace(/\/$/, '');
@@ -70,7 +89,7 @@ async function trackSiteRastreio(trackingNumber: string) {
       return {
         status: friendlyStatus,
         message: e.detalhe || e.descricao || friendlyStatus,
-        date: e.dtHrCriado || e.data || e.date,
+        date: parseDateToISO(e.dtHrCriado || e.data || e.date),
         location: e.unidade
           ? `${e.unidade.tipo || ''} - ${e.unidade.endereco?.cidade || ''}/${e.unidade.endereco?.uf || ''}`
           : (e.local || e.location || '')
@@ -87,7 +106,7 @@ async function trackSiteRastreio(trackingNumber: string) {
       message: lastEvent?.message || 'Objeto em trânsito',
       history,
       delivered,
-      deliveryDate: objeto?.dtPrevista || null
+      deliveryDate: parseDateToISO(objeto?.dtPrevista) || null
     };
 
   } catch (e) {
@@ -122,7 +141,7 @@ async function trackCorreiosProxy(trackingNumber: string) {
     const history = (objeto.eventos || []).map((e: any) => ({
       status: e.descricao,
       message: e.detalhe || e.descricao,
-      date: e.dtHrCriado,
+      date: parseDateToISO(e.dtHrCriado),
       location: e.unidade ? `${e.unidade.tipo} - ${e.unidade.endereco?.cidade}/${e.unidade.endereco?.uf}` : ''
     }));
 
@@ -132,7 +151,7 @@ async function trackCorreiosProxy(trackingNumber: string) {
       message: lastEvent?.message || 'Objeto em trânsito',
       history: history,
       delivered: lastEvent?.status.toUpperCase().includes('ENTREGUE'),
-      deliveryDate: objeto.dtPrevista || null
+      deliveryDate: parseDateToISO(objeto.dtPrevista) || null
     };
   } catch (e) {
     console.error('Correios Proxy tracking error:', e);
@@ -192,7 +211,7 @@ function processCorreiosData(data: any) {
     return {
       status: friendlyStatus,
       message: e.detalhe || friendlyStatus,
-      date: e.dtHrCriado,
+      date: parseDateToISO(e.dtHrCriado),
       location: e.unidade ? `${e.unidade.tipo} - ${e.unidade.endereco?.cidade}/${e.unidade.endereco?.uf}` : ''
     };
   });
@@ -202,10 +221,10 @@ function processCorreiosData(data: any) {
     status: lastEvent?.status || 'Postado',
     message: lastEvent?.message || 'Objeto em trânsito',
     history: history,
-    delivered: objeto.tipoPostal?.categoria === 'ENTREGUE' || 
+    delivered: objeto.tipoPostal?.categoria === 'ENTREGUE' ||
                lastEvent?.status.toUpperCase().includes('ENTREGUE') ||
                ['BDE', 'BDI', 'BDR'].includes(objeto.eventos?.[0]?.codigo),
-    deliveryDate: objeto.dtPrevista || null
+    deliveryDate: parseDateToISO(objeto.dtPrevista) || null
   };
 }
 
