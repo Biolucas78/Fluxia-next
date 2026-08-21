@@ -2180,56 +2180,94 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                       )}
                                             {(order.hasBoleto && ((order as any).boletos?.length > 0 || boletoData || order.boletoNossoNumero || order.paymentDueDate)) && (
                         <div className="mt-2 space-y-2">
-                          <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                            {(boletoData?.seuNumero || order.invoiceNumber) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">NF / Seu Número</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData?.seuNumero || order.invoiceNumber}</p>
+                          {(order as any).boletos?.length > 0 ? (
+                            <>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase">
+                                {(order as any).boletos.length === 1 ? 'Boleto Vinculado' : `Parcelas Vinculadas (${(order as any).boletos.length} parcelas)`}
+                              </p>
+                              <div className="space-y-1.5">
+                                {(order as any).boletos.map((b: any, i: number) => {
+                                  const sit = (b.situacao || '').toUpperCase();
+                                  const cor = sit === 'LIQUIDADO' || sit === 'PAGO' ? 'text-emerald-600' : sit === 'VENCIDO' ? 'text-red-500' : 'text-amber-600';
+                                  const label = sit === 'LIQUIDADO' || sit === 'PAGO' ? 'Pago' : sit === 'VENCIDO' ? 'Vencido' : (sit === 'EMABERTO' || sit === 'EM_ABERTO' || sit === 'ENTRADA NORMAL') ? 'A Receber' : b.situacao || '-';
+                                  return (
+                                    <div key={i} className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700">
+                                      <div className="flex items-start gap-2">
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 flex-1">
+                                          <div><p className="text-[9px] text-slate-400 uppercase">NF / {(order as any).boletos.length > 1 ? `Parcela ${i+1}` : 'Seu Número'}</p><p className="text-xs font-bold text-slate-900 dark:text-white">{b.seuNumero}</p></div>
+                                          <div><p className="text-[9px] text-slate-400 uppercase">Valor</p><p className="text-xs font-bold text-primary">{new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(b.valor||0)}</p></div>
+                                          <div><p className="text-[9px] text-slate-400 uppercase">Emissão</p><p className="text-xs">{(b.dataEmissao||'').split('-').reverse().join('/')}</p></div>
+                                          <div><p className="text-[9px] text-slate-400 uppercase">Vencimento</p><p className="text-xs">{(b.dataVencimento||'').split('-').reverse().join('/')}</p></div>
+                                          <div className="col-span-2"><p className="text-[9px] text-slate-400 uppercase">Situação</p><p className={cor + ' text-xs font-bold'}>{label}</p></div>
+                                        </div>
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              const res = await fetch('/api/sicoob/atualizar-boleto', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ orderId: order.id, nossoNumero: b.nossoNumero }) });
+                                              const data = await res.json();
+                                              if (data.ok) toast.success(data.message || 'Atualizado!');
+                                              else toast.error('Erro: ' + (data.error || 'Falha'));
+                                            } catch (err: any) { toast.error('Erro: ' + err.message); }
+                                          }}
+                                          className="mt-1 p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shrink-0"
+                                          title="Atualizar situação no Sicoob"
+                                        >
+                                          <RefreshCw className="size-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                {(() => {
+                                  const bols = (order as any).boletos as any[];
+                                  const paid = bols.filter((b: any) => { const s = (b.situacao||'').toLowerCase(); return s === 'liquidado' || s === 'pago'; });
+                                  if (bols.length <= 1 || paid.length === 0 || paid.length === bols.length) return null;
+                                  const outstanding = bols.filter((b: any) => { const s = (b.situacao||'').toLowerCase(); return s !== 'liquidado' && s !== 'pago'; }).reduce((acc: number, b: any) => acc + (b.valor||0), 0);
+                                  return (
+                                    <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-1.5">
+                                      <span>{paid.length}/{bols.length} parcelas pagas</span>
+                                      <span className="font-bold text-amber-600">Restante: {new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(outstanding)}</span>
+                                    </div>
+                                  );
+                                })()}
                               </div>
-                            )}
-                            {(boletoData?.valor || order.invoiceValue) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">Valor</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boletoData?.valor || order.invoiceValue || 0)}</p>
-                              </div>
-                            )}
-                            {(boletoData?.dataEmissao || order.paymentDate) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">Emissão</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataEmissao || order.paymentDate || '').split('-').reverse().join('/')}</p>
-                              </div>
-                            )}
-                            {(boletoData?.dataVencimento || order.paymentDueDate) && (
-                              <div>
-                                <p className="text-[9px] text-slate-400 uppercase">Vencimento</p>
-                                <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/')}</p>
-                              </div>
-                            )}
-                            {(boletoData?.situacao || (order as any).boletSituacao) && (
-                              <div className="col-span-2">
-                                <p className="text-[9px] text-slate-400 uppercase">Situação</p>
-                                {(()=>{ const sit=boletoData?.situacao||(order as any).boletSituacao||''; const color=sit==='LIQUIDADO'?'text-emerald-600':sit==='VENCIDO'?'text-red-500':'text-amber-600'; const label=sit==='LIQUIDADO'?'Pago':sit==='VENCIDO'?'Vencido':(sit==='EMABERTO'||sit==='EM_ABERTO'||sit==='ENTRADA NORMAL')?'A Receber':sit; return <p className={color+' text-xs font-bold'}>{label}</p>; })()}
-                              </div>
-                            )}
-                          </div>
-                          {/* Lista de todos os boletos vinculados */}
-                          {(order as any).boletos && (order as any).boletos.length > 1 && (
-                            <div className="space-y-1 mt-2">
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">Boletos Vinculados ({(order as any).boletos.length} parcelas)</p>
-                              {(order as any).boletos.map((b: any, i: number) => (
-                                <div key={i} className="grid grid-cols-2 gap-x-4 gap-y-1 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
-                                  <div><p className="text-[9px] text-slate-400 uppercase">NF/Parcela</p><p className="text-xs font-bold">{b.seuNumero}</p></div>
-                                  <div><p className="text-[9px] text-slate-400 uppercase">Valor</p><p className="text-xs font-bold text-primary">{new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(b.valor||0)}</p></div>
-                                  <div><p className="text-[9px] text-slate-400 uppercase">Emissão</p><p className="text-xs">{(b.dataEmissao||"").split("-").reverse().join("/")}</p></div>
-                                  <div><p className="text-[9px] text-slate-400 uppercase">Vencimento</p><p className="text-xs">{(b.dataVencimento||"").split("-").reverse().join("/")}</p></div>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase">Dados do Boleto</p>
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                {(boletoData?.seuNumero || order.invoiceNumber) && (
+                                  <div>
+                                    <p className="text-[9px] text-slate-400 uppercase">NF / Seu Número</p>
+                                    <p className="text-xs font-bold text-slate-900 dark:text-white">{boletoData?.seuNumero || order.invoiceNumber}</p>
+                                  </div>
+                                )}
+                                {(boletoData?.valor || order.invoiceValue) && (
+                                  <div>
+                                    <p className="text-[9px] text-slate-400 uppercase">Valor</p>
+                                    <p className="text-xs font-bold text-slate-900 dark:text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boletoData?.valor || order.invoiceValue || 0)}</p>
+                                  </div>
+                                )}
+                                {(boletoData?.dataEmissao || order.paymentDate) && (
+                                  <div>
+                                    <p className="text-[9px] text-slate-400 uppercase">Emissão</p>
+                                    <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataEmissao || order.paymentDate || '').split('-').reverse().join('/')}</p>
+                                  </div>
+                                )}
+                                {(boletoData?.dataVencimento || order.paymentDueDate) && (
+                                  <div>
+                                    <p className="text-[9px] text-slate-400 uppercase">Vencimento</p>
+                                    <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/')}</p>
+                                  </div>
+                                )}
+                                {(boletoData?.situacao || (order as any).boletSituacao) && (
                                   <div className="col-span-2">
                                     <p className="text-[9px] text-slate-400 uppercase">Situação</p>
-                                    {(() => { const sit = b.situacao || ""; const cor = sit === "LIQUIDADO" ? "text-emerald-600" : sit === "VENCIDO" ? "text-red-500" : "text-amber-600"; const label = sit === "LIQUIDADO" ? "Pago" : sit === "VENCIDO" ? "Vencido" : sit === "ENTRADA NORMAL" ? "A Receber" : sit || "-"; return <p className={cor + " text-xs font-bold"}>{label}</p>; })()}
+                                    {(()=>{ const sit=(boletoData?.situacao||(order as any).boletSituacao||'').toUpperCase(); const color=sit==='LIQUIDADO'||sit==='PAGO'?'text-emerald-600':sit==='VENCIDO'?'text-red-500':'text-amber-600'; const label=sit==='LIQUIDADO'||sit==='PAGO'?'Pago':sit==='VENCIDO'?'Vencido':(sit==='EMABERTO'||sit==='EM_ABERTO'||sit==='ENTRADA NORMAL')?'A Receber':boletoData?.situacao||(order as any).boletSituacao||''; return <p className={color+' text-xs font-bold'}>{label}</p>; })()}
                                   </div>
-                                </div>
-                              ))}
-                            </div>
+                                )}
+                              </div>
+                            </>
                           )}
                           <div className="space-y-1 mt-1">
                             <p className="text-[9px] text-slate-400 font-bold uppercase text-center">Enviar cobrança via</p>

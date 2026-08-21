@@ -100,14 +100,17 @@ function getIssueDate(order: Order): string | undefined {
   return hist?.timestamp?.split('T')[0];
 }
 
-// Retorna true se o pedido deve ser considerado PAGO na página Financeiro.
-// Pedidos com boleto vinculado: pagos se Sicoob confirmou OU se confirmação manual foi feita.
-// Pedidos sem boleto: usa paymentStatus normalmente.
 function isPaid(order: Order): boolean {
-  // Confirmação manual sempre prevalece (ex: boleto baixado mas pago via PIX)
   if ((order as any).paymentConfirmedManually) return true;
   const boletoLinked = (order as any).boletoLinked as boolean | undefined;
   if (boletoLinked) {
+    const boletos = order.boletos as any[] | undefined;
+    if (boletos && boletos.length > 0) {
+      return boletos.every((b: any) => {
+        const sit = (b.situacao || '').toLowerCase();
+        return sit === 'liquidado' || sit === 'pago';
+      });
+    }
     const situacao = ((order as any).boletSituacao as string || '').toLowerCase();
     return situacao === 'liquidado' || situacao === 'pago';
   }
@@ -304,6 +307,50 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
               <span className="text-blue-500">{boletos.length}x parcelas</span>
             )}
           </div>
+          {boletos && boletos.length > 1 && (
+            <div className="space-y-1">
+              {boletos.map((b: any, i: number) => {
+                const sit = (b.situacao || '').toLowerCase();
+                const isParcPaga = sit === 'liquidado' || sit === 'pago';
+                const isParcVencida = !isParcPaga && !!b.dataVencimento && new Date(b.dataVencimento + 'T12:00:00') < new Date();
+                const sitLabel = isParcPaga ? 'Pago' : isParcVencida ? 'Vencido' : 'A Receber';
+                const sitColor = isParcPaga ? 'text-emerald-600' : isParcVencida ? 'text-red-500' : 'text-amber-600';
+                return (
+                  <div key={i} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-[10px] ${isParcPaga ? 'bg-emerald-50 dark:bg-emerald-900/10' : isParcVencida ? 'bg-red-50 dark:bg-red-900/10' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                    <span className="flex-1 font-medium text-slate-600 dark:text-slate-400 truncate">Parc {i+1} · NF {b.seuNumero || '-'} · Venc: {b.dataVencimento ? b.dataVencimento.split('-').reverse().join('/') : '-'}</span>
+                    <span className={sitColor + ' font-bold shrink-0'}>{sitLabel}</span>
+                    <span className="font-black text-slate-700 dark:text-slate-300 shrink-0">{formatCurrency(b.valor||0)}</span>
+                    <button
+                      onClick={async (evt) => {
+                        evt.stopPropagation();
+                        try {
+                          const res = await fetch('/api/sicoob/atualizar-boleto', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ orderId: order.id, nossoNumero: b.nossoNumero }) });
+                          const data = await res.json();
+                          if (data.ok) toast.success(data.message || 'Atualizado!');
+                          else toast.error('Erro: ' + (data.error || 'Falha'));
+                        } catch (err: any) { toast.error('Erro: ' + err.message); }
+                      }}
+                      className="p-1 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shrink-0"
+                      title="Atualizar no Sicoob"
+                    >
+                      <RefreshCw className="size-2.5" />
+                    </button>
+                  </div>
+                );
+              })}
+              {(() => {
+                const paid = boletos.filter((b: any) => { const s = (b.situacao||'').toLowerCase(); return s === 'liquidado' || s === 'pago'; });
+                if (paid.length === 0 || paid.length === boletos.length) return null;
+                const outstanding = boletos.filter((b: any) => { const s = (b.situacao||'').toLowerCase(); return s !== 'liquidado' && s !== 'pago'; }).reduce((acc: number, b: any) => acc + (b.valor||0), 0);
+                return (
+                  <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 border-t border-dashed border-slate-200 dark:border-slate-700 pt-1 mt-0.5">
+                    <span>{paid.length}/{boletos.length} pagas</span>
+                    <span className="font-bold text-amber-600">Restante: {formatCurrency(outstanding)}</span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </div>
 
         {/* Valor + ações */}
