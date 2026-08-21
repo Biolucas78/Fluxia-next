@@ -244,9 +244,10 @@ interface OrderCardProps {
   showOverdue?: boolean;
   showReceiveBtn?: boolean;
   onReceive?: (order: Order) => void;
+  onManualPayBoleto?: (order: Order, boletIndex: number, valor: number, seuNumero: string) => void;
 }
 
-function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardProps) {
+function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayBoleto }: OrderCardProps) {
   const due = getDueDate(order);
   const issue = getIssueDate(order);
   const overdueFlag = isOverdue(order);
@@ -354,14 +355,9 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
                       </button>
                     ) : !isParcPaga && (
                       <button
-                        onClick={async (evt) => {
+                        onClick={(evt) => {
                           evt.stopPropagation();
-                          try {
-                            const res = await fetch('/api/orders/update-boleto-manual', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ orderId: order.id, boletIndex: i, paidManually: true, userName: userProfile?.email, userId: userProfile?.uid }) });
-                            const data = await res.json();
-                            if (data.ok) toast.success(data.message || 'Parcela marcada como paga!');
-                            else toast.error('Erro: ' + (data.error || 'Falha'));
-                          } catch (err: any) { toast.error('Erro: ' + err.message); }
+                          onManualPayBoleto?.(order, i, b.valor || 0, b.seuNumero || '');
                         }}
                         className="p-1 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all shrink-0"
                         title="Dar baixa manual (PIX)"
@@ -459,13 +455,18 @@ export default function FinanceiroPage() {
   const [customTo, setCustomTo] = useState('');
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
-  // Modal pagamento
+  // Modal pagamento (ordem completa)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     method: 'pix' as string,
     date: new Date().toISOString().split('T')[0],
   });
+
+  // Modal pagamento parcela individual
+  const [selectedBoleto, setSelectedBoleto] = useState<{ order: Order; boletIndex: number; valor: number; seuNumero: string } | null>(null);
+  const [boletoPayForm, setBoletoPayForm] = useState({ method: 'pix', date: new Date().toISOString().split('T')[0] });
+  const [isConfirmingBoleto, setIsConfirmingBoleto] = useState(false);
 
   const todosOsPedidos = useMemo(() => allOrders, [allOrders]);
 
@@ -597,6 +598,37 @@ export default function FinanceiroPage() {
       toast.error('Erro ao confirmar pagamento: ' + e.message);
     } finally {
       setIsConfirmingPayment(false);
+    }
+  };
+
+  const handleConfirmBoletoPay = async () => {
+    if (!selectedBoleto) return;
+    setIsConfirmingBoleto(true);
+    try {
+      const res = await fetch('/api/orders/update-boleto-manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: selectedBoleto.order.id,
+          boletIndex: selectedBoleto.boletIndex,
+          paidManually: true,
+          paymentMethod: boletoPayForm.method,
+          paymentDate: boletoPayForm.date,
+          userName: userProfile?.email,
+          userId: userProfile?.uid,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success('Parcela marcada como paga!');
+        setSelectedBoleto(null);
+      } else {
+        toast.error('Erro: ' + (data.error || 'Falha'));
+      }
+    } catch (e: any) {
+      toast.error('Erro: ' + e.message);
+    } finally {
+      setIsConfirmingBoleto(false);
     }
   };
 
@@ -846,6 +878,10 @@ export default function FinanceiroPage() {
                   showOverdue={activeSection === 'vencidos' || activeSection === 'receber'}
                   showReceiveBtn={activeSection !== 'recebidos'}
                   onReceive={openReceive}
+                  onManualPayBoleto={(ord, idx, val, nf) => {
+                    setSelectedBoleto({ order: ord, boletIndex: idx, valor: val, seuNumero: nf });
+                    setBoletoPayForm({ method: 'pix', date: new Date().toISOString().split('T')[0] });
+                  }}
                 />
               ))}
             </div>
@@ -957,6 +993,94 @@ export default function FinanceiroPage() {
                     className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isConfirmingPayment ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                    Confirmar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Baixa Manual — Parcela */}
+      <AnimatePresence>
+        {selectedBoleto && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 dark:border-slate-800"
+            >
+              <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 dark:text-white">Confirmar Pagamento</h2>
+                  <p className="text-xs text-slate-500 font-bold">{selectedBoleto.order.clientName}</p>
+                  {selectedBoleto.order.tradeName && (
+                    <p className="text-[10px] text-slate-400">{selectedBoleto.order.tradeName}</p>
+                  )}
+                </div>
+                <button onClick={() => setSelectedBoleto(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                  <X className="size-5 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Valor da parcela */}
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-3 text-center">
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Valor da Parcela</p>
+                  <p className="text-2xl font-black text-slate-900 dark:text-white">{formatCurrency(selectedBoleto.valor)}</p>
+                  {selectedBoleto.seuNumero && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">NF {selectedBoleto.seuNumero}</p>
+                  )}
+                </div>
+
+                {/* Meio de pagamento */}
+                <div>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Meio de Pagamento</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {PAYMENT_METHODS.map(m => (
+                      <button
+                        key={m.value}
+                        onClick={() => setBoletoPayForm(f => ({ ...f, method: m.value }))}
+                        className={`py-2 px-1 rounded-xl text-[10px] font-bold border transition-all text-center ${
+                          boletoPayForm.method === m.value
+                            ? 'bg-primary text-white border-primary'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="text-base mb-0.5">{m.icon}</div>
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Data */}
+                <div>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Data do Recebimento</p>
+                  <input
+                    type="date"
+                    value={boletoPayForm.date}
+                    onChange={e => setBoletoPayForm(f => ({ ...f, date: e.target.value }))}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-primary"
+                  />
+                </div>
+
+                {/* Botões */}
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={() => setSelectedBoleto(null)}
+                    className="flex-1 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleConfirmBoletoPay}
+                    disabled={isConfirmingBoleto}
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isConfirmingBoleto ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                     Confirmar
                   </button>
                 </div>

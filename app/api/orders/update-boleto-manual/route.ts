@@ -3,7 +3,7 @@ import { adminDb } from '@/lib/firebase-admin';
 
 export async function POST(request: NextRequest) {
   try {
-    const { orderId, boletIndex, paidManually, userName, userId } = await request.json();
+    const { orderId, boletIndex, paidManually, paymentMethod, paymentDate, userName, userId } = await request.json();
     if (!orderId || boletIndex === undefined) {
       return NextResponse.json({ ok: false, error: 'orderId e boletIndex são obrigatórios' }, { status: 400 });
     }
@@ -23,9 +23,13 @@ export async function POST(request: NextRequest) {
 
     const b = boletos[boletIndex];
     const novaSituacao = paidManually ? 'LIQUIDADO' : 'EM_ABERTO';
-    const boletosAtualizados = boletos.map((bl: any, j: number) =>
-      j === boletIndex ? { ...bl, situacao: novaSituacao, paidManually: paidManually } : bl
-    );
+    const boletosAtualizados = boletos.map((bl: any, j: number) => {
+      if (j !== boletIndex) return bl;
+      if (paidManually) {
+        return { ...bl, situacao: novaSituacao, paidManually: true, ...(paymentMethod ? { paymentMethod } : {}), ...(paymentDate ? { paymentDate } : {}) };
+      }
+      return { ...bl, situacao: novaSituacao, paidManually: false };
+    });
 
     const allPaid = boletosAtualizados.every((bl: any) => {
       const s = (bl.situacao || '').toLowerCase();
