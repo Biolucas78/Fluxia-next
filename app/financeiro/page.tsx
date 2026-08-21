@@ -313,7 +313,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
                 const sit = (b.situacao || '').toLowerCase();
                 const isParcPaga = sit === 'liquidado' || sit === 'pago';
                 const isParcVencida = !isParcPaga && !!b.dataVencimento && new Date(b.dataVencimento + 'T12:00:00') < new Date();
-                const sitLabel = isParcPaga ? 'Pago' : isParcVencida ? 'Vencido' : 'A Receber';
+                const sitLabel = isParcPaga ? (b.paidManually ? 'Pago — PIX' : 'Pago') : isParcVencida ? 'Vencido' : 'A Receber';
                 const sitColor = isParcPaga ? 'text-emerald-600' : isParcVencida ? 'text-red-500' : 'text-amber-600';
                 return (
                   <div key={i} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-[10px] ${isParcPaga ? 'bg-emerald-50 dark:bg-emerald-900/10' : isParcVencida ? 'bg-red-50 dark:bg-red-900/10' : 'bg-slate-50 dark:bg-slate-800/50'}`}>

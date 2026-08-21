@@ -2188,8 +2188,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               <div className="space-y-1.5">
                                 {(order as any).boletos.map((b: any, i: number) => {
                                   const sit = (b.situacao || '').toUpperCase();
-                                  const cor = sit === 'LIQUIDADO' || sit === 'PAGO' ? 'text-emerald-600' : sit === 'VENCIDO' ? 'text-red-500' : 'text-amber-600';
-                                  const label = sit === 'LIQUIDADO' || sit === 'PAGO' ? 'Pago' : sit === 'VENCIDO' ? 'Vencido' : (sit === 'EMABERTO' || sit === 'EM_ABERTO' || sit === 'ENTRADA NORMAL') ? 'A Receber' : b.situacao || '-';
+                                  const isPago = sit === 'LIQUIDADO' || sit === 'PAGO';
+                                  const cor = isPago ? 'text-emerald-600' : sit === 'VENCIDO' ? 'text-red-500' : 'text-amber-600';
+                                  const label = isPago ? (b.paidManually ? 'Pago — PIX' : 'Pago') : sit === 'VENCIDO' ? 'Vencido' : (sit === 'EMABERTO' || sit === 'EM_ABERTO' || sit === 'ENTRADA NORMAL') ? 'A Receber' : b.situacao || '-';
                                   return (
                                     <div key={i} className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700">
                                       <div className="flex items-start gap-2">
@@ -2200,20 +2201,52 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                           <div><p className="text-[9px] text-slate-400 uppercase">Vencimento</p><p className="text-xs">{(b.dataVencimento||'').split('-').reverse().join('/')}</p></div>
                                           <div className="col-span-2"><p className="text-[9px] text-slate-400 uppercase">Situação</p><p className={cor + ' text-xs font-bold'}>{label}</p></div>
                                         </div>
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              const res = await fetch('/api/sicoob/atualizar-boleto', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ orderId: order.id, nossoNumero: b.nossoNumero }) });
-                                              const data = await res.json();
-                                              if (data.ok) toast.success(data.message || 'Atualizado!');
-                                              else toast.error('Erro: ' + (data.error || 'Falha'));
-                                            } catch (err: any) { toast.error('Erro: ' + err.message); }
-                                          }}
-                                          className="mt-1 p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all shrink-0"
-                                          title="Atualizar situação no Sicoob"
-                                        >
-                                          <RefreshCw className="size-3" />
-                                        </button>
+                                        <div className="flex flex-col gap-1 mt-1 shrink-0">
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                const res = await fetch('/api/sicoob/atualizar-boleto', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ orderId: order.id, nossoNumero: b.nossoNumero }) });
+                                                const data = await res.json();
+                                                if (data.ok) toast.success(data.message || 'Atualizado!');
+                                                else toast.error('Erro: ' + (data.error || 'Falha'));
+                                              } catch (err: any) { toast.error('Erro: ' + err.message); }
+                                            }}
+                                            className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all"
+                                            title="Atualizar situação no Sicoob"
+                                          >
+                                            <RefreshCw className="size-3" />
+                                          </button>
+                                          {b.paidManually ? (
+                                            <button
+                                              onClick={() => {
+                                                const updatedBoletos = (order as any).boletos.map((bl: any, j: number) =>
+                                                  j === i ? { ...bl, situacao: 'EM_ABERTO', paidManually: false } : bl
+                                                );
+                                                onUpdateOrder({ ...order, boletos: updatedBoletos, statusHistory: [...(order.statusHistory||[]), { action: `Baixa manual da Parcela ${i+1} (NF ${b.seuNumero}) desfeita`, timestamp: new Date().toISOString(), ...(userProfile ? { userId: userProfile.uid, userName: userProfile.email } : {}) }] } as any);
+                                                toast.success('Baixa desfeita.');
+                                              }}
+                                              className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all"
+                                              title="Desfazer baixa manual"
+                                            >
+                                              <X className="size-3" />
+                                            </button>
+                                          ) : !isPago && (
+                                            <button
+                                              onClick={() => {
+                                                const updatedBoletos = (order as any).boletos.map((bl: any, j: number) =>
+                                                  j === i ? { ...bl, situacao: 'LIQUIDADO', paidManually: true } : bl
+                                                );
+                                                const allPaid = updatedBoletos.every((bl: any) => { const s = (bl.situacao||'').toLowerCase(); return s === 'liquidado' || s === 'pago'; });
+                                                onUpdateOrder({ ...order, boletos: updatedBoletos, ...(allPaid ? { boletSituacao: 'LIQUIDADO', paymentStatus: 'pago' } : {}), statusHistory: [...(order.statusHistory||[]), { action: `Parcela ${i+1} (NF ${b.seuNumero}) baixada manualmente — PIX`, timestamp: new Date().toISOString(), ...(userProfile ? { userId: userProfile.uid, userName: userProfile.email } : {}) }] } as any);
+                                                toast.success('Parcela marcada como paga!');
+                                              }}
+                                              className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all"
+                                              title="Dar baixa manual (PIX)"
+                                            >
+                                              <CheckCircle2 className="size-3" />
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   );
