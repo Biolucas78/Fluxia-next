@@ -265,6 +265,19 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [bulkCheckModal, setBulkCheckModal] = useState<{ open: boolean; type: 'separation' | 'production' }>({ open: false, type: 'separation' });
+  const [showMoveDropdown, setShowMoveDropdown] = useState(false);
+  const moveDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!showMoveDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moveDropdownRef.current && !moveDropdownRef.current.contains(e.target as Node)) {
+        setShowMoveDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMoveDropdown]);
 
   const selectedOrders = orders.filter(o => selectedOrderIds.has(o.id));
   const allSelectedInPedidos = selectedOrders.length > 0 && selectedOrders.every(o => o.status === 'pedidos');
@@ -786,24 +799,27 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
                   </button>
                 )}
 
-                <div className="relative group/move">
-                  <button 
+                <div className="relative" ref={moveDropdownRef}>
+                  <button
+                    onClick={() => setShowMoveDropdown(prev => !prev)}
                     className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-xs font-bold transition-all"
                   >
-                    <ArrowRight className="size-4" /> Mover para... <ChevronDown className="size-3" />
+                    <ArrowRight className="size-4" /> Mover para... <ChevronDown className={`size-3 transition-transform ${showMoveDropdown ? 'rotate-180' : ''}`} />
                   </button>
-                  <div className="absolute bottom-full mb-2 left-0 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-2 w-48 hidden group-hover/move:block animate-in fade-in slide-in-from-bottom-2 duration-200">
-                    {COLUMNS.map(col => (
-                      <button
-                        key={col.id}
-                        onClick={() => handleMoveSelected(col.id)}
-                        className="w-full text-left px-4 py-2 text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-colors flex items-center gap-2"
-                      >
-                        <div className={`size-2 rounded-full ${col.color}`} />
-                        {col.title}
-                      </button>
-                    ))}
-                  </div>
+                  {showMoveDropdown && (
+                    <div className="absolute bottom-full mb-2 left-0 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-2 w-48 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
+                      {COLUMNS.map(col => (
+                        <button
+                          key={col.id}
+                          onClick={() => { handleMoveSelected(col.id); setShowMoveDropdown(false); }}
+                          className="w-full text-left px-4 py-2 text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-colors flex items-center gap-2"
+                        >
+                          <div className={`size-2 rounded-full ${col.color}`} />
+                          {col.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {effectiveRole !== 'operador' && (!isConfirmingDelete ? (
