@@ -27,6 +27,12 @@ export default function ProducaoPage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const busca = params.get('busca');
+    if (busca) setSearchQuery(busca);
+  }, []);
   const [authLoading, setAuthLoading] = useState(true);
   const { userProfile: currentUser } = useUser();
 

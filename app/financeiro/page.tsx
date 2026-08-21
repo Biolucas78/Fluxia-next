@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useOrders, useUser } from '@/lib/hooks';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
@@ -10,7 +11,7 @@ import {
   DollarSign, Clock, AlertTriangle, CheckCircle2, FileText,
   Loader2, X, Filter, Calendar, ChevronDown,
   MessageSquare, CreditCard, Search, SlidersHorizontal,
-  Receipt, Landmark, Smartphone, ShoppingBag, Store, Warehouse, RefreshCw
+  Receipt, Landmark, Smartphone, ShoppingBag, Store, Warehouse, RefreshCw, ExternalLink
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -254,6 +255,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayB
   const value = getOrderValue(order);
   const boletos = order.boletos as any[] | undefined;
   const { userProfile } = useUser();
+  const router = useRouter();
   const daysOverdue = (overdueFlag && due)
     ? Math.floor((new Date().getTime() - new Date(due + 'T12:00:00').getTime()) / 86400000)
     : 0;
@@ -281,6 +283,13 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayB
             <p className="text-sm font-black text-slate-900 dark:text-white leading-tight">
               {order.clientName}
             </p>
+            <button
+              onClick={() => router.push('/producao?busca=' + encodeURIComponent(order.id))}
+              className="p-1 rounded-lg text-slate-400 hover:text-primary hover:bg-primary/10 transition-all shrink-0"
+              title="Ver pedido na Produção"
+            >
+              <ExternalLink className="size-3" />
+            </button>
             {overdueFlag && showOverdue && (
               <span className="text-[9px] font-black bg-red-600 text-white px-2 py-0.5 rounded-full uppercase">
                 {daysOverdue}d atraso
