@@ -252,6 +252,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
   const overdueFlag = isOverdue(order);
   const value = getOrderValue(order);
   const boletos = order.boletos as any[] | undefined;
+  const { userProfile } = useUser();
   const daysOverdue = (overdueFlag && due)
     ? Math.floor((new Date().getTime() - new Date(due + 'T12:00:00').getTime()) / 86400000)
     : 0;
@@ -335,6 +336,39 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive }: OrderCardP
                     >
                       <RefreshCw className="size-2.5" />
                     </button>
+                    {b.paidManually ? (
+                      <button
+                        onClick={async (evt) => {
+                          evt.stopPropagation();
+                          try {
+                            const res = await fetch('/api/orders/update-boleto-manual', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ orderId: order.id, boletIndex: i, paidManually: false, userName: userProfile?.email, userId: userProfile?.uid }) });
+                            const data = await res.json();
+                            if (data.ok) toast.success(data.message || 'Baixa desfeita.');
+                            else toast.error('Erro: ' + (data.error || 'Falha'));
+                          } catch (err: any) { toast.error('Erro: ' + err.message); }
+                        }}
+                        className="p-1 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all shrink-0"
+                        title="Desfazer baixa manual"
+                      >
+                        <X className="size-2.5" />
+                      </button>
+                    ) : !isParcPaga && (
+                      <button
+                        onClick={async (evt) => {
+                          evt.stopPropagation();
+                          try {
+                            const res = await fetch('/api/orders/update-boleto-manual', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ orderId: order.id, boletIndex: i, paidManually: true, userName: userProfile?.email, userId: userProfile?.uid }) });
+                            const data = await res.json();
+                            if (data.ok) toast.success(data.message || 'Parcela marcada como paga!');
+                            else toast.error('Erro: ' + (data.error || 'Falha'));
+                          } catch (err: any) { toast.error('Erro: ' + err.message); }
+                        }}
+                        className="p-1 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all shrink-0"
+                        title="Dar baixa manual (PIX)"
+                      >
+                        <CheckCircle2 className="size-2.5" />
+                      </button>
+                    )}
                   </div>
                 );
               })}
