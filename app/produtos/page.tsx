@@ -14,7 +14,8 @@ import {
   AlertCircle,
   ExternalLink,
   ArrowRight,
-  Database
+  Database,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -56,6 +57,20 @@ interface BlingProduct {
   unidade: string;
 }
 
+interface CatalogProduct {
+  id: string;
+  blingId: number;
+  nome: string;
+  codigo: string;
+  preco: number;
+  tipo: string;
+  situacao: string;
+  unidade: string;
+  categoria: string;
+  pesoLiquido: number;
+  syncedAt?: string;
+}
+
 export default function ProdutosPage() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -67,7 +82,13 @@ export default function ProdutosPage() {
   const [sortConfig, setSortConfig] = useState<{ key: 'appName' | 'appWeight', direction: 'asc' | 'desc' } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMapping, setEditingMapping] = useState<ProductMapping | null>(null);
-  
+  const [activeTab, setActiveTab] = useState<'mapeamentos' | 'catalogo' | 'insumos'>('mapeamentos');
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [isSyncingRecentes, setIsSyncingRecentes] = useState(false);
+
   // Form state
   const [formData, setFormData] = useState({
     appName: '',
@@ -104,6 +125,16 @@ export default function ProdutosPage() {
     });
 
     return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsubCatalog = onSnapshot(query(collection(db, 'catalogo_produtos')), (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as CatalogProduct[];
+      setCatalogProducts(data);
+      setCatalogLoading(false);
+    });
+    return () => unsubCatalog();
   }, [user]);
 
   const fetchBlingProducts = async () => {
@@ -369,6 +400,53 @@ export default function ProdutosPage() {
     ), { duration: Infinity });
   };
 
+  const handleSyncRecentes = async () => {
+    setIsSyncingRecentes(true);
+    const loadingToast = toast.loading('Sincronizando produtos recentes...');
+    try {
+      const token = await getValidBlingToken();
+      if (!token) throw new Error('Token inválido');
+      const res = await fetch('/api/bling/catalog/sync?pagina=1&limite=100', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Erro desconhecido');
+      toast.success(`${data.count} produtos atualizados!`, { id: loadingToast });
+    } catch (e: any) {
+      toast.error(`Erro: ${e.message}`, { id: loadingToast });
+    } finally {
+      setIsSyncingRecentes(false);
+    }
+  };
+
+  const handleSyncTudo = async () => {
+    setIsSyncingAll(true);
+    const loadingToast = toast.loading('Sincronizando catálogo completo...');
+    try {
+      const token = await getValidBlingToken();
+      if (!token) throw new Error('Token inválido');
+      let page = 1;
+      let total = 0;
+      let hasMore = true;
+      while (hasMore && page <= 50) {
+        const res = await fetch(`/api/bling/catalog/sync?pagina=${page}&limite=100`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Erro desconhecido');
+        total += data.count;
+        hasMore = data.hasMore;
+        page++;
+        if (data.count > 0) toast.loading(`Sincronizando... ${total} produtos`, { id: loadingToast });
+      }
+      toast.success(`Catálogo sincronizado: ${total} produtos!`, { id: loadingToast });
+    } catch (e: any) {
+      toast.error(`Erro: ${e.message}`, { id: loadingToast });
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
   const filteredMappings = mappings.filter(m => 
     m.appName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.blingSku.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -396,6 +474,17 @@ export default function ProdutosPage() {
     
     return 0;
   });
+
+  const filteredCatalog = catalogProducts
+    .filter(p => {
+      const tipoMatch = activeTab === 'catalogo' ? p.tipo === 'P' : p.tipo === 'M';
+      const searchMatch = !catalogSearch ||
+        p.nome.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+        (p.codigo || '').toLowerCase().includes(catalogSearch.toLowerCase()) ||
+        (p.categoria || '').toLowerCase().includes(catalogSearch.toLowerCase());
+      return tipoMatch && searchMatch;
+    })
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   const handleSort = (key: 'appName' | 'appWeight') => {
     setSortConfig(current => {
@@ -438,48 +527,97 @@ export default function ProdutosPage() {
                   Catálogo de Produtos
                 </h1>
                 <p className="text-slate-500 dark:text-slate-400 mt-1">
-                  Gerencie a associação entre produtos do WhatsApp e o Bling
+                  {activeTab === 'mapeamentos'
+                    ? 'Gerencie a associação entre produtos do WhatsApp e o Bling'
+                    : activeTab === 'catalogo'
+                    ? 'Produtos à venda sincronizados do Bling'
+                    : 'Matérias-primas e insumos sincronizados do Bling'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={handleInitialLoad}
-                  disabled={blingLoading}
-                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
-                  title="Carregar produtos do Bling baseados na lista de SKUs conhecidos"
-                >
-                  <Database className={`size-4 ${blingLoading ? 'animate-pulse' : ''}`} />
-                  Resetar e Carregar Catálogo
-                </button>
-                <button
-                  onClick={handleAutoAssociate}
-                  disabled={blingLoading}
-                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
-                >
-                  <RefreshCw className={`size-4 ${blingLoading ? 'animate-spin' : ''}`} />
-                  Associação Automática
-                </button>
-                <button
-                  onClick={() => {
-                    setEditingMapping(null);
-                    setFormData({
-                      appName: '',
-                      appWeight: '',
-                      appGrind: 'moído',
-                      blingSku: '',
-                      blingId: undefined,
-                      blingName: ''
-                    });
-                    setIsModalOpen(true);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
-                >
-                  <Plus className="size-4" />
-                  Novo Produto
-                </button>
+                {activeTab === 'mapeamentos' ? (
+                  <>
+                    <button
+                      onClick={handleInitialLoad}
+                      disabled={blingLoading}
+                      className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
+                      title="Carregar produtos do Bling baseados na lista de SKUs conhecidos"
+                    >
+                      <Database className={`size-4 ${blingLoading ? 'animate-pulse' : ''}`} />
+                      Resetar e Carregar Catálogo
+                    </button>
+                    <button
+                      onClick={handleAutoAssociate}
+                      disabled={blingLoading}
+                      className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw className={`size-4 ${blingLoading ? 'animate-spin' : ''}`} />
+                      Associação Automática
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingMapping(null);
+                        setFormData({
+                          appName: '',
+                          appWeight: '',
+                          appGrind: 'moído',
+                          blingSku: '',
+                          blingId: undefined,
+                          blingName: ''
+                        });
+                        setIsModalOpen(true);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                    >
+                      <Plus className="size-4" />
+                      Novo Produto
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleSyncRecentes}
+                      disabled={isSyncingRecentes || isSyncingAll}
+                      className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
+                    >
+                      <Zap className={`size-4 ${isSyncingRecentes ? 'animate-pulse' : ''}`} />
+                      Recentes
+                    </button>
+                    <button
+                      onClick={handleSyncTudo}
+                      disabled={isSyncingAll || isSyncingRecentes}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`size-4 ${isSyncingAll ? 'animate-spin' : ''}`} />
+                      Sincronizar Tudo
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
+            {/* Tab navigation */}
+            <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl w-fit">
+              {([
+                { id: 'mapeamentos' as const, label: 'Mapeamentos' },
+                { id: 'catalogo' as const, label: 'Produtos à Venda' },
+                { id: 'insumos' as const, label: 'Insumos' },
+              ]).map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 text-sm font-semibold rounded-xl transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === 'mapeamentos' && (<>
             {/* Stats & Search */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="md:col-span-3 relative">
@@ -744,6 +882,117 @@ export default function ProdutosPage() {
                 </div>
               )}
             </AnimatePresence>
+            </>)}
+
+            {/* Catalog content - Produtos à Venda & Insumos */}
+            {(activeTab === 'catalogo' || activeTab === 'insumos') && (<>
+            {/* Stats & Search */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-3 relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome, SKU ou categoria..."
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                />
+              </div>
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                    <Package className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      {activeTab === 'catalogo' ? 'Produtos' : 'Insumos'}
+                    </p>
+                    <p className="text-xl font-bold text-slate-900 dark:text-white">{filteredCatalog.length}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Catalog Table */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Produto</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Preço</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoria</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Unidade</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {catalogLoading ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center">
+                          <Loader2 className="size-8 animate-spin text-primary mx-auto" />
+                          <p className="text-slate-500 mt-2">Carregando catálogo...</p>
+                        </td>
+                      </tr>
+                    ) : filteredCatalog.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center">
+                          <div className="size-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Package className="size-8 text-slate-400" />
+                          </div>
+                          <p className="text-slate-500 font-medium">Nenhum produto encontrado</p>
+                          <p className="text-sm text-slate-400">
+                            {catalogProducts.filter(p => activeTab === 'catalogo' ? p.tipo === 'P' : p.tipo === 'M').length === 0
+                              ? 'Sincronize o catálogo para importar produtos do Bling.'
+                              : 'Tente ajustar sua busca.'}
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredCatalog.map((p) => (
+                        <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-semibold text-slate-900 dark:text-white">{p.nome}</div>
+                            {p.pesoLiquido > 0 && (
+                              <div className="text-xs text-slate-500">{p.pesoLiquido} kg</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-mono rounded-md border border-slate-200 dark:border-slate-700">
+                              {p.codigo || '—'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="font-semibold text-slate-900 dark:text-white">
+                              {p.preco > 0
+                                ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.preco)
+                                : '—'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                            {p.categoria || '—'}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                            {p.unidade || '—'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${
+                              p.situacao === 'A'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                            }`}>
+                              {p.situacao === 'A' ? 'Ativo' : 'Inativo'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            </>)}
           </div>
         </div>
       </main>
