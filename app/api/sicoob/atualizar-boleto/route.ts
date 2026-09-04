@@ -29,12 +29,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Boleto nao encontrado no Sicoob' }, { status: 404 });
     }
 
+    // Log completo para diagnosticar campos disponíveis no Sicoob
+    console.log('[atualizar-boleto] resultado Sicoob:', JSON.stringify(boleto));
+
     const situacao = boleto.situacaoBoleto || '';
     const isPago = situacao === 'Liquidado' || situacao === 'Pago';
     const isBaixado = situacao === 'Baixado' || situacao === 'Cancelado';
-    const datePago = boleto.dataPagamento
+
+    // Data de pagamento: só usa o que o Sicoob retornar — sem fallback para hoje
+    const datePago = isPago && boleto.dataPagamento
       ? String(boleto.dataPagamento).substring(0, 10)
-      : new Date().toISOString().split('T')[0];
+      : null;
 
     // Buscar pedido no Firestore
     const orderRef = adminDb.collection('orders').doc(orderId);
@@ -44,11 +49,11 @@ export async function POST(request: NextRequest) {
     }
     const order = orderSnap.data() as any;
 
-    // Atualizar situacao e dataPagamento no array de boletos
+    // Atualizar situacao (e dataPagamento se disponível) no array de boletos
     const boletosAtuais = order.boletos || [];
     const boletosAtualizados = boletosAtuais.map((b: any) =>
       String(b.nossoNumero) === String(nossoNumero)
-        ? { ...b, situacao, ...(isPago ? { dataPagamento: datePago } : {}) }
+        ? { ...b, situacao, ...(datePago ? { dataPagamento: datePago } : {}) }
         : b
     );
 
@@ -65,7 +70,7 @@ export async function POST(request: NextRequest) {
     if (isPago) {
       updates.paymentStatus = 'pago';
       updates.paymentMethod = 'boleto';
-      updates.paymentDate = datePago;
+      if (datePago) updates.paymentDate = datePago;
     }
 
     await orderRef.update(updates);
@@ -75,6 +80,7 @@ export async function POST(request: NextRequest) {
       situacao,
       isPago,
       isBaixado,
+      datePago,
       message: isPago ? 'Boleto liquidado — pagamento confirmado!' : isBaixado ? 'Boleto baixado/cancelado.' : `Status atualizado: ${situacao}`
     });
   } catch (error: any) {

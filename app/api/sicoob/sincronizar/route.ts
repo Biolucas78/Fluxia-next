@@ -51,16 +51,15 @@ export async function POST() {
             if (isPago || situacao === 'Baixado') {
               const dataPag = boleto.dataPagamento
                 ? String(boleto.dataPagamento).substring(0, 10)
-                : new Date().toISOString().split('T')[0];
+                : null;
               const boletosAtualizados = (order.boletos || []).map((b: any) =>
                 String(b.nossoNumero) === nossoNumero.trim()
-                  ? { ...b, situacao, ...(isPago && boleto.dataPagamento ? { dataPagamento: String(boleto.dataPagamento).substring(0, 10) } : {}) }
+                  ? { ...b, situacao, ...(isPago && dataPag ? { dataPagamento: dataPag } : {}) }
                   : b
               );
-              await docSnap.ref.update({
+              const updatePayload: any = {
                 paymentStatus: 'pago',
                 paymentMethod: 'boleto',
-                paymentDate: dataPag,
                 boletSituacao: situacao,
                 ...(boletosAtualizados.length > 0 ? { boletos: boletosAtualizados } : {}),
                 statusHistory: [
@@ -68,7 +67,9 @@ export async function POST() {
                   { action: 'Pagamento confirmado via sincronizacao Sicoob', timestamp: new Date().toISOString() }
                 ],
                 ...(order.status === 'entregue' ? { archived: true, archivedAt: new Date().toISOString() } : {}),
-              });
+              };
+              if (dataPag) updatePayload.paymentDate = dataPag;
+              await docSnap.ref.update(updatePayload);
               updated++;
             }
           }
@@ -116,9 +117,9 @@ export async function POST() {
         if (situacao === 'Liquidado' || situacao === 'Baixado' || situacao === 'Pago') {
           updates.paymentStatus = 'pago';
           updates.paymentMethod = 'boleto';
-          updates.paymentDate = boletoEncontrado.dataPagamento
-            ? String(boletoEncontrado.dataPagamento).substring(0, 10)
-            : new Date().toISOString().split('T')[0];
+          if (boletoEncontrado.dataPagamento) {
+            updates.paymentDate = String(boletoEncontrado.dataPagamento).substring(0, 10);
+          }
           if (order.status === 'entregue') {
             updates.archived = true;
             updates.archivedAt = new Date().toISOString();
