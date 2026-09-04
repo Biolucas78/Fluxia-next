@@ -2298,12 +2298,21 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                     <p className="text-xs font-bold text-slate-900 dark:text-white">{(boletoData?.dataVencimento || order.paymentDueDate || '').split('-').reverse().join('/')}</p>
                                   </div>
                                 )}
-                                {(boletoData?.situacao || (order as any).boletSituacao) && (
-                                  <div className="col-span-2">
-                                    <p className="text-[9px] text-slate-400 uppercase">Situação</p>
-                                    {(()=>{ const sit=(boletoData?.situacao||(order as any).boletSituacao||'').toUpperCase(); const color=sit==='LIQUIDADO'||sit==='PAGO'?'text-emerald-600':sit==='VENCIDO'?'text-red-500':'text-amber-600'; const label=sit==='LIQUIDADO'||sit==='PAGO'?'Pago':sit==='VENCIDO'?'Vencido':(sit==='EMABERTO'||sit==='EM_ABERTO'||sit==='ENTRADA NORMAL')?'A Receber':boletoData?.situacao||(order as any).boletSituacao||''; return <p className={color+' text-xs font-bold'}>{label}</p>; })()}
-                                  </div>
-                                )}
+                                {(boletoData?.situacao || (order as any).boletSituacao) && (() => {
+                                  const sit = (boletoData?.situacao || (order as any).boletSituacao || '').toUpperCase();
+                                  const isPagoSingle = sit === 'LIQUIDADO' || sit === 'PAGO';
+                                  const color = isPagoSingle ? 'text-emerald-600' : sit === 'VENCIDO' ? 'text-red-500' : 'text-amber-600';
+                                  const label = isPagoSingle ? 'Pago' : sit === 'VENCIDO' ? 'Vencido' : (sit === 'EMABERTO' || sit === 'EM_ABERTO' || sit === 'ENTRADA NORMAL') ? 'A Receber' : boletoData?.situacao || (order as any).boletSituacao || '';
+                                  const datePagoStr = order.paymentDate ? order.paymentDate.substring(0, 10).split('-').reverse().join('/') : '';
+                                  return isPagoSingle && datePagoStr ? (
+                                    <>
+                                      <div><p className="text-[9px] text-slate-400 uppercase">Situação</p><p className={color + ' text-xs font-bold'}>{label}</p></div>
+                                      <div><p className="text-[9px] text-slate-400 uppercase">Pago em</p><p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{datePagoStr}</p></div>
+                                    </>
+                                  ) : (
+                                    <div className="col-span-2"><p className="text-[9px] text-slate-400 uppercase">Situação</p><p className={color + ' text-xs font-bold'}>{label}</p></div>
+                                  );
+                                })()}
                               </div>
                             </>
                           )}

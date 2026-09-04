@@ -317,6 +317,11 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayB
             {boletos && boletos.length > 1 && (
               <span className="text-blue-500">{boletos.length}x parcelas</span>
             )}
+            {isPaid(order) && order.paymentDate && !(boletos && boletos.length > 1) && (
+              <span className="text-emerald-600 font-semibold">
+                Pago em: {order.paymentDate.substring(0, 10).split('-').reverse().join('/')}
+              </span>
+            )}
           </div>
           {boletos && boletos.length > 1 && (
             <div className="space-y-1">

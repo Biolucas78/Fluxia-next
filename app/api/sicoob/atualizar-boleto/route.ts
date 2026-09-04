@@ -32,6 +32,9 @@ export async function POST(request: NextRequest) {
     const situacao = boleto.situacaoBoleto || '';
     const isPago = situacao === 'Liquidado' || situacao === 'Pago';
     const isBaixado = situacao === 'Baixado' || situacao === 'Cancelado';
+    const datePago = boleto.dataPagamento
+      ? String(boleto.dataPagamento).substring(0, 10)
+      : new Date().toISOString().split('T')[0];
 
     // Buscar pedido no Firestore
     const orderRef = adminDb.collection('orders').doc(orderId);
@@ -41,11 +44,11 @@ export async function POST(request: NextRequest) {
     }
     const order = orderSnap.data() as any;
 
-    // Atualizar situacao no array de boletos
+    // Atualizar situacao e dataPagamento no array de boletos
     const boletosAtuais = order.boletos || [];
     const boletosAtualizados = boletosAtuais.map((b: any) =>
       String(b.nossoNumero) === String(nossoNumero)
-        ? { ...b, situacao, ...(isPago && boleto.dataPagamento ? { dataPagamento: String(boleto.dataPagamento).substring(0, 10) } : {}) }
+        ? { ...b, situacao, ...(isPago ? { dataPagamento: datePago } : {}) }
         : b
     );
 
@@ -62,9 +65,7 @@ export async function POST(request: NextRequest) {
     if (isPago) {
       updates.paymentStatus = 'pago';
       updates.paymentMethod = 'boleto';
-      updates.paymentDate = boleto.dataPagamento
-        ? String(boleto.dataPagamento).substring(0, 10)
-        : new Date().toISOString().split('T')[0];
+      updates.paymentDate = datePago;
     }
 
     await orderRef.update(updates);
