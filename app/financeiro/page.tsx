@@ -328,7 +328,11 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayB
                 const sitColor = isParcPaga ? 'text-emerald-600' : isParcVencida ? 'text-red-500' : 'text-amber-600';
                 return (
                   <div key={i} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-[10px] ${isParcPaga ? 'bg-emerald-50 dark:bg-emerald-900/10' : isParcVencida ? 'bg-red-50 dark:bg-red-900/10' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
-                    <span className="flex-1 font-medium text-slate-600 dark:text-slate-400 truncate">Parc {i+1} · NF {b.seuNumero || '-'} · Venc: {b.dataVencimento ? b.dataVencimento.split('-').reverse().join('/') : '-'}</span>
+                    <span className="flex-1 font-medium text-slate-600 dark:text-slate-400 truncate">
+                      Parc {i+1} · NF {b.seuNumero || '-'} · {isParcPaga
+                        ? `Pago: ${(b.dataPagamento||b.paymentDate||'').substring(0,10).split('-').reverse().join('/') || '—'}`
+                        : `Venc: ${b.dataVencimento ? b.dataVencimento.split('-').reverse().join('/') : '-'}`}
+                    </span>
                     <span className={sitColor + ' font-bold shrink-0'}>{sitLabel}</span>
                     <span className="font-black text-slate-700 dark:text-slate-300 shrink-0">{formatCurrency(b.valor||0)}</span>
                     <button

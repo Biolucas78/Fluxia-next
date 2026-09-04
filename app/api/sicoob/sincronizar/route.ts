@@ -47,11 +47,22 @@ export async function POST() {
             const boleto = result.body?.resultado;
             if (!boleto) continue;
             const situacao = boleto.situacaoBoleto;
-            if (situacao === 'Liquidado' || situacao === 'Baixado' || situacao === 'Pago') {
+            const isPago = situacao === 'Liquidado' || situacao === 'Pago';
+            if (isPago || situacao === 'Baixado') {
+              const dataPag = boleto.dataPagamento
+                ? String(boleto.dataPagamento).substring(0, 10)
+                : new Date().toISOString().split('T')[0];
+              const boletosAtualizados = (order.boletos || []).map((b: any) =>
+                String(b.nossoNumero) === nossoNumero.trim()
+                  ? { ...b, situacao, ...(isPago && boleto.dataPagamento ? { dataPagamento: String(boleto.dataPagamento).substring(0, 10) } : {}) }
+                  : b
+              );
               await docSnap.ref.update({
                 paymentStatus: 'pago',
                 paymentMethod: 'boleto',
-                paymentDate: new Date().toISOString().split('T')[0],
+                paymentDate: dataPag,
+                boletSituacao: situacao,
+                ...(boletosAtualizados.length > 0 ? { boletos: boletosAtualizados } : {}),
                 statusHistory: [
                   ...(order.statusHistory || []),
                   { action: 'Pagamento confirmado via sincronizacao Sicoob', timestamp: new Date().toISOString() }
@@ -105,7 +116,9 @@ export async function POST() {
         if (situacao === 'Liquidado' || situacao === 'Baixado' || situacao === 'Pago') {
           updates.paymentStatus = 'pago';
           updates.paymentMethod = 'boleto';
-          updates.paymentDate = new Date().toISOString().split('T')[0];
+          updates.paymentDate = boletoEncontrado.dataPagamento
+            ? String(boletoEncontrado.dataPagamento).substring(0, 10)
+            : new Date().toISOString().split('T')[0];
           if (order.status === 'entregue') {
             updates.archived = true;
             updates.archivedAt = new Date().toISOString();

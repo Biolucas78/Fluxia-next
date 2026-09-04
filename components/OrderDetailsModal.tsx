@@ -2199,7 +2199,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                           <div><p className="text-[9px] text-slate-400 uppercase">Valor</p><p className="text-xs font-bold text-primary">{new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(b.valor||0)}</p></div>
                                           <div><p className="text-[9px] text-slate-400 uppercase">Emissão</p><p className="text-xs">{(b.dataEmissao||'').split('-').reverse().join('/')}</p></div>
                                           <div><p className="text-[9px] text-slate-400 uppercase">Vencimento</p><p className="text-xs">{(b.dataVencimento||'').split('-').reverse().join('/')}</p></div>
-                                          <div className="col-span-2"><p className="text-[9px] text-slate-400 uppercase">Situação</p><p className={cor + ' text-xs font-bold'}>{label}</p></div>
+                                          {isPago ? (<>
+                                            <div><p className="text-[9px] text-slate-400 uppercase">Situação</p><p className={cor + ' text-xs font-bold'}>{label}</p></div>
+                                            <div><p className="text-[9px] text-slate-400 uppercase">Pago em</p><p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{(b.dataPagamento||b.paymentDate||'').substring(0,10).split('-').reverse().join('/')||'—'}</p></div>
+                                          </>) : (
+                                            <div className="col-span-2"><p className="text-[9px] text-slate-400 uppercase">Situação</p><p className={cor + ' text-xs font-bold'}>{label}</p></div>
+                                          )}
                                         </div>
                                         <div className="flex flex-col gap-1 mt-1 shrink-0">
                                           <button

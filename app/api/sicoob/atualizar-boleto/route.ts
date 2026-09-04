@@ -44,7 +44,9 @@ export async function POST(request: NextRequest) {
     // Atualizar situacao no array de boletos
     const boletosAtuais = order.boletos || [];
     const boletosAtualizados = boletosAtuais.map((b: any) =>
-      String(b.nossoNumero) === String(nossoNumero) ? { ...b, situacao } : b
+      String(b.nossoNumero) === String(nossoNumero)
+        ? { ...b, situacao, ...(isPago && boleto.dataPagamento ? { dataPagamento: String(boleto.dataPagamento).substring(0, 10) } : {}) }
+        : b
     );
 
     const updates: any = {
@@ -60,7 +62,9 @@ export async function POST(request: NextRequest) {
     if (isPago) {
       updates.paymentStatus = 'pago';
       updates.paymentMethod = 'boleto';
-      updates.paymentDate = boleto.dataPagamento || new Date().toISOString().split('T')[0];
+      updates.paymentDate = boleto.dataPagamento
+        ? String(boleto.dataPagamento).substring(0, 10)
+        : new Date().toISOString().split('T')[0];
     }
 
     await orderRef.update(updates);
