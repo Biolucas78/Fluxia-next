@@ -3,27 +3,20 @@ import { getSicoobToken, makeSicoobRequest, getSicoobCert } from '@/lib/sicoob';
 import { adminDb } from '@/lib/firebase-admin';
 
 function extrairDataPagamento(boleto: any): string | null {
-  // Tenta listaHistorico — o Sicoob não retorna dataPagamento direto,
-  // mas inclui o histórico de movimentos onde consta a liquidação
+  // O Sicoob não retorna dataPagamento diretamente.
+  // A data real fica em listaHistorico[], campo tipoHistorico="6" (liquidação).
   const historico: any[] = boleto.listaHistorico || [];
-  console.log('[atualizar-boleto] listaHistorico:', JSON.stringify(historico));
 
-  // Procura pelo evento de liquidação/pagamento (mais recente primeiro)
-  const reversed = [...historico].reverse();
-  const entrada = reversed.find((h: any) => {
-    const desc = (h.descricaoMovimento || h.descricaoHistorico || h.descricao || '').toLowerCase();
-    const codigo = h.codigoMovimento ?? h.codigoHistorico ?? h.codigo ?? null;
-    // códigos Sicoob: 6 = Liquidado banco, 9 = Baixa solicitada, 17 = Baixa manual
-    return desc.includes('liquida') || desc.includes('pagamento') || codigo === 6 || codigo === 9 || codigo === 17;
+  // Percorre do mais recente para o mais antigo
+  const entrada = [...historico].reverse().find((h: any) => {
+    const desc = (h.descricaoHistorico || '').toLowerCase();
+    const tipo = String(h.tipoHistorico ?? '');
+    return tipo === '6' || tipo === '9' || tipo === '17' || desc.includes('liquida') || desc.includes('pagamento');
   });
 
-  if (entrada) {
-    const rawDate = entrada.dataMovimento || entrada.dataHistorico || entrada.dataHoraRegistro || entrada.data || entrada.dataOcorrencia;
-    console.log('[atualizar-boleto] entrada pagamento encontrada:', JSON.stringify(entrada));
-    if (rawDate) return String(rawDate).substring(0, 10);
+  if (entrada?.dataHistorico) {
+    return String(entrada.dataHistorico).substring(0, 10);
   }
-
-  console.log('[atualizar-boleto] nenhuma entrada de pagamento encontrada no historico');
   return null;
 }
 
