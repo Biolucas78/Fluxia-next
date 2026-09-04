@@ -2,6 +2,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSicoobToken, makeSicoobRequest, getSicoobCert } from '@/lib/sicoob';
 import { adminDb } from '@/lib/firebase-admin';
 
+function extrairDataPagamento(boleto: any): string | null {
+  // Tenta listaHistorico — o Sicoob não retorna dataPagamento direto,
+  // mas inclui o histórico de movimentos onde consta a liquidação
+  const historico: any[] = boleto.listaHistorico || [];
+  console.log('[atualizar-boleto] listaHistorico:', JSON.stringify(historico));
+
+  // Procura pelo evento de liquidação/pagamento (mais recente primeiro)
+  const reversed = [...historico].reverse();
+  const entrada = reversed.find((h: any) => {
+    const desc = (h.descricaoMovimento || h.descricaoHistorico || h.descricao || '').toLowerCase();
+    const codigo = h.codigoMovimento ?? h.codigoHistorico ?? h.codigo ?? null;
+    // códigos Sicoob: 6 = Liquidado banco, 9 = Baixa solicitada, 17 = Baixa manual
+    return desc.includes('liquida') || desc.includes('pagamento') || codigo === 6 || codigo === 9 || codigo === 17;
+  });
+
+  if (entrada) {
+    const rawDate = entrada.dataMovimento || entrada.dataHistorico || entrada.dataHoraRegistro || entrada.data || entrada.dataOcorrencia;
+    console.log('[atualizar-boleto] entrada pagamento encontrada:', JSON.stringify(entrada));
+    if (rawDate) return String(rawDate).substring(0, 10);
+  }
+
+  console.log('[atualizar-boleto] nenhuma entrada de pagamento encontrada no historico');
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { orderId, nossoNumero } = await request.json();
@@ -29,17 +54,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Boleto nao encontrado no Sicoob' }, { status: 404 });
     }
 
-    // Log completo para diagnosticar campos disponíveis no Sicoob
-    console.log('[atualizar-boleto] resultado Sicoob:', JSON.stringify(boleto));
-
     const situacao = boleto.situacaoBoleto || '';
     const isPago = situacao === 'Liquidado' || situacao === 'Pago';
     const isBaixado = situacao === 'Baixado' || situacao === 'Cancelado';
 
-    // Data de pagamento: só usa o que o Sicoob retornar — sem fallback para hoje
-    const datePago = isPago && boleto.dataPagamento
-      ? String(boleto.dataPagamento).substring(0, 10)
-      : null;
+    // Data de pagamento extraída do histórico (sem fallback)
+    const datePago = isPago ? extrairDataPagamento(boleto) : null;
 
     // Buscar pedido no Firestore
     const orderRef = adminDb.collection('orders').doc(orderId);
