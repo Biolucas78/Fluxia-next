@@ -1,24 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSicoobToken, makeSicoobRequest, getSicoobCert } from '@/lib/sicoob';
+import { getSicoobToken, makeSicoobRequest, getSicoobCert, extrairDataPagamento } from '@/lib/sicoob';
 import { adminDb } from '@/lib/firebase-admin';
-
-function extrairDataPagamento(boleto: any): string | null {
-  // O Sicoob não retorna dataPagamento diretamente.
-  // A data real fica em listaHistorico[], campo tipoHistorico="6" (liquidação).
-  const historico: any[] = boleto.listaHistorico || [];
-
-  // Percorre do mais recente para o mais antigo
-  const entrada = [...historico].reverse().find((h: any) => {
-    const desc = (h.descricaoHistorico || '').toLowerCase();
-    const tipo = String(h.tipoHistorico ?? '');
-    return tipo === '6' || tipo === '9' || tipo === '17' || desc.includes('liquida') || desc.includes('pagamento');
-  });
-
-  if (entrada?.dataHistorico) {
-    return String(entrada.dataHistorico).substring(0, 10);
-  }
-  return null;
-}
 
 export async function POST(request: NextRequest) {
   try {

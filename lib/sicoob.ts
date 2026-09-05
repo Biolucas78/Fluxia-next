@@ -85,3 +85,23 @@ export function getSicoobCert(): { pfxBuffer: Buffer; certPassword: string } {
   const certPassword = process.env.SICOOB_CERT_PASSWORD!;
   return { pfxBuffer: Buffer.from(certBase64, 'base64'), certPassword };
 }
+
+// Extrai a data real de pagamento do listaHistorico do Sicoob.
+// O Sicoob não retorna dataPagamento direto — a data fica no evento
+// de liquidação dentro de listaHistorico[].
+export function extrairDataPagamento(boleto: any): string | null {
+  const historico: any[] = boleto.listaHistorico || [];
+
+  // Percorre do mais recente para o mais antigo
+  const entrada = [...historico].reverse().find((h: any) => {
+    const desc = (h.descricaoHistorico || '').toLowerCase();
+    const tipo = String(h.tipoHistorico ?? '');
+    // tipo "6" = Liquidado banco, "9" = Baixa solicitada, "17" = Baixa manual
+    return tipo === '6' || tipo === '9' || tipo === '17' || desc.includes('liquida') || desc.includes('pagamento');
+  });
+
+  if (entrada?.dataHistorico) {
+    return String(entrada.dataHistorico).substring(0, 10);
+  }
+  return null;
+}

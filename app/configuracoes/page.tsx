@@ -63,6 +63,7 @@ function SettingsContent() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [isSyncingRecentes, setIsSyncingRecentes] = useState(false);
+  const [isAtualizandoDatas, setIsAtualizandoDatas] = useState(false);
 
   const handleSyncRecentes = async () => {
     if (isSyncingRecentes || isLoadingStatus) return;
@@ -912,6 +913,58 @@ function SettingsContent() {
             </section>
 
             <ShippingTest />
+
+            {/* Sicoob Card */}
+            <section className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3 bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl">
+                  <ShieldCheck className="size-6 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Sicoob — Boletos</h2>
+                  <p className="text-xs text-slate-500">Sincronização de datas de pagamento dos boletos</p>
+                </div>
+              </div>
+              <div className="p-8 space-y-4">
+                <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30">
+                  <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                    Consulta o Sicoob para cada boleto pago e atualiza a data real de pagamento no Firestore. Use quando pedidos mostram a data da sincronização em vez da data real de pagamento.
+                  </p>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (isAtualizandoDatas) return;
+                    setIsAtualizandoDatas(true);
+                    const loadingToast = toast.loading('Consultando Sicoob para cada boleto pago...');
+                    try {
+                      const res = await fetch('/api/sicoob/atualizar-datas-pagamento', { method: 'POST' });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
+                      toast.success(
+                        `${data.atualizados} atualizado(s) · ${data.ignorados} sem alteração · ${data.erros} erro(s)`,
+                        { id: loadingToast, duration: 6000 }
+                      );
+                    } catch (e: any) {
+                      toast.error(`Erro: ${e.message}`, { id: loadingToast });
+                    } finally {
+                      setIsAtualizandoDatas(false);
+                    }
+                  }}
+                  disabled={isAtualizandoDatas}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${
+                    isAtualizandoDatas
+                      ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
+                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
+                  }`}
+                >
+                  {isAtualizandoDatas
+                    ? <Loader2 className="size-3 animate-spin" />
+                    : <RefreshCw className="size-3" />
+                  }
+                  Atualizar Datas de Pagamento
+                </button>
+              </div>
+            </section>
 
             {/* Data Recovery Card */}
             <section className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
