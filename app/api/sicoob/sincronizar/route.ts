@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSicoobToken, makeSicoobRequest, getSicoobCert } from '@/lib/sicoob';
+import { getSicoobToken, makeSicoobRequest, getSicoobCert, extrairDataPagamento } from '@/lib/sicoob';
 import { adminDb } from '@/lib/firebase-admin';
 
 export async function POST() {
@@ -49,12 +49,10 @@ export async function POST() {
             const situacao = boleto.situacaoBoleto;
             const isPago = situacao === 'Liquidado' || situacao === 'Pago';
             if (isPago || situacao === 'Baixado') {
-              const dataPag = boleto.dataPagamento
-                ? String(boleto.dataPagamento).substring(0, 10)
-                : null;
+              const dataPag = isPago ? extrairDataPagamento(boleto) : null;
               const boletosAtualizados = (order.boletos || []).map((b: any) =>
                 String(b.nossoNumero) === nossoNumero.trim()
-                  ? { ...b, situacao, ...(isPago && dataPag ? { dataPagamento: dataPag } : {}) }
+                  ? { ...b, situacao, ...(dataPag ? { dataPagamento: dataPag } : {}) }
                   : b
               );
               const updatePayload: any = {
@@ -117,8 +115,9 @@ export async function POST() {
         if (situacao === 'Liquidado' || situacao === 'Baixado' || situacao === 'Pago') {
           updates.paymentStatus = 'pago';
           updates.paymentMethod = 'boleto';
-          if (boletoEncontrado.dataPagamento) {
-            updates.paymentDate = String(boletoEncontrado.dataPagamento).substring(0, 10);
+          const dataPagCaso2 = (situacao === 'Liquidado' || situacao === 'Pago') ? extrairDataPagamento(boletoEncontrado) : null;
+          if (dataPagCaso2) {
+            updates.paymentDate = dataPagCaso2;
           }
           if (order.status === 'entregue') {
             updates.archived = true;

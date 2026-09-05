@@ -417,7 +417,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayB
               {formatCurrency(value)}
             </p>
           )}
-          {(showReceiveBtn || waPersonal) && (
+          {(showReceiveBtn || waPersonal || ((order as any).boletoLinked && (order as any).boletoNossoNumero && !(boletos && boletos.length > 1))) && (
             <div className="flex gap-1.5 items-center flex-wrap justify-end">
               {waPersonal && (
                 <a href={waPersonal} target="_blank" rel="noopener noreferrer"
@@ -433,7 +433,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayB
                   <MessageSquare className="size-3.5" />
                 </a>
               )}
-              {showReceiveBtn && (order as any).boletoLinked && (order as any).boletoNossoNumero && (
+              {(order as any).boletoLinked && (order as any).boletoNossoNumero && !(boletos && boletos.length > 1) && (
                 <SyncBoletoButton order={order} />
               )}
               {showReceiveBtn && onReceive && (
