@@ -2584,7 +2584,10 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               {product.name.toLowerCase() !== 'dripcoffee' && (
                                 <> {product.weight} ({product.grindType})</>
                               )}
-                              {product.productionNotes && (
+                              {(product.productionNotes || '').toLowerCase().includes('personaliz') && (
+                                <> personalizado</>
+                              )}
+                              {product.productionNotes && !(product.productionNotes || '').toLowerCase().includes('personaliz') && (
                                 <span className="ml-2 text-xs text-primary italic font-normal">
                                   {product.productionNotes}
                                 </span>

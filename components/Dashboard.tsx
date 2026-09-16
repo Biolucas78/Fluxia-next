@@ -374,7 +374,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
               const grindOrig = grindNorm ? ` (${grindNorm})` : '';
               demand[key] = {
                 displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}${isPersonalizado ? ' · Personalizado' : ''}`,
-                matchKey: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}`,
+                matchKey: key,
                 qty: 0,
                 clientes: [],
               };
@@ -404,7 +404,7 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
         const grindOrig = grindNorm ? ` (${grindNorm})` : '';
         demand[key] = {
           displayName: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}${isPersonalizado ? ' · Personalizado' : ''}`,
-          matchKey: `${product.name.trim()} ${(product.weight || '').trim()}${grindOrig}`,
+          matchKey: key,
           qty: 0,
           clientes: [],
         };
@@ -1140,9 +1140,12 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                       // Salvar snapshot antes de modificar
                       const keyToMatch = item.matchKey;
                       const affected = pedidos.filter(order => order.products.some(p => {
-                        const grindNorm = normalizeGrindForKey(p.grindType || '');
-                        const grind = grindNorm ? ` (${grindNorm})` : '';
-                        return `${p.name.trim()} ${(p.weight || '').trim()}${grind}` === keyToMatch && !p.checked;
+                        const isPersProd = ((p as any).productionNotes || '').toLowerCase().includes('personaliz') || (p.name || '').toLowerCase().includes('personaliz');
+                        const grindNorm2 = normalizeGrindForKey(p.grindType || '');
+                        const grind2 = grindNorm2 ? ` (${grindNorm2})` : '';
+                        const keyBase2 = (p.name || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') + ' ' + (p.weight || '').trim().toLowerCase();
+                        const productKey = isPersProd ? keyBase2 + grind2 + '_pers' : keyBase2 + grind2.toLowerCase();
+                        return productKey === keyToMatch && !p.checked;
                       }));
                       if (affected.length > 0) {
                         await saveToHistory('minicard', `Separou: ${item.qty}x ${item.name}`, affected);
@@ -1150,9 +1153,11 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                       pedidos.forEach(order => {
                         let hasChange = false;
                         const updatedProducts = order.products.map(p => {
-                          const grindNorm = normalizeGrindForKey(p.grindType || '');
-                          const grind = grindNorm ? ` (${grindNorm})` : '';
-                          const productKey = `${p.name.trim()} ${(p.weight || '').trim()}${grind}`;
+                          const isPersProd = ((p as any).productionNotes || '').toLowerCase().includes('personaliz') || (p.name || '').toLowerCase().includes('personaliz');
+                          const grindNorm2 = normalizeGrindForKey(p.grindType || '');
+                          const grind2 = grindNorm2 ? ` (${grindNorm2})` : '';
+                          const keyBase2 = (p.name || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') + ' ' + (p.weight || '').trim().toLowerCase();
+                          const productKey = isPersProd ? keyBase2 + grind2 + '_pers' : keyBase2 + grind2.toLowerCase();
                           if (productKey === keyToMatch && !p.checked) {
                             hasChange = true;
                             return { ...p, checked: true };
@@ -1314,9 +1319,12 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                       const separadas = orders.filter(o => o.status === 'embalagens_separadas');
                       const keyToMatch = item.matchKey;
                       const affected = separadas.filter(order => order.products.some(p => {
-                        const grindNorm = normalizeGrindForKey(p.grindType || '');
-                        const grind = grindNorm ? ` (${grindNorm})` : '';
-                        return `${p.name.trim()} ${(p.weight || '').trim()}${grind}` === keyToMatch && !p.checked;
+                        const isPersProd = ((p as any).productionNotes || '').toLowerCase().includes('personaliz') || (p.name || '').toLowerCase().includes('personaliz');
+                        const grindNorm2 = normalizeGrindForKey(p.grindType || '');
+                        const grind2 = grindNorm2 ? ` (${grindNorm2})` : '';
+                        const keyBase2 = (p.name || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') + ' ' + (p.weight || '').trim().toLowerCase();
+                        const productKey2 = isPersProd ? keyBase2 + grind2 + '_pers' : keyBase2 + grind2.toLowerCase();
+                        return productKey2 === keyToMatch && !p.checked;
                       }));
                       if (affected.length > 0) {
                         await saveToHistory('minicard_sep', `Embalou: ${item.qty}x ${item.name}`, affected);
@@ -1324,9 +1332,11 @@ export default function Dashboard({ stats, orders: initialOrders, onUpdateOrder 
                       separadas.forEach(order => {
                         let hasChange = false;
                         const updatedProducts = order.products.map(p => {
-                          const grindNorm = normalizeGrindForKey(p.grindType || '');
-                          const grind = grindNorm ? ` (${grindNorm})` : '';
-                          const productKey = `${p.name.trim()} ${(p.weight || '').trim()}${grind}`;
+                          const isPersProd = ((p as any).productionNotes || '').toLowerCase().includes('personaliz') || (p.name || '').toLowerCase().includes('personaliz');
+                          const grindNorm2 = normalizeGrindForKey(p.grindType || '');
+                          const grind2 = grindNorm2 ? ` (${grindNorm2})` : '';
+                          const keyBase2 = (p.name || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') + ' ' + (p.weight || '').trim().toLowerCase();
+                          const productKey = isPersProd ? keyBase2 + grind2 + '_pers' : keyBase2 + grind2.toLowerCase();
                           if (productKey === keyToMatch && !p.checked) {
                             hasChange = true;
                             return { ...p, checked: true };

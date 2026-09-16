@@ -620,7 +620,12 @@ function OrderCard({
                   {product.name.toLowerCase() !== 'dripcoffee' && (
                     <> {product.weight} ({product.grindType})</>
                   )}
-                  {product.productionNotes && <span className="ml-1 text-[9px] text-primary italic"> {product.productionNotes}</span>}
+                  {(product.productionNotes || '').toLowerCase().includes('personaliz') && (
+                    <> personalizado</>
+                  )}
+                  {product.productionNotes && !(product.productionNotes || '').toLowerCase().includes('personaliz') && (
+                    <span className="ml-1 text-[9px] text-primary italic"> {product.productionNotes}</span>
+                  )}
                 </span>
               </label>
             ))}

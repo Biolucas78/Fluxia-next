@@ -76,6 +76,7 @@ export async function parseOrderWithGemini(text: string) {
        - "N/A"    → quando não se aplica (ex: DripCoffee)
        NUNCA retorne: "Grãos", "Moído", "grao", "graos", "moido" ou qualquer outra forma.
     7. NOME DO PRODUTO: Não inclua a palavra "Café".
+    7b. PRODUTO PERSONALIZADO (CRÍTICO): Quando o produto for descrito como "personalizado" (ex: "Catuaí personalizado", "250g personalizado", "café personalizado"), a palavra "personalizado" deve ser adicionada ao final do campo "name" — NUNCA em "productionNotes". Ex: name = "Catuaí personalizado", weight = "250g", grindType = "grãos". O campo "productionNotes" deve ser usado APENAS para notas que não sejam "personalizado" (ex: data de entrega especial, observação de embalagem).
     8. TELEFONE: O campo "phone" deve conter APENAS o número de telefone. Se o texto for longo e não parecer um telefone, deixe vazio ou extraia apenas os dígitos do telefone.
     9. FLEXIBILIDADE (CRÍTICO): Se o formato da mensagem for incomum ou bagunçado, use o contexto para identificar o que é o nome do cliente, o que é o endereço e o que são os produtos. Priorize a extração correta dos produtos mesmo que o endereço esteja incompleto ou misturado. Se houver dúvidas sobre o que é o nome do cliente, use a primeira linha ou a identificação mais clara de pessoa/empresa.
     10. CONDIÇÃO DE PAGAMENTO: Identifique a condição de pagamento se mencionada (ex: "A vista", "15 dias", "21 dias", "30 dias", "2x"). Se não mencionada, use "A vista".
