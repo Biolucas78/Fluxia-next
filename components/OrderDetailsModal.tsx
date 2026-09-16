@@ -2053,22 +2053,25 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               // Normalizar NF para match
                               const norm = (v: any) => String(v || '').trim().replace(/^0+/, '') || '0';
                               const nfNorm = norm(order.invoiceNumber);
-                              // Match perfeito: seuNumero normalizado + valor igual
+                              // Match perfeito: seuNumero normalizado + valor igual — ignora Baixados
                               const perfectMatch = boletos.find((b: any) => {
+                                const sit = (b.situacaoBoleto || '').toLowerCase();
+                                if (sit === 'baixado' || sit === 'cancelado') return false;
                                 const nfOk = nfNorm !== '0' && norm(b.seuNumero) === nfNorm;
                                 const valOk = order.invoiceValue ? Math.abs((b.valor || 0) - order.invoiceValue) < 0.01 : true;
                                 return nfOk && valOk;
                               });
+                              const sorted = [...boletos].sort((a: any, b: any) =>
+                                new Date(b.dataEmissao || 0).getTime() - new Date(a.dataEmissao || 0).getTime()
+                              );
                               if (perfectMatch) {
                                 setPendingBoleto(perfectMatch);
                                 toast('Boleto encontrado! Confirme os dados para vincular.', { icon: '🔍' });
                               } else {
-                                // Sem match perfeito: mostrar lista para escolha manual
-                                const sorted = [...boletos].sort((a: any, b: any) =>
-                                  new Date(b.dataEmissao || 0).getTime() - new Date(a.dataEmissao || 0).getTime()
-                                );
+                                // Sem match perfeito (ou apenas baixados encontrados): mostrar lista completa
                                 setBoletosList(sorted);
-                                toast('Nenhum boleto com match exato. Escolha manualmente abaixo.', { icon: '⚠️' });
+                                const temBaixado = boletos.some((b: any) => (b.situacaoBoleto || '').toLowerCase() === 'baixado');
+                                toast(temBaixado ? 'Boleto original está Baixado. Escolha os novos boletos abaixo.' : 'Nenhum boleto com match exato. Escolha manualmente abaixo.', { icon: '⚠️' });
                               }
                             } catch (e: any) {
                               toast.error('Erro ao buscar boleto: ' + e.message);
@@ -2081,29 +2084,40 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           {isFetchingBoleto ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
                           Buscar Boleto no Sicoob
                         </button>
-                        {(order as any).boletoLinked && (
-                          <button
-                            onClick={() => {
-                              onUpdateOrder({
-                                ...order,
-                                hasBoleto: false,
-                                boletoLinked: false,
-                                boletoNossoNumero: '',
-                                boletos: [],
-                                paymentDueDate: '',
-                                paymentDate: '',
-                                boletSituacao: '',
-                                statusHistory: [...(order.statusHistory || []), { action: 'Boleto desvinculado manualmente', timestamp: new Date().toISOString() }]
-                              } as any);
-                              setBoletoData(null);
-                              setPendingBoleto(null);
-                              setBoletosList([]);
-                            }}
-                            className="text-[10px] font-bold text-red-500 hover:text-red-700 flex items-center gap-1"
-                          >
-                            <X className="size-3" /> Desvincular
-                          </button>
-                        )}
+                        {(order as any).boletoLinked && (() => {
+                          const sitAtual = ((order as any).boletSituacao || '').toLowerCase();
+                          const isBaixado = sitAtual === 'baixado' || sitAtual === 'cancelado';
+                          return (
+                            <>
+                              {isBaixado && (
+                                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                  ⚠ Boleto baixado — desvincule para vincular novos
+                                </span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  onUpdateOrder({
+                                    ...order,
+                                    hasBoleto: false,
+                                    boletoLinked: false,
+                                    boletoNossoNumero: '',
+                                    boletos: [],
+                                    paymentDueDate: '',
+                                    paymentDate: '',
+                                    boletSituacao: '',
+                                    statusHistory: [...(order.statusHistory || []), { action: 'Boleto desvinculado manualmente', timestamp: new Date().toISOString() }]
+                                  } as any);
+                                  setBoletoData(null);
+                                  setPendingBoleto(null);
+                                  setBoletosList([]);
+                                }}
+                                className={`text-[10px] font-bold flex items-center gap-1 ${isBaixado ? 'text-red-600 hover:text-red-800' : 'text-red-500 hover:text-red-700'}`}
+                              >
+                                <X className="size-3" /> Desvincular
+                              </button>
+                            </>
+                          );
+                        })()}
                       </div>
                       {/* Card de confirmação de boleto com match perfeito */}
                       {pendingBoleto && (
@@ -2221,6 +2235,32 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                           >
                                             <RefreshCw className="size-3" />
                                           </button>
+                                          {(sit === 'BAIXADO' || sit === 'CANCELADO') && (
+                                            <button
+                                              onClick={() => {
+                                                const boletosRestantes = (order as any).boletos.filter((_: any, j: number) => j !== i);
+                                                const novoNossoNumero = boletosRestantes.map((bl: any) => bl.nossoNumero).filter(Boolean).join(',');
+                                                const updates: any = {
+                                                  boletos: boletosRestantes,
+                                                  statusHistory: [...(order.statusHistory||[]), { action: `Parcela ${i+1} baixada/cancelada (NossoNum. ${b.nossoNumero}) removida`, timestamp: new Date().toISOString(), ...(userProfile ? { userId: userProfile.uid, userName: userProfile.email } : {}) }]
+                                                };
+                                                if (boletosRestantes.length === 0) {
+                                                  updates.boletoLinked = false;
+                                                  updates.boletoNossoNumero = '';
+                                                  updates.hasBoleto = false;
+                                                  updates.boletSituacao = '';
+                                                } else {
+                                                  updates.boletoNossoNumero = novoNossoNumero;
+                                                }
+                                                onUpdateOrder({ ...order, ...updates } as any);
+                                                toast.success('Parcela baixada removida. Vincule os novos boletos.');
+                                              }}
+                                              className="p-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all"
+                                              title="Remover parcela baixada/cancelada"
+                                            >
+                                              <Trash2 className="size-3" />
+                                            </button>
+                                          )}
                                           {b.paidManually ? (
                                             <button
                                               onClick={() => {
