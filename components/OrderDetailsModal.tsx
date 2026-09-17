@@ -1780,8 +1780,24 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                     return;
                                   }
                                 } catch (e: any) { toast.error('Erro ao verificar lock: ' + e.message); return; }
-                                onUpdateOrder({ ...order, hasInvoice: true, invoiceLinked: true, invoiceKey: pendingInvoice.invoiceKey||'', invoiceNumber: pendingInvoice.invoiceNumber||'', invoiceValue: pendingInvoice.invoiceValue, statusHistory: [...(order.statusHistory||[]), { action: 'Nota Fiscal vinculada e confirmada', details: `NF: ${pendingInvoice.invoiceNumber} | Valor: ${pendingInvoice.invoiceValue}`, timestamp: new Date().toISOString() }] });
+                                // Buscar data de vencimento do pedido Bling vinculado
+                                let nfDueDate = '';
+                                if ((order as any).blingOrderId) {
+                                  try {
+                                    const detRes = await fetch(`/api/bling/get-order-details?id=${(order as any).blingOrderId}`);
+                                    if (detRes.ok) {
+                                      const det = await detRes.json();
+                                      const parcelas: any[] = det.parcelas || [];
+                                      if (parcelas.length > 0) {
+                                        const ultima = parcelas[parcelas.length - 1];
+                                        if (ultima.dataVencimento && ultima.dataVencimento !== '0000-00-00') nfDueDate = ultima.dataVencimento;
+                                      }
+                                    }
+                                  } catch {}
+                                }
+                                onUpdateOrder({ ...order, hasInvoice: true, invoiceLinked: true, invoiceKey: pendingInvoice.invoiceKey||'', invoiceNumber: pendingInvoice.invoiceNumber||'', invoiceValue: pendingInvoice.invoiceValue, ...(nfDueDate ? { paymentDueDate: nfDueDate } : {}), statusHistory: [...(order.statusHistory||[]), { action: 'Nota Fiscal vinculada e confirmada', details: `NF: ${pendingInvoice.invoiceNumber} | Valor: ${pendingInvoice.invoiceValue}`, timestamp: new Date().toISOString() }] });
                                 setManualInvoiceKey(pendingInvoice.invoiceKey||''); setManualInvoiceNumber(pendingInvoice.invoiceNumber||''); setManualInvoiceValue(pendingInvoice.invoiceValue||'');
+                                if (nfDueDate) setInvoicePaymentDueDate(nfDueDate);
                                 setPendingInvoice(null); setNfList([]);
                                 toast.success('Nota Fiscal vinculada com sucesso!');
                               }} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold rounded-lg flex items-center justify-center gap-1">
@@ -1907,7 +1923,29 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 </div>
                                 {!(order as any).boletoLinked && (
                                   <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-700">
-                                    <label className="text-[9px] text-slate-400 uppercase font-bold">Vencimento do Pagamento</label>
+                                    <div className="flex items-center justify-between">
+                                      <label className="text-[9px] text-slate-400 uppercase font-bold">Vencimento do Pagamento</label>
+                                      {(order as any).blingOrderId && (
+                                        <button onClick={async () => {
+                                          try {
+                                            const detRes = await fetch(`/api/bling/get-order-details?id=${(order as any).blingOrderId}`);
+                                            if (!detRes.ok) { toast.error('Erro ao buscar pedido no Bling.'); return; }
+                                            const det = await detRes.json();
+                                            const parcelas: any[] = det.parcelas || [];
+                                            if (parcelas.length > 0) {
+                                              const ultima = parcelas[parcelas.length - 1];
+                                              if (ultima.dataVencimento && ultima.dataVencimento !== '0000-00-00') {
+                                                setInvoicePaymentDueDate(ultima.dataVencimento);
+                                                onUpdateOrder({ ...order, paymentDueDate: ultima.dataVencimento, statusHistory: [...(order.statusHistory||[]), { action: `Vencimento buscado do Bling: ${ultima.dataVencimento}`, timestamp: new Date().toISOString() }] });
+                                                toast.success('Vencimento buscado do Bling!');
+                                              } else { toast.error('Parcela sem data de vencimento válida.'); }
+                                            } else { toast.error('Pedido Bling sem parcelas.'); }
+                                          } catch (e: any) { toast.error('Erro: ' + e.message); }
+                                        }} className="text-[9px] font-bold text-primary hover:text-primary/80 flex items-center gap-1">
+                                          <RefreshCw className="size-2.5" /> Buscar do Bling
+                                        </button>
+                                      )}
+                                    </div>
                                     <input
                                       type="date"
                                       value={invoicePaymentDueDate}
@@ -1942,7 +1980,30 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                 <input type="number" step="0.01" value={noInvoiceValue} onChange={(e) => setNoInvoiceValue(e.target.value)} onBlur={() => { if (noInvoiceValue) onUpdateOrder({ ...order, noInvoiceValue: Number(noInvoiceValue) }); }} placeholder="Ex: 150.00" className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary" />
                               </div>
                               <div className="space-y-1">
-                                <label className="text-[9px] text-slate-400 uppercase font-bold">Vencimento</label>
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[9px] text-slate-400 uppercase font-bold">Vencimento</label>
+                                  {(order as any).noInvoiceBlingOrderId && (
+                                    <button onClick={async () => {
+                                      try {
+                                        const detRes = await fetch(`/api/bling/get-order-details?id=${(order as any).noInvoiceBlingOrderId}`);
+                                        if (!detRes.ok) { toast.error('Erro ao buscar pedido no Bling.'); return; }
+                                        const det = await detRes.json();
+                                        const parcelas: any[] = det.parcelas || [];
+                                        if (parcelas.length > 0) {
+                                          const ultima = parcelas[parcelas.length - 1];
+                                          if (ultima.dataVencimento && ultima.dataVencimento !== '0000-00-00') {
+                                            setNoInvoiceDueDate(ultima.dataVencimento);
+                                            setInvoicePaymentDueDate(ultima.dataVencimento);
+                                            onUpdateOrder({ ...order, noInvoiceDueDate: ultima.dataVencimento, paymentDueDate: ultima.dataVencimento, statusHistory: [...(order.statusHistory||[]), { action: `Vencimento buscado do Bling: ${ultima.dataVencimento}`, timestamp: new Date().toISOString() }] });
+                                            toast.success('Vencimento buscado do Bling!');
+                                          } else { toast.error('Parcela sem data de vencimento válida.'); }
+                                        } else { toast.error('Pedido Bling sem parcelas.'); }
+                                      } catch (e: any) { toast.error('Erro: ' + e.message); }
+                                    }} className="text-[9px] font-bold text-primary hover:text-primary/80 flex items-center gap-1">
+                                      <RefreshCw className="size-2.5" /> Buscar do Bling
+                                    </button>
+                                  )}
+                                </div>
                                 <input type="date" value={noInvoiceDueDate} onChange={(e) => { setNoInvoiceDueDate(e.target.value); onUpdateOrder({ ...order, noInvoiceDueDate: e.target.value }); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary" />
                               </div>
                             </div>
@@ -2008,8 +2069,23 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                       const lockData = await lockRes.json();
                                       if (lockData.locked) { toast.error(`Este pedido já está vinculado ao card "${lockData.lockedBy}"`); return; }
                                     } catch (e: any) { toast.error('Erro ao verificar lock: ' + e.message); return; }
-                                    onUpdateOrder({ ...order, noInvoiceLinked: true, noInvoiceBlingOrderId: String(pendingBlingOrder.id||''), noInvoiceValue: pendingBlingOrder.valor, statusHistory: [...(order.statusHistory||[]), { action: 'Pedido Bling vinculado (Sem NF)', details: `Pedido: ${pendingBlingOrder.numero} | Valor: ${pendingBlingOrder.valor}`, timestamp: new Date().toISOString() }] });
-                                    setNoInvoiceValue(String(pendingBlingOrder.valor||'')); setPendingBlingOrder(null); setBlingOrdersList([]);
+                                    // Buscar data de vencimento das parcelas no Bling
+                                    let blingDueDate = '';
+                                    try {
+                                      const detRes = await fetch(`/api/bling/get-order-details?id=${pendingBlingOrder.id}`);
+                                      if (detRes.ok) {
+                                        const det = await detRes.json();
+                                        const parcelas: any[] = det.parcelas || [];
+                                        if (parcelas.length > 0) {
+                                          const ultima = parcelas[parcelas.length - 1];
+                                          if (ultima.dataVencimento && ultima.dataVencimento !== '0000-00-00') blingDueDate = ultima.dataVencimento;
+                                        }
+                                      }
+                                    } catch {}
+                                    onUpdateOrder({ ...order, noInvoiceLinked: true, noInvoiceBlingOrderId: String(pendingBlingOrder.id||''), noInvoiceValue: pendingBlingOrder.valor, ...(blingDueDate ? { noInvoiceDueDate: blingDueDate, paymentDueDate: blingDueDate } : {}), statusHistory: [...(order.statusHistory||[]), { action: 'Pedido Bling vinculado (Sem NF)', details: `Pedido: ${pendingBlingOrder.numero} | Valor: ${pendingBlingOrder.valor}`, timestamp: new Date().toISOString() }] });
+                                    setNoInvoiceValue(String(pendingBlingOrder.valor||''));
+                                    if (blingDueDate) { setNoInvoiceDueDate(blingDueDate); setInvoicePaymentDueDate(blingDueDate); }
+                                    setPendingBlingOrder(null); setBlingOrdersList([]);
                                     toast.success('Pedido vinculado com sucesso!');
                                   }} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold rounded-lg flex items-center justify-center gap-1">
                                     <CheckCircle2 className="size-3" /> Confirmar

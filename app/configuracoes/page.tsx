@@ -64,6 +64,7 @@ function SettingsContent() {
   const [exportSuccess, setExportSuccess] = useState(false);
   const [isSyncingRecentes, setIsSyncingRecentes] = useState(false);
   const [isAtualizandoDatas, setIsAtualizandoDatas] = useState(false);
+  const [isAtualizandoVencimentos, setIsAtualizandoVencimentos] = useState(false);
 
   const handleSyncRecentes = async () => {
     if (isSyncingRecentes || isLoadingStatus) return;
@@ -963,6 +964,46 @@ function SettingsContent() {
                   }
                   Atualizar Datas de Pagamento
                 </button>
+
+                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                  <div className="p-4 rounded-2xl bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-900/30">
+                    <p className="text-xs text-violet-700 dark:text-violet-300 leading-relaxed">
+                      Busca o vencimento (data de parcela) de todos os pedidos vinculados ao Bling que ainda não têm data de vencimento preenchida. Útil para pedidos sem boleto (NF ou Sem NF).
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (isAtualizandoVencimentos) return;
+                      setIsAtualizandoVencimentos(true);
+                      const loadingToast = toast.loading('Buscando vencimentos no Bling...');
+                      try {
+                        const res = await fetch('/api/bling/sincronizar-vencimentos', { method: 'POST' });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
+                        toast.success(
+                          `${data.atualizados} atualizado(s) · ${data.ignorados} sem alteração · ${data.erros} erro(s)`,
+                          { id: loadingToast, duration: 6000 }
+                        );
+                      } catch (e: any) {
+                        toast.error(`Erro: ${e.message}`, { id: loadingToast });
+                      } finally {
+                        setIsAtualizandoVencimentos(false);
+                      }
+                    }}
+                    disabled={isAtualizandoVencimentos}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${
+                      isAtualizandoVencimentos
+                        ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
+                        : 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50'
+                    }`}
+                  >
+                    {isAtualizandoVencimentos
+                      ? <Loader2 className="size-3 animate-spin" />
+                      : <RefreshCw className="size-3" />
+                    }
+                    Sincronizar Vencimentos do Bling
+                  </button>
+                </div>
               </div>
             </section>
 
