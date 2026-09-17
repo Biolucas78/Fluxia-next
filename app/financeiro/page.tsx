@@ -244,11 +244,12 @@ interface OrderCardProps {
   order: Order;
   showOverdue?: boolean;
   showReceiveBtn?: boolean;
+  showStatusBadge?: boolean;
   onReceive?: (order: Order) => void;
   onManualPayBoleto?: (order: Order, boletIndex: number, valor: number, seuNumero: string) => void;
 }
 
-function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayBoleto }: OrderCardProps) {
+function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onReceive, onManualPayBoleto }: OrderCardProps) {
   const due = getDueDate(order);
   const issue = getIssueDate(order);
   const overdueFlag = isOverdue(order);
@@ -304,6 +305,17 @@ function OrderCard({ order, showOverdue, showReceiveBtn, onReceive, onManualPayB
           <div className="flex items-center gap-1.5 flex-wrap">
             <PaymentBadge method={(order as any).boletoLinked ? "boleto" : order.paymentMethod} />
             <DocBadge order={order} />
+            {showStatusBadge && (
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black ${
+                isPaid(order)
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                  : isOverdue(order)
+                    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                    : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+              }`}>
+                {isPaid(order) ? 'Recebido' : isOverdue(order) ? 'Vencido' : 'A Receber'}
+              </span>
+            )}
           </div>
 
           {/* Datas */}
@@ -462,7 +474,7 @@ export default function FinanceiroPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Aba principal
-  const [activeSection, setActiveSection] = useState<'receber' | 'recebidos' | 'vencidos'>('receber');
+  const [activeSection, setActiveSection] = useState<'receber' | 'recebidos' | 'vencidos' | 'todos'>('receber');
 
   // Filtros
   const [showFilters, setShowFilters] = useState(false);
@@ -576,9 +588,24 @@ export default function FinanceiroPage() {
     ).sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
   }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
 
+  // TODOS: todos os pedidos elegíveis com filtros, ordenados por data de criação desc
+  const allFiltered = useMemo(() => {
+    return pedidosElegiveis.filter(o =>
+      matchesSearch(o) &&
+      matchesDoc(o) &&
+      matchesPayment(o) &&
+      matchesPeriod(o)
+    ).sort((a, b) => {
+      const da = a.createdAt || (a as any).updatedAt || '';
+      const db = b.createdAt || (b as any).updatedAt || '';
+      return db.localeCompare(da);
+    });
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
+
   const totalToReceive = useMemo(() => toReceive.reduce((s, o) => s + getOrderValue(o), 0), [toReceive]);
   const totalOverdue = useMemo(() => overdue.reduce((s, o) => s + getOrderValue(o), 0), [overdue]);
   const totalReceived = useMemo(() => received.reduce((s, o) => s + getOrderValue(o), 0), [received]);
+  const totalAll = useMemo(() => allFiltered.reduce((s, o) => s + getOrderValue(o), 0), [allFiltered]);
 
   // ── Modal pagamento ──────────────────────────────────────────────────────────
 
@@ -656,12 +683,17 @@ export default function FinanceiroPage() {
   if (!userProfile) return <Login />;
 
   const sections = [
-    { id: 'receber',   label: 'A Receber', count: toReceive.length, total: totalToReceive,  color: 'text-amber-600',  bg: 'bg-amber-600',  icon: Clock },
-    { id: 'recebidos', label: 'Recebidos', count: received.length,  total: totalReceived,   color: 'text-emerald-600', bg: 'bg-emerald-600', icon: CheckCircle2 },
-    { id: 'vencidos',  label: 'Vencidos',  count: overdue.length,   total: totalOverdue,    color: 'text-red-600',    bg: 'bg-red-600',    icon: AlertTriangle },
+    { id: 'receber',   label: 'A Receber', count: toReceive.length,   total: totalToReceive,  color: 'text-amber-600',   bg: 'bg-amber-600',   icon: Clock },
+    { id: 'recebidos', label: 'Recebidos', count: received.length,    total: totalReceived,   color: 'text-emerald-600', bg: 'bg-emerald-600', icon: CheckCircle2 },
+    { id: 'vencidos',  label: 'Vencidos',  count: overdue.length,     total: totalOverdue,    color: 'text-red-600',     bg: 'bg-red-600',    icon: AlertTriangle },
+    { id: 'todos',     label: 'Todos',     count: allFiltered.length, total: totalAll,        color: 'text-slate-600',   bg: 'bg-slate-600',  icon: DollarSign },
   ];
 
-  const activeList = activeSection === 'receber' ? toReceive : activeSection === 'recebidos' ? received : overdue;
+  const activeList =
+    activeSection === 'receber'   ? toReceive :
+    activeSection === 'recebidos' ? received :
+    activeSection === 'vencidos'  ? overdue :
+    allFiltered;
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
@@ -680,7 +712,7 @@ export default function FinanceiroPage() {
           </p>
 
           {/* Cards de resumo */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {sections.map(sec => {
               const Icon = sec.icon;
               return (
@@ -697,7 +729,8 @@ export default function FinanceiroPage() {
                     <div className={`size-8 rounded-xl flex items-center justify-center ${
                       sec.id === 'receber'   ? 'bg-amber-100 dark:bg-amber-900/30' :
                       sec.id === 'recebidos' ? 'bg-emerald-100 dark:bg-emerald-900/30' :
-                                              'bg-red-100 dark:bg-red-900/30'
+                      sec.id === 'vencidos'  ? 'bg-red-100 dark:bg-red-900/30' :
+                                              'bg-slate-100 dark:bg-slate-800'
                     }`}>
                       <Icon className={`size-4 ${sec.color}`} />
                     </div>
@@ -877,13 +910,15 @@ export default function FinanceiroPage() {
 
               {isLoaded && activeList.length === 0 && (
                 <div className="py-12 text-center text-slate-400 space-y-2">
-                  {activeSection === 'receber' && <Clock className="size-10 mx-auto mb-3 opacity-30" />}
+                  {activeSection === 'receber'   && <Clock className="size-10 mx-auto mb-3 opacity-30" />}
                   {activeSection === 'recebidos' && <CheckCircle2 className="size-10 mx-auto mb-3 text-emerald-400 opacity-60" />}
-                  {activeSection === 'vencidos' && <AlertTriangle className="size-10 mx-auto mb-3 opacity-30" />}
+                  {activeSection === 'vencidos'  && <AlertTriangle className="size-10 mx-auto mb-3 opacity-30" />}
+                  {activeSection === 'todos'     && <DollarSign className="size-10 mx-auto mb-3 opacity-30" />}
                   <p className="font-bold text-sm">
                     {activeSection === 'receber'   ? 'Nenhum recebimento pendente' :
                      activeSection === 'recebidos' ? 'Nenhum recebimento no período' :
-                                                     'Nenhum pagamento vencido'}
+                     activeSection === 'vencidos'  ? 'Nenhum pagamento vencido' :
+                                                     'Nenhum pedido no período'}
                   </p>
                   {searchQuery && <p className="text-xs">Tente limpar a busca</p>}
                 </div>
@@ -893,8 +928,9 @@ export default function FinanceiroPage() {
                 <OrderCard
                   key={order.id}
                   order={order}
-                  showOverdue={activeSection === 'vencidos' || activeSection === 'receber'}
-                  showReceiveBtn={activeSection !== 'recebidos'}
+                  showOverdue={activeSection === 'vencidos' || activeSection === 'receber' || activeSection === 'todos'}
+                  showReceiveBtn={activeSection === 'todos' ? !isPaid(order) : activeSection !== 'recebidos'}
+                  showStatusBadge={activeSection === 'todos'}
                   onReceive={openReceive}
                   onManualPayBoleto={(ord, idx, val, nf) => {
                     setSelectedBoleto({ order: ord, boletIndex: idx, valor: val, seuNumero: nf });
