@@ -167,6 +167,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [paymentConfirmDate, setPaymentConfirmDate] = useState<string>(order.paymentDate || new Date().toISOString().split('T')[0]);
   const [noInvoiceValue, setNoInvoiceValue] = useState<string>(order.noInvoiceValue ? String(order.noInvoiceValue) : '');
   const [noInvoiceDueDate, setNoInvoiceDueDate] = useState<string>(order.noInvoiceDueDate || '');
+  const [invoicePaymentDueDate, setInvoicePaymentDueDate] = useState<string>(order.paymentDueDate || '');
   const [isFetchingBlingOrder, setIsFetchingBlingOrder] = useState(false);
   const [pendingBlingOrder, setPendingBlingOrder] = useState<any>(null);
   const [blingOrdersList, setBlingOrdersList] = useState<any[]>([]);
@@ -551,13 +552,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
     setEditedObservations(order.observations || '');
     setManualInvoiceKey(order.invoiceKey || '');
     setManualInvoiceNumber(order.invoiceNumber || '');
-    
+    setInvoicePaymentDueDate(order.paymentDueDate || '');
+
     // Auto-check invoice when entering "embalagens_prontas"
     if (order.status === 'embalagens_prontas' && order.blingOrderId && !order.hasInvoice && !order.hasOrderDocument) {
       handleCheckInvoice();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order.address, order.observations, order.status]);
+  }, [order.address, order.observations, order.status, order.paymentDueDate]);
 
   const totalWeightG = useMemo(() => {
     return order.products.reduce((acc, p) => {
@@ -1903,6 +1905,20 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                     </div>
                                   )}
                                 </div>
+                                {!(order as any).boletoLinked && (
+                                  <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-700">
+                                    <label className="text-[9px] text-slate-400 uppercase font-bold">Vencimento do Pagamento</label>
+                                    <input
+                                      type="date"
+                                      value={invoicePaymentDueDate}
+                                      onChange={(e) => {
+                                        setInvoicePaymentDueDate(e.target.value);
+                                        onUpdateOrder({ ...order, paymentDueDate: e.target.value, statusHistory: [...(order.statusHistory||[]), { action: `Data de vencimento definida: ${e.target.value.split('-').reverse().join('/')}`, timestamp: new Date().toISOString() }] });
+                                      }}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary"
+                                    />
+                                  </div>
+                                )}
                               </>
                             )}
                           </div>
