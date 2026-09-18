@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
         blingOrderNumero: data.blingOrderNumero ?? null,
         clientName: data.clientName ?? data.client ?? '',
         status: data.status ?? '',
-        totalValue: data.totalValue ?? data.total ?? 0,
+        // invoiceValue é o campo usado pelos pedidos importados do Bling
+        totalValue: data.totalValue ?? data.invoiceValue ?? data.noInvoiceValue ?? data.total ?? 0,
         isDeleted: !!(data.isDeleted || data.deleted),
         isSample: !!data.isSample,
         paymentStatus: data.paymentStatus ?? '',

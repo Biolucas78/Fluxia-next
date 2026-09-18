@@ -95,6 +95,8 @@ export default function CompararBlingPage() {
   const [csvText, setCsvText] = useState('');
   const [parsed, setParsed] = useState<BlingRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [populando, setPopulando] = useState(false);
+  const [populandoMsg, setPopulandoMsg] = useState('');
   const [result, setResult] = useState<{ summary: Summary; problemas: CompareResult[]; fluxia_sem_bling: any[] } | null>(null);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<'todos' | 'ausente' | 'divergente' | 'deletado'>('todos');
@@ -123,6 +125,21 @@ export default function CompararBlingPage() {
       setError(e.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handlePopularNumeros() {
+    setPopulando(true);
+    setPopulandoMsg('Buscando números de pedidos no Bling...');
+    try {
+      const res = await fetch('/api/financeiro/populate-bling-numero', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Erro desconhecido');
+      setPopulandoMsg(`Concluído: ${data.atualizados} pedidos atualizados, ${data.erros} erros. Agora clique em "Comparar" novamente.`);
+    } catch (e: any) {
+      setPopulandoMsg(`Erro: ${e.message}`);
+    } finally {
+      setPopulando(false);
     }
   }
 
@@ -163,7 +180,7 @@ export default function CompararBlingPage() {
           placeholder={'Nº Pedido;Data;Cliente;Situação;Valor\n1542;01/01/2026;CLIENTE A;Atendido;500,00\n...'}
           className="w-full h-40 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono resize-y text-gray-800 dark:text-gray-200"
         />
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap items-center">
           <button
             onClick={handleParse}
             disabled={!csvText.trim()}
@@ -181,6 +198,16 @@ export default function CompararBlingPage() {
               {loading ? 'Comparando...' : `Comparar ${parsed.length} pedidos`}
             </button>
           )}
+          <div className="ml-auto flex flex-col items-end gap-1">
+            <button
+              onClick={handlePopularNumeros}
+              disabled={populando}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-400 text-amber-700 dark:text-amber-400 text-xs font-medium hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50"
+            >
+              {populando ? 'Buscando no Bling...' : '🔄 Preencher nº de pedidos (1x)'}
+            </button>
+            {populandoMsg && <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm text-right">{populandoMsg}</p>}
+          </div>
         </div>
         {parsed.length > 0 && !result && (
           <div className="space-y-2">
