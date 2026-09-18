@@ -114,20 +114,45 @@ function isOrderPaid(o: any): boolean {
   return o.paymentStatus === 'pago' || o.paymentStatus === 'paid';
 }
 
-function getOrderPaymentDate(o: any): string {
-  if (o.paymentDate) return String(o.paymentDate).split('T')[0];
-  if (o.paymentConfirmedAt) return String(o.paymentConfirmedAt).split('T')[0];
-  if (Array.isArray(o.boletos) && o.boletos.length > 0) {
-    const paidBoleto = [...o.boletos].reverse().find((b: any) => {
-      const sit = (b.situacao || '').toLowerCase();
-      return (sit === 'liquidado' || sit === 'pago') && b.dataPagamento;
-    });
-    if (paidBoleto?.dataPagamento) return String(paidBoleto.dataPagamento).split('T')[0];
-    const last = o.boletos[o.boletos.length - 1];
-    if (last?.dataVencimento) return String(last.dataVencimento).split('T')[0];
+// Elegível para faturamento (pipeline completo: caixa_montada/enviado/entregue)
+function isEligibleForFaturamento(o: any): boolean {
+  if (o.isSample) return false;
+  if (o.isDeleted || o.deleted) return false;
+  return ['caixa_montada', 'enviado', 'entregue'].includes(o.status);
+}
+
+// Elegível para receita/recebido — idêntico ao pedidosElegiveis do A Receber
+function isEligibleForReceita(o: any): boolean {
+  if (o.isSample) return false;
+  if (o.isDeleted || o.deleted) return false;
+  return o.status === 'entregue';
+}
+
+// Data de faturamento: emissão boleto/NF → statusHistory → createdAt (= mesmo que A Receber)
+function getBillingDate(o: any): string {
+  if (Array.isArray(o.boletos) && o.boletos.length > 0 && o.boletos[0].dataEmissao) {
+    return String(o.boletos[0].dataEmissao).split('T')[0];
+  }
+  if (Array.isArray(o.statusHistory)) {
+    for (const st of ['entregue', 'enviado', 'caixa_montada']) {
+      const h = (o.statusHistory as any[]).find((x: any) => x.status === st);
+      if (h?.timestamp) return String(h.timestamp).split('T')[0];
+    }
+    const faturado = (o.statusHistory as any[]).find((h: any) => h.action?.includes('faturad'));
+    if (faturado?.timestamp) return String(faturado.timestamp).split('T')[0];
   }
   if (o.createdAt) return String(o.createdAt).split('T')[0];
   return '';
+}
+
+function isOrderOverdue(o: any): boolean {
+  if (isOrderPaid(o)) return false;
+  if (Array.isArray(o.boletos) && o.boletos.length > 0) {
+    const last = o.boletos[o.boletos.length - 1];
+    if (last?.dataVencimento) return new Date(last.dataVencimento + 'T12:00:00') < new Date();
+  }
+  if (o.paymentDueDate) return new Date(o.paymentDueDate + 'T12:00:00') < new Date();
+  return false;
 }
 
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
@@ -195,20 +220,37 @@ export default function FinanceiroDashboardPage() {
   const { from, to } = useMemo(() => getPeriodDates(period), [period]);
 
   const computed = useMemo(() => {
-    // Receitas: pedidos pagos no período + transações income
-    const paidOrders = orders.filter(o => {
-      if (!isOrderPaid(o)) return false;
-      const d = getOrderPaymentDate(o);
-      if (!d) return false;
-      return inPeriod(d, from, to);
+    // ── Faturamento: todos os pedidos elegíveis (caixa_montada/enviado/entregue) no período ──
+    // Data de referência = emissão boleto/NF → statusHistory → createdAt (igual ao A Receber)
+    const faturamentoOrders = orders.filter((o: any) => {
+      if (!isEligibleForFaturamento(o)) return false;
+      const d = getBillingDate(o);
+      return d ? inPeriod(d, from, to) : false;
     });
+    const faturamento = faturamentoOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
+    const faturamentoCount = faturamentoOrders.length;
+    const overdueTotal = faturamentoOrders
+      .filter((o: any) => !isOrderPaid(o) && isOrderOverdue(o))
+      .reduce((s: number, o: any) => s + getOrderVal(o), 0);
+    const pendingTotal = faturamentoOrders
+      .filter((o: any) => !isOrderPaid(o) && !isOrderOverdue(o))
+      .reduce((s: number, o: any) => s + getOrderVal(o), 0);
 
-    const orderRevenue = paidOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
+    // ── Receita recebida: mesma regra do A Receber "Recebidos" (só entregue + pago) ──
+    const receivedOrders = orders.filter((o: any) => {
+      if (!isEligibleForReceita(o)) return false;
+      if (!isOrderPaid(o)) return false;
+      const d = getBillingDate(o);
+      return d ? inPeriod(d, from, to) : false;
+    });
+    const orderRevenue = receivedOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
+    const receivedCount = receivedOrders.length;
 
     const manualIncome = transactions
       .filter(t => t.type === 'income' && inPeriod(t.date, from, to))
       .reduce((s, t) => s + t.value, 0);
 
+    // DRE usa receita recebida (base caixa)
     const totalIncome = orderRevenue + manualIncome;
 
     // Despesas: transações expense + contas pagas
@@ -247,9 +289,8 @@ export default function FinanceiroDashboardPage() {
     // Ponto de equilíbrio: custos fixos / margem bruta
     const breakevenUnits = grossMargin > 0 ? fixedCosts / (grossMargin / 100) : 0;
 
-    // Ticket médio
-    const totalOrders = paidOrders.length;
-    const averageTicket = totalOrders > 0 ? orderRevenue / totalOrders : 0;
+    // Ticket médio: sobre pedidos recebidos
+    const averageTicket = receivedCount > 0 ? orderRevenue / receivedCount : 0;
 
     // Despesas por categoria
     const expByCat: Record<string, number> = {};
@@ -278,7 +319,7 @@ export default function FinanceiroDashboardPage() {
       .filter(x => x.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    // Dados mensais para barchart (últimos 6 meses)
+    // Dados mensais para barchart: usa getBillingDate (igual ao A Receber)
     const now = new Date();
     const monthlyData = Array.from({ length: 6 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
@@ -288,24 +329,28 @@ export default function FinanceiroDashboardPage() {
       const mTo   = `${my}-${String(mm + 1).padStart(2, '0')}-31`;
       const label = `${MONTH_ABBR[mm]}/${String(my).slice(2)}`;
 
-      const mOrders = orders.filter((o: any) => {
-        if (!isOrderPaid(o)) return false;
-        const ds = getOrderPaymentDate(o);
-        return ds ? inPeriod(ds, mFrom, mTo) : false;
-      });
-      const mRev = mOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
+      // Faturamento do mês = todos elegíveis pela billing date
+      const mFat = orders
+        .filter((o: any) => {
+          if (!isEligibleForFaturamento(o)) return false;
+          const ds = getBillingDate(o);
+          return ds ? inPeriod(ds, mFrom, mTo) : false;
+        })
+        .reduce((s: number, o: any) => s + getOrderVal(o), 0);
       const mInc = transactions.filter(t => t.type === 'income' && inPeriod(t.date, mFrom, mTo)).reduce((s, t) => s + t.value, 0);
       const mExp = transactions.filter(t => t.type === 'expense' && inPeriod(t.date, mFrom, mTo)).reduce((s, t) => s + t.value, 0)
         + bills.filter(b => b.status === 'paid' && b.paidDate && inPeriod(b.paidDate, mFrom, mTo)).reduce((s, b) => s + (b.paidValue ?? b.value), 0);
 
-      const receita = mRev + mInc;
+      const receita = mFat + mInc;
       return { month: label, receita, despesas: mExp, lucro: receita - mExp };
     });
 
     return {
+      faturamento, faturamentoCount, overdueTotal, pendingTotal,
+      orderRevenue, receivedCount,
       totalIncome, totalExpenses, netProfit, grossMargin,
       operationalCost, profitability, breakevenUnits,
-      averageTicket, totalOrders, cmv,
+      averageTicket, cmv,
       expensesByCategory, incomeByCategory, monthlyData,
     };
   }, [transactions, bills, orders, from, to]);
@@ -324,12 +369,12 @@ export default function FinanceiroDashboardPage() {
   const kpis: KPI[] = [
     {
       label: 'Faturamento',
-      value: fmtCurrency(computed.totalIncome),
-      sub: `${computed.totalOrders} pedido${computed.totalOrders !== 1 ? 's' : ''} pagos`,
+      value: fmtCurrency(computed.faturamento),
+      sub: `${computed.faturamentoCount} pedidos · ${fmtCurrency(computed.orderRevenue)} recebido`,
       Icon: DollarSign,
       iconClass: 'text-emerald-600 dark:text-emerald-400',
       bgClass: 'bg-emerald-100 dark:bg-emerald-900/30',
-      trend: computed.totalIncome > 0 ? 'up' : 'neutral',
+      trend: computed.faturamento > 0 ? 'up' : 'neutral',
     },
     {
       label: 'Lucro Líquido',

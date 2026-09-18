@@ -68,17 +68,25 @@ function isOrderPaid(o: any): boolean {
   return o.paymentStatus === 'pago' || o.paymentStatus === 'paid';
 }
 
-function getOrderPaymentDate(o: any): string {
-  if (o.paymentDate) return String(o.paymentDate).split('T')[0];
-  if (o.paymentConfirmedAt) return String(o.paymentConfirmedAt).split('T')[0];
-  if (Array.isArray(o.boletos) && o.boletos.length > 0) {
-    const paidBoleto = [...o.boletos].reverse().find((b: any) => {
-      const sit = (b.situacao || '').toLowerCase();
-      return (sit === 'liquidado' || sit === 'pago') && b.dataPagamento;
-    });
-    if (paidBoleto?.dataPagamento) return String(paidBoleto.dataPagamento).split('T')[0];
-    const last = o.boletos[o.boletos.length - 1];
-    if (last?.dataVencimento) return String(last.dataVencimento).split('T')[0];
+// Elegível para receita recebida — idêntico ao pedidosElegiveis do A Receber
+function isEligibleForReceita(o: any): boolean {
+  if (o.isSample) return false;
+  if (o.isDeleted || o.deleted) return false;
+  return o.status === 'entregue';
+}
+
+// Data de faturamento: emissão boleto/NF → statusHistory → createdAt
+function getBillingDate(o: any): string {
+  if (Array.isArray(o.boletos) && o.boletos.length > 0 && o.boletos[0].dataEmissao) {
+    return String(o.boletos[0].dataEmissao).split('T')[0];
+  }
+  if (Array.isArray(o.statusHistory)) {
+    for (const st of ['entregue', 'enviado', 'caixa_montada']) {
+      const h = (o.statusHistory as any[]).find((x: any) => x.status === st);
+      if (h?.timestamp) return String(h.timestamp).split('T')[0];
+    }
+    const faturado = (o.statusHistory as any[]).find((h: any) => h.action?.includes('faturad'));
+    if (faturado?.timestamp) return String(faturado.timestamp).split('T')[0];
   }
   if (o.createdAt) return String(o.createdAt).split('T')[0];
   return '';
@@ -190,8 +198,9 @@ export default function CaixaPage() {
 
   const paidOrdersInMonth = useMemo(() => {
     return orders.filter((o: any) => {
+      if (!isEligibleForReceita(o)) return false;
       if (!isOrderPaid(o)) return false;
-      const d = getOrderPaymentDate(o);
+      const d = getBillingDate(o);
       return d ? monthKey(d) === selectedMonth : false;
     });
   }, [orders, selectedMonth]);
@@ -236,7 +245,7 @@ export default function CaixaPage() {
           category: 'Vendas Diretas',
           description: `Pedido #${o.orderNumber || o.id?.slice(-6)} — ${o.clientName || 'Cliente'}`,
           value: val,
-          date: getOrderPaymentDate(o),
+          date: getBillingDate(o),
           paymentMethod: o.paymentMethod || '',
           origin: 'order_sync' as const,
           createdAt: o.createdAt || '',
