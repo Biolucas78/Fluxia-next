@@ -43,6 +43,15 @@ function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
+function getOrderVal(o: any): number {
+  if (o.invoiceLinked && o.invoiceValue) return Number(o.invoiceValue) || 0;
+  if (o.noInvoiceLinked && o.noInvoiceValue) return Number(o.noInvoiceValue) || 0;
+  if (Array.isArray(o.boletos) && o.boletos.length > 0)
+    return o.boletos.reduce((s: number, b: any) => s + (b.valor || 0), 0);
+  if (o.invoiceValue) return Number(o.invoiceValue) || 0;
+  return 0;
+}
+
 function monthKey(d: string) {
   return d ? d.slice(0, 7) : '';
 }
@@ -164,10 +173,7 @@ export default function CaixaPage() {
   }, [orders, selectedMonth]);
 
   const orderRevenue = useMemo(() =>
-    paidOrdersInMonth.reduce((s: number, o: any) => {
-      const v = o.paymentConfirmedValue || o.invoiceValue || o.orderValue || o.valor || 0;
-      return s + (typeof v === 'string' ? parseFloat(v.replace(',', '.')) || 0 : Number(v) || 0);
-    }, 0),
+    paidOrdersInMonth.reduce((s: number, o: any) => s + getOrderVal(o), 0),
     [paidOrdersInMonth]
   );
 
@@ -198,14 +204,13 @@ export default function CaixaPage() {
     ];
     // Add paid orders as virtual income entries
     paidOrdersInMonth.forEach((o: any) => {
-      const v = o.paymentConfirmedValue || o.invoiceValue || o.orderValue || o.valor || 0;
-      const val = typeof v === 'string' ? parseFloat(v.replace(',', '.')) || 0 : Number(v) || 0;
+      const val = getOrderVal(o);
       if (val > 0) {
         all.push({
           id: `order_${o.id}`,
           type: 'income',
           category: 'Vendas Diretas',
-          description: `Pedido #${o.orderNumber || o.id?.slice(-4)} — ${o.customerName || 'Cliente'}`,
+          description: `Pedido #${o.orderNumber || o.id?.slice(-6)} — ${o.clientName || 'Cliente'}`,
           value: val,
           date: (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0],
           paymentMethod: o.paymentMethod || '',

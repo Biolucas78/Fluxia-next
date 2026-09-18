@@ -36,6 +36,15 @@ function inPeriod(date: string, from: string, to: string) {
   return date >= from && date <= to;
 }
 
+function getOrderVal(o: any): number {
+  if (o.invoiceLinked && o.invoiceValue) return Number(o.invoiceValue) || 0;
+  if (o.noInvoiceLinked && o.noInvoiceValue) return Number(o.noInvoiceValue) || 0;
+  if (Array.isArray(o.boletos) && o.boletos.length > 0)
+    return o.boletos.reduce((s: number, b: any) => s + (b.valor || 0), 0);
+  if (o.invoiceValue) return Number(o.invoiceValue) || 0;
+  return 0;
+}
+
 const MONTH_OPTIONS: { value: string; label: string }[] = (() => {
   const now = new Date();
   return Array.from({ length: 12 }, (_, i) => {
@@ -100,10 +109,7 @@ export default function RelatoriosPage() {
       const d = (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0];
       return inPeriod(d, from, to);
     });
-    const orderRevenue = paidOrders.reduce((s: number, o: any) => {
-      const v = o.paymentConfirmedValue || o.invoiceValue || o.orderValue || o.valor || 0;
-      return s + (typeof v === 'string' ? parseFloat(v.replace(',', '.')) || 0 : Number(v) || 0);
-    }, 0);
+    const orderRevenue = paidOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
 
     const monthTx = transactions.filter(t => inPeriod(t.date, from, to));
     const manualIncome = monthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.value, 0);
@@ -141,9 +147,8 @@ export default function RelatoriosPage() {
     // All movements for caixa
     const movements: { date: string; desc: string; value: number; type: 'income' | 'expense'; category: string }[] = [];
     paidOrders.forEach((o: any) => {
-      const v = o.paymentConfirmedValue || o.invoiceValue || o.orderValue || o.valor || 0;
-      const val = typeof v === 'string' ? parseFloat(v.replace(',', '.')) || 0 : Number(v) || 0;
-      movements.push({ date: (o.paymentDate || o.updatedAt || '').split('T')[0], desc: `Pedido #${o.orderNumber || o.id?.slice(-4)} — ${o.customerName || 'Cliente'}`, value: val, type: 'income', category: 'Vendas Diretas' });
+      const val = getOrderVal(o);
+      movements.push({ date: (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0], desc: `Pedido #${o.orderNumber || o.id?.slice(-6)} — ${o.clientName || 'Cliente'}`, value: val, type: 'income', category: 'Vendas Diretas' });
     });
     monthTx.forEach(t => movements.push({ date: t.date, desc: t.description, value: t.value, type: t.type, category: t.category }));
     billsPaidInMonth.forEach(b => movements.push({ date: b.paidDate!, desc: `${b.description} (${b.supplier})`, value: b.paidValue ?? b.value, type: 'expense', category: b.category }));

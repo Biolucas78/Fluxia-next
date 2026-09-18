@@ -27,6 +27,15 @@ function fmtDate(d?: string) {
   return `${day}/${m}/${y}`;
 }
 
+function getOrderVal(o: any): number {
+  if (o.invoiceLinked && o.invoiceValue) return Number(o.invoiceValue) || 0;
+  if (o.noInvoiceLinked && o.noInvoiceValue) return Number(o.noInvoiceValue) || 0;
+  if (Array.isArray(o.boletos) && o.boletos.length > 0)
+    return o.boletos.reduce((s: number, b: any) => s + (b.valor || 0), 0);
+  if (o.invoiceValue) return Number(o.invoiceValue) || 0;
+  return 0;
+}
+
 interface FichaEntry {
   id: string;
   date: string;
@@ -110,18 +119,17 @@ export default function FichaPage() {
       if (o.isSample) return false;
       return o.paymentConfirmedManually || o.boletSituacao === 'LIQUIDADO' || o.paymentStatus === 'paid';
     }).forEach((o: any) => {
-      const v = o.paymentConfirmedValue || o.invoiceValue || o.orderValue || o.valor || 0;
-      const val = typeof v === 'string' ? parseFloat(v.replace(',', '.')) || 0 : Number(v) || 0;
+      const val = getOrderVal(o);
       if (val > 0) {
         entries.push({
           id: `order_${o.id}`,
           date: (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0],
-          description: `Pedido #${o.orderNumber || o.id?.slice(-4)}`,
+          description: `Pedido #${o.orderNumber || o.id?.slice(-6)}`,
           type: 'income',
           value: val,
           category: 'Vendas Diretas',
           source: 'order',
-          entity: o.customerName || o.cliente || 'Cliente',
+          entity: o.clientName || 'Cliente',
         });
       }
     });
@@ -145,11 +153,10 @@ export default function FichaPage() {
 
     // Customers from orders
     orders.forEach((o: any) => {
-      const name = (o.customerName || o.cliente || '').trim();
+      const name = (o.clientName || '').trim();
       if (!name) return;
       const key = name.toLowerCase();
-      const v = o.paymentConfirmedValue || o.invoiceValue || o.orderValue || o.valor || 0;
-      const val = typeof v === 'string' ? parseFloat(v.replace(',', '.')) || 0 : Number(v) || 0;
+      const val = getOrderVal(o);
       if (!map.has(key)) map.set(key, { type: 'customer', total: 0, count: 0 });
       const e = map.get(key)!;
       e.total += val;

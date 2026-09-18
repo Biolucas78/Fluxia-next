@@ -89,6 +89,15 @@ function inPeriod(date: string, from: string, to: string) {
   return date >= from && date <= to;
 }
 
+function getOrderVal(o: any): number {
+  if (o.invoiceLinked && o.invoiceValue) return Number(o.invoiceValue) || 0;
+  if (o.noInvoiceLinked && o.noInvoiceValue) return Number(o.noInvoiceValue) || 0;
+  if (Array.isArray(o.boletos) && o.boletos.length > 0)
+    return o.boletos.reduce((s: number, b: any) => s + (b.valor || 0), 0);
+  if (o.invoiceValue) return Number(o.invoiceValue) || 0;
+  return 0;
+}
+
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
 
 const CustomPieTooltip = ({ active, payload }: any) => {
@@ -174,10 +183,7 @@ export default function FinanceiroDashboardPage() {
       return inPeriod(d, from, to);
     });
 
-    const orderRevenue = paidOrders.reduce((s: number, o: any) => {
-      const v = o.paymentConfirmedValue || o.invoiceValue || o.orderValue || o.valor || 0;
-      return s + (typeof v === 'string' ? parseFloat(v.replace(',', '.')) || 0 : Number(v) || 0);
-    }, 0);
+    const orderRevenue = paidOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
 
     const manualIncome = transactions
       .filter(t => t.type === 'income' && inPeriod(t.date, from, to))
@@ -269,10 +275,7 @@ export default function FinanceiroDashboardPage() {
         const ds: string = (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0];
         return inPeriod(ds, mFrom, mTo);
       });
-      const mRev = mOrders.reduce((s: number, o: any) => {
-        const v = o.paymentConfirmedValue || o.invoiceValue || o.orderValue || o.valor || 0;
-        return s + (typeof v === 'string' ? parseFloat(v.replace(',', '.')) || 0 : Number(v) || 0);
-      }, 0);
+      const mRev = mOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
       const mInc = transactions.filter(t => t.type === 'income' && inPeriod(t.date, mFrom, mTo)).reduce((s, t) => s + t.value, 0);
       const mExp = transactions.filter(t => t.type === 'expense' && inPeriod(t.date, mFrom, mTo)).reduce((s, t) => s + t.value, 0)
         + bills.filter(b => b.status === 'paid' && b.paidDate && inPeriod(b.paidDate, mFrom, mTo)).reduce((s, b) => s + (b.paidValue ?? b.value), 0);
