@@ -21,6 +21,9 @@ export async function POST(req: NextRequest) {
       return {
         id: d.id,
         blingOrderId: data.blingOrderId ?? null,
+        // blingOrderNumero = número sequencial visível no Bling (ex: 1542)
+        // blingOrderId = ID interno do Bling (número grande, ex: 14814793...)
+        blingOrderNumero: data.blingOrderNumero ?? null,
         clientName: data.clientName ?? data.client ?? '',
         status: data.status ?? '',
         totalValue: data.totalValue ?? data.total ?? 0,
@@ -31,9 +34,14 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // Indexar Fluxia por blingOrderId — normaliza como string pois é salvo assim no Firestore
+    // Indexar por blingOrderNumero (número sequencial = o que o PDF mostra)
+    // Fallback: tenta blingOrderId caso blingOrderNumero não esteja preenchido
+    const fluxiaByNumero = new Map<string, FluxiaOrder>();
     const fluxiaByBlingId = new Map<string, FluxiaOrder>();
     for (const o of fluxiaOrders) {
+      if (o.blingOrderNumero != null && String(o.blingOrderNumero) !== '') {
+        fluxiaByNumero.set(String(o.blingOrderNumero), o);
+      }
       if (o.blingOrderId != null && String(o.blingOrderId) !== '' && String(o.blingOrderId) !== '0') {
         fluxiaByBlingId.set(String(o.blingOrderId), o);
       }
@@ -43,7 +51,8 @@ export async function POST(req: NextRequest) {
 
     for (const b of blingOrders) {
       const numero = Number(b.numero);
-      const f = fluxiaByBlingId.get(String(numero));
+      // Prioridade: blingOrderNumero → blingOrderId
+      const f = fluxiaByNumero.get(String(numero)) ?? fluxiaByBlingId.get(String(numero));
 
       if (!f) {
         results.push({
@@ -100,13 +109,17 @@ export async function POST(req: NextRequest) {
 
     // Pedidos no Fluxia que não estão no Bling
     const blingNums = new Set(blingOrders.map(b => String(Number(b.numero))));
-    const fluxiaSemBling = fluxiaOrders.filter(
-      f => f.blingOrderId && !blingNums.has(String(f.blingOrderId)) && !f.isDeleted && !f.isSample
-    );
+    const fluxiaSemBling = fluxiaOrders.filter(f => {
+      if (f.isDeleted || f.isSample) return false;
+      if (!f.blingOrderNumero && !f.blingOrderId) return false;
+      const num = String(f.blingOrderNumero ?? '');
+      const id = String(f.blingOrderId ?? '');
+      return !blingNums.has(num) && !blingNums.has(id);
+    });
 
     const summary = {
       total_bling: blingOrders.length,
-      total_fluxia_com_blingId: fluxiaOrders.filter(f => f.blingOrderId).length,
+      total_fluxia_com_blingId: fluxiaOrders.filter(f => f.blingOrderNumero || f.blingOrderId).length,
       total_fluxia: fluxiaOrders.length,
       ausentes_no_fluxia: results.filter(r => r.status === 'AUSENTE_NO_FLUXIA').length,
       deletados_no_fluxia: results.filter(r => r.status === 'DELETADO_NO_FLUXIA').length,
@@ -141,6 +154,7 @@ interface BlingOrder {
 interface FluxiaOrder {
   id: string;
   blingOrderId: string | number | null;
+  blingOrderNumero: string | number | null;
   clientName: string;
   status: string;
   totalValue: number;
