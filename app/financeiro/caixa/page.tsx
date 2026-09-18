@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useUser } from '@/lib/hooks';
+import { useUser, useOrders } from '@/lib/hooks';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import Login from '@/components/Login';
@@ -123,6 +123,7 @@ const PieTooltip = ({ active, payload }: any) => {
 
 export default function CaixaPage() {
   const { userProfile, loading: userLoading } = useUser();
+  const { allOrders: orders, isLoaded: ordersLoaded } = useOrders();
   const [selectedMonth, setSelectedMonth] = useState(MONTH_OPTIONS[0].value);
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [showMonthDrop, setShowMonthDrop] = useState(false);
@@ -131,7 +132,6 @@ export default function CaixaPage() {
 
   // Data
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
   const [saldoInicial, setSaldoInicial] = useState(0);
   const [saldoInicialInput, setSaldoInicialInput] = useState('');
   const [editingSaldo, setEditingSaldo] = useState(false);
@@ -156,18 +156,12 @@ export default function CaixaPage() {
   async function loadData() {
     setLoading(true);
     const cols = getFinanceiroCollections();
-    const isDev = typeof window !== 'undefined' &&
-      (window.location.hostname.includes('localhost') || window.location.hostname.includes('ais-dev'));
-    const ordersCol = isDev ? 'orders_dev' : 'orders';
-
     try {
-      const [txSnap, cfgSnap, ordSnap] = await Promise.all([
+      const [txSnap, cfgSnap] = await Promise.all([
         getDocs(collection(db, cols.transactions)),
         getDocs(collection(db, cols.config)),
-        getDocs(collection(db, ordersCol)),
       ]);
       setTransactions(txSnap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction)));
-      setOrders(ordSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       const cfgDoc = cfgSnap.docs.find(d => (d.data() as CaixaConfig).month === selectedMonth);
       const si = cfgDoc ? (cfgDoc.data() as CaixaConfig).saldoInicial : 0;
@@ -661,7 +655,7 @@ export default function CaixaPage() {
             </div>
           )}
 
-          {loading ? (
+          {loading || !ordersLoaded ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="size-6 animate-spin text-primary" />
             </div>

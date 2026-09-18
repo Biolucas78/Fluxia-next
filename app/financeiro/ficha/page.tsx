@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { useUser } from '@/lib/hooks';
+import { useUser, useOrders } from '@/lib/hooks';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import Login from '@/components/Login';
@@ -75,11 +75,11 @@ interface FichaEntry {
 
 export default function FichaPage() {
   const { userProfile, loading: userLoading } = useUser();
+  const { allOrders: orders, isLoaded: ordersLoaded } = useOrders();
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
   const [entityFilter, setEntityFilter] = useState<'all' | 'supplier' | 'customer'>('all');
 
   useEffect(() => {
@@ -90,18 +90,13 @@ export default function FichaPage() {
   async function loadAll() {
     setLoading(true);
     const cols = getFinanceiroCollections();
-    const isDev = typeof window !== 'undefined' &&
-      (window.location.hostname.includes('localhost') || window.location.hostname.includes('ais-dev'));
-    const ordersCol = isDev ? 'orders_dev' : 'orders';
     try {
-      const [txSnap, billSnap, ordSnap] = await Promise.all([
+      const [txSnap, billSnap] = await Promise.all([
         getDocs(collection(db, cols.transactions)),
         getDocs(collection(db, cols.bills)),
-        getDocs(collection(db, ordersCol)),
       ]);
       setTransactions(txSnap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction)));
       setBills(billSnap.docs.map(d => ({ id: d.id, ...d.data() } as Bill)));
-      setOrders(ordSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -241,7 +236,7 @@ export default function FichaPage() {
             />
           </div>
 
-          {loading ? (
+          {loading || !ordersLoaded ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="size-6 animate-spin text-primary" />
             </div>

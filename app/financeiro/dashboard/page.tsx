@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { useUser } from '@/lib/hooks';
+import { useUser, useOrders } from '@/lib/hooks';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import Login from '@/components/Login';
@@ -156,6 +156,7 @@ const CustomBarTooltip = ({ active, payload, label }: any) => {
 
 export default function FinanceiroDashboardPage() {
   const { userProfile, loading: userLoading } = useUser();
+  const { allOrders: orders, isLoaded: ordersLoaded } = useOrders();
   const [period, setPeriod] = useState('month');
   const [showPeriodDrop, setShowPeriodDrop] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -163,7 +164,6 @@ export default function FinanceiroDashboardPage() {
   // Raw data
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
 
   // ── Load data ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -174,19 +174,13 @@ export default function FinanceiroDashboardPage() {
   async function loadAll() {
     setLoading(true);
     const cols = getFinanceiroCollections();
-    const isDev = typeof window !== 'undefined' &&
-      (window.location.hostname.includes('localhost') || window.location.hostname.includes('ais-dev'));
-    const ordersCol = isDev ? 'orders_dev' : 'orders';
-
     try {
-      const [txSnap, billSnap, ordSnap] = await Promise.all([
+      const [txSnap, billSnap] = await Promise.all([
         getDocs(collection(db, cols.transactions)),
         getDocs(collection(db, cols.bills)),
-        getDocs(query(collection(db, ordersCol))),
       ]);
       setTransactions(txSnap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction)));
       setBills(billSnap.docs.map(d => ({ id: d.id, ...d.data() } as Bill)));
-      setOrders(ordSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) {
       console.error(e);
     } finally {
@@ -433,12 +427,12 @@ export default function FinanceiroDashboardPage() {
                 onClick={loadAll}
                 className="size-8 flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-500 hover:text-primary hover:border-primary/50 transition-all"
               >
-                <RefreshCw className={`size-3.5 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`size-3.5 ${loading || !ordersLoaded ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
 
-          {loading ? (
+          {loading || !ordersLoaded ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="size-6 animate-spin text-primary" />
             </div>
