@@ -49,23 +49,31 @@ function isOrderPaid(o: any): boolean {
   if (o.isSample) return false;
   if (o.paymentConfirmedManually) return true;
   if (o.boletoLinked) {
-    if (Array.isArray(o.boletos) && o.boletos.length > 0)
-      return o.boletos.some((b: any) => b.situacao === 'LIQUIDADO');
-    return o.boletSituacao === 'LIQUIDADO';
+    if (Array.isArray(o.boletos) && o.boletos.length > 0) {
+      return o.boletos.every((b: any) => {
+        const sit = (b.situacao || '').toLowerCase();
+        return sit === 'liquidado' || sit === 'pago';
+      });
+    }
+    const sit = (o.boletSituacao || '').toLowerCase();
+    return sit === 'liquidado' || sit === 'pago';
   }
-  return o.paymentStatus === 'paid' || o.boletSituacao === 'LIQUIDADO';
+  return o.paymentStatus === 'pago' || o.paymentStatus === 'paid';
 }
 
 function getOrderPaymentDate(o: any): string {
   if (o.paymentDate) return String(o.paymentDate).split('T')[0];
   if (o.paymentConfirmedAt) return String(o.paymentConfirmedAt).split('T')[0];
   if (Array.isArray(o.boletos) && o.boletos.length > 0) {
-    const paidBoleto = [...o.boletos].reverse().find((b: any) => b.situacao === 'LIQUIDADO' && b.dataPagamento);
+    const paidBoleto = [...o.boletos].reverse().find((b: any) => {
+      const sit = (b.situacao || '').toLowerCase();
+      return (sit === 'liquidado' || sit === 'pago') && b.dataPagamento;
+    });
     if (paidBoleto?.dataPagamento) return String(paidBoleto.dataPagamento).split('T')[0];
     const last = o.boletos[o.boletos.length - 1];
     if (last?.dataVencimento) return String(last.dataVencimento).split('T')[0];
   }
-  if (o.updatedAt) return String(o.updatedAt).split('T')[0];
+  if (o.createdAt) return String(o.createdAt).split('T')[0];
   return '';
 }
 
