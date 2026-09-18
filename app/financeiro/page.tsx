@@ -5,6 +5,7 @@ import { useOrders, useUser } from '@/lib/hooks';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import Login from '@/components/Login';
+import FinanceiroNav from '@/components/FinanceiroNav';
 import { Order } from '@/lib/types';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -704,6 +705,7 @@ export default function FinanceiroPage() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
+        <FinanceiroNav />
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
 
           {/* Subtítulo de seção */}
