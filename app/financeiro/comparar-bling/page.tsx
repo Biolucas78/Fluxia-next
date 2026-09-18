@@ -38,33 +38,53 @@ interface Summary {
 const fmt = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-// Converter CSV do Bling para array de objetos
-// Formato esperado (colunas separadas por ; ou ,):
-// Nº Pedido | Data | Cliente | Situação | Valor
+// Detectar separador: tabulação (Excel), ; ou ,
+function detectSep(line: string): string {
+  const tabs = (line.match(/\t/g) ?? []).length;
+  const semis = (line.match(/;/g) ?? []).length;
+  const commas = (line.match(/,/g) ?? []).length;
+  if (tabs >= semis && tabs >= commas) return '\t';
+  if (semis >= commas) return ';';
+  return ',';
+}
+
+// Converter dados colados do Excel / CSV do Bling para array de objetos
+// Formato: Nº Pedido | Data | Cliente | Situação | Valor (qualquer separador)
 function parseCSV(text: string): BlingRow[] {
   const lines = text.trim().split('\n').filter(l => l.trim());
   if (lines.length < 2) return [];
 
-  const sep = lines[0].includes(';') ? ';' : ',';
-  const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+  const sep = detectSep(lines[0]);
+  const normalize = (s: string) => s.trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')  // remove acentos
+    .replace(/['"]/g, '');
 
-  const numIdx = headers.findIndex(h => h.includes('pedido') || h === 'número' || h === 'numero' || h === 'nº');
-  const dateIdx = headers.findIndex(h => h.includes('data'));
-  const clientIdx = headers.findIndex(h => h.includes('cliente') || h.includes('nome'));
-  const situacaoIdx = headers.findIndex(h => h.includes('situa'));
-  const valorIdx = headers.findIndex(h => h.includes('valor') || h.includes('total'));
+  const headers = lines[0].split(sep).map(normalize);
+
+  const numIdx = headers.findIndex(h => h.includes('pedido') || h === 'numero' || h === 'n' || h.startsWith('nº') || h === 'no');
+  const dateIdx = headers.findIndex(h => h.includes('data') || h.includes('emiss'));
+  const clientIdx = headers.findIndex(h => h.includes('cliente') || h.includes('nome') || h.includes('razao'));
+  const situacaoIdx = headers.findIndex(h => h.includes('situa') || h.includes('status'));
+  const valorIdx = headers.findIndex(h => (h.includes('valor') || h.includes('total')) && !h.includes('custo'));
+
+  // Fallback: se headers não detectados, assumir ordem padrão do Bling: 0=nº, 1=data, 2=cliente, 3=situação, 4=valor
+  const iNum = numIdx >= 0 ? numIdx : 0;
+  const iDate = dateIdx >= 0 ? dateIdx : 1;
+  const iClient = clientIdx >= 0 ? clientIdx : 2;
+  const iSit = situacaoIdx >= 0 ? situacaoIdx : 3;
+  const iVal = valorIdx >= 0 ? valorIdx : 4;
 
   const rows: BlingRow[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(sep).map(c => c.trim().replace(/['"]/g, ''));
-    const numero = parseInt(cols[numIdx] ?? '', 10);
+    const cols = lines[i].split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''));
+    const numero = parseInt(cols[iNum] ?? '', 10);
     if (isNaN(numero)) continue;
-    const valorRaw = (cols[valorIdx] ?? '0').replace(/\./g, '').replace(',', '.');
+    const valorRaw = (cols[iVal] ?? '0').replace(/\./g, '').replace(',', '.');
     rows.push({
       numero,
-      data: cols[dateIdx] ?? '',
-      cliente: cols[clientIdx] ?? '',
-      situacao: cols[situacaoIdx] ?? '',
+      data: cols[iDate] ?? '',
+      cliente: cols[iClient] ?? '',
+      situacao: cols[iSit] ?? '',
       valor: parseFloat(valorRaw) || 0,
     });
   }
@@ -163,7 +183,33 @@ export default function CompararBlingPage() {
           )}
         </div>
         {parsed.length > 0 && !result && (
-          <p className="text-sm text-emerald-600 dark:text-emerald-400">{parsed.length} pedidos processados. Clique em "Comparar" para cruzar com o Firestore.</p>
+          <div className="space-y-2">
+            <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{parsed.length} pedidos detectados. Verifique as primeiras linhas abaixo e clique em "Comparar":</p>
+            <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
+              <table className="text-xs w-full">
+                <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Nº</th>
+                    <th className="px-3 py-2 text-left">Data</th>
+                    <th className="px-3 py-2 text-left">Cliente</th>
+                    <th className="px-3 py-2 text-left">Situação</th>
+                    <th className="px-3 py-2 text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {parsed.slice(0, 5).map((r, i) => (
+                    <tr key={i}>
+                      <td className="px-3 py-1 font-mono">{r.numero}</td>
+                      <td className="px-3 py-1">{r.data}</td>
+                      <td className="px-3 py-1 max-w-[200px] truncate">{r.cliente}</td>
+                      <td className="px-3 py-1">{r.situacao}</td>
+                      <td className="px-3 py-1 text-right font-mono">{fmt(r.valor)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
         {error && <p className="text-sm text-red-500">{error}</p>}
       </div>

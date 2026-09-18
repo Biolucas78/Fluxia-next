@@ -31,17 +31,19 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // Indexar Fluxia por blingOrderId
-    const fluxiaByBlingId = new Map<number, FluxiaOrder>();
+    // Indexar Fluxia por blingOrderId — normaliza como string pois é salvo assim no Firestore
+    const fluxiaByBlingId = new Map<string, FluxiaOrder>();
     for (const o of fluxiaOrders) {
-      if (o.blingOrderId) fluxiaByBlingId.set(o.blingOrderId, o);
+      if (o.blingOrderId != null && String(o.blingOrderId) !== '' && String(o.blingOrderId) !== '0') {
+        fluxiaByBlingId.set(String(o.blingOrderId), o);
+      }
     }
 
     const results: CompareResult[] = [];
 
     for (const b of blingOrders) {
       const numero = Number(b.numero);
-      const f = fluxiaByBlingId.get(numero);
+      const f = fluxiaByBlingId.get(String(numero));
 
       if (!f) {
         results.push({
@@ -96,10 +98,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Pedidos no Fluxia que não estão no Bling (sem blingOrderId ou não encontrados)
-    const blingNums = new Set(blingOrders.map(b => Number(b.numero)));
+    // Pedidos no Fluxia que não estão no Bling
+    const blingNums = new Set(blingOrders.map(b => String(Number(b.numero))));
     const fluxiaSemBling = fluxiaOrders.filter(
-      f => f.blingOrderId && !blingNums.has(f.blingOrderId) && !f.isDeleted && !f.isSample
+      f => f.blingOrderId && !blingNums.has(String(f.blingOrderId)) && !f.isDeleted && !f.isSample
     );
 
     const summary = {
@@ -138,7 +140,7 @@ interface BlingOrder {
 
 interface FluxiaOrder {
   id: string;
-  blingOrderId: number | null;
+  blingOrderId: string | number | null;
   clientName: string;
   status: string;
   totalValue: number;
