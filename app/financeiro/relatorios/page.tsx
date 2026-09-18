@@ -45,6 +45,30 @@ function getOrderVal(o: any): number {
   return 0;
 }
 
+function isOrderPaid(o: any): boolean {
+  if (o.isSample) return false;
+  if (o.paymentConfirmedManually) return true;
+  if (o.boletoLinked) {
+    if (Array.isArray(o.boletos) && o.boletos.length > 0)
+      return o.boletos.some((b: any) => b.situacao === 'LIQUIDADO');
+    return o.boletSituacao === 'LIQUIDADO';
+  }
+  return o.paymentStatus === 'paid' || o.boletSituacao === 'LIQUIDADO';
+}
+
+function getOrderPaymentDate(o: any): string {
+  if (o.paymentDate) return String(o.paymentDate).split('T')[0];
+  if (o.paymentConfirmedAt) return String(o.paymentConfirmedAt).split('T')[0];
+  if (Array.isArray(o.boletos) && o.boletos.length > 0) {
+    const paidBoleto = [...o.boletos].reverse().find((b: any) => b.situacao === 'LIQUIDADO' && b.dataPagamento);
+    if (paidBoleto?.dataPagamento) return String(paidBoleto.dataPagamento).split('T')[0];
+    const last = o.boletos[o.boletos.length - 1];
+    if (last?.dataVencimento) return String(last.dataVencimento).split('T')[0];
+  }
+  if (o.updatedAt) return String(o.updatedAt).split('T')[0];
+  return '';
+}
+
 const MONTH_OPTIONS: { value: string; label: string }[] = (() => {
   const now = new Date();
   return Array.from({ length: 12 }, (_, i) => {
@@ -103,11 +127,9 @@ export default function RelatoriosPage() {
   // ── Computed financials ───────────────────────────────────────────────────
   const computed = useMemo(() => {
     const paidOrders = orders.filter((o: any) => {
-      if (o.isSample) return false;
-      const isPaid = o.paymentConfirmedManually || o.boletSituacao === 'LIQUIDADO' || o.paymentStatus === 'paid';
-      if (!isPaid) return false;
-      const d = (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0];
-      return inPeriod(d, from, to);
+      if (!isOrderPaid(o)) return false;
+      const d = getOrderPaymentDate(o);
+      return d ? inPeriod(d, from, to) : false;
     });
     const orderRevenue = paidOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
 
@@ -148,7 +170,7 @@ export default function RelatoriosPage() {
     const movements: { date: string; desc: string; value: number; type: 'income' | 'expense'; category: string }[] = [];
     paidOrders.forEach((o: any) => {
       const val = getOrderVal(o);
-      movements.push({ date: (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0], desc: `Pedido #${o.orderNumber || o.id?.slice(-6)} — ${o.clientName || 'Cliente'}`, value: val, type: 'income', category: 'Vendas Diretas' });
+      movements.push({ date: getOrderPaymentDate(o), desc: `Pedido #${o.orderNumber || o.id?.slice(-6)} — ${o.clientName || 'Cliente'}`, value: val, type: 'income', category: 'Vendas Diretas' });
     });
     monthTx.forEach(t => movements.push({ date: t.date, desc: t.description, value: t.value, type: t.type, category: t.category }));
     billsPaidInMonth.forEach(b => movements.push({ date: b.paidDate!, desc: `${b.description} (${b.supplier})`, value: b.paidValue ?? b.value, type: 'expense', category: b.category }));

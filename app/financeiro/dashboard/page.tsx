@@ -98,6 +98,35 @@ function getOrderVal(o: any): number {
   return 0;
 }
 
+// Mesma lógica de isPaid() do financeiro/page.tsx
+function isOrderPaid(o: any): boolean {
+  if (o.isSample) return false;
+  if (o.paymentConfirmedManually) return true;
+  if (o.boletoLinked) {
+    if (Array.isArray(o.boletos) && o.boletos.length > 0)
+      return o.boletos.some((b: any) => b.situacao === 'LIQUIDADO');
+    return o.boletSituacao === 'LIQUIDADO';
+  }
+  return o.paymentStatus === 'paid' || o.boletSituacao === 'LIQUIDADO';
+}
+
+// Data real do pagamento — nunca usa updatedAt/createdAt como proxy
+function getOrderPaymentDate(o: any): string {
+  if (o.paymentDate) return String(o.paymentDate).split('T')[0];
+  if (o.paymentConfirmedAt) return String(o.paymentConfirmedAt).split('T')[0];
+  // Para boleto: usa dataPagamento do boleto individual, se disponível
+  if (Array.isArray(o.boletos) && o.boletos.length > 0) {
+    const paidBoleto = [...o.boletos].reverse().find((b: any) => b.situacao === 'LIQUIDADO' && b.dataPagamento);
+    if (paidBoleto?.dataPagamento) return String(paidBoleto.dataPagamento).split('T')[0];
+    // fallback: data de vencimento do último boleto (data do ciclo correto)
+    const last = o.boletos[o.boletos.length - 1];
+    if (last?.dataVencimento) return String(last.dataVencimento).split('T')[0];
+  }
+  // updatedAt só como último recurso (evita usar createdAt que é a data de criação)
+  if (o.updatedAt) return String(o.updatedAt).split('T')[0];
+  return '';
+}
+
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
 
 const CustomPieTooltip = ({ active, payload }: any) => {
@@ -171,15 +200,9 @@ export default function FinanceiroDashboardPage() {
   const computed = useMemo(() => {
     // Receitas: pedidos pagos no período + transações income
     const paidOrders = orders.filter(o => {
-      if (o.isSample) return false;
-      const isPaid =
-        o.paymentConfirmedManually ||
-        o.boletSituacao === 'LIQUIDADO' ||
-        o.paymentStatus === 'paid';
-      if (!isPaid) return false;
-      const dateStr: string =
-        o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '';
-      const d = dateStr.split('T')[0];
+      if (!isOrderPaid(o)) return false;
+      const d = getOrderPaymentDate(o);
+      if (!d) return false;
       return inPeriod(d, from, to);
     });
 
@@ -269,11 +292,9 @@ export default function FinanceiroDashboardPage() {
       const label = `${MONTH_ABBR[mm]}/${String(my).slice(2)}`;
 
       const mOrders = orders.filter((o: any) => {
-        if (o.isSample) return false;
-        const isPaid = o.paymentConfirmedManually || o.boletSituacao === 'LIQUIDADO' || o.paymentStatus === 'paid';
-        if (!isPaid) return false;
-        const ds: string = (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0];
-        return inPeriod(ds, mFrom, mTo);
+        if (!isOrderPaid(o)) return false;
+        const ds = getOrderPaymentDate(o);
+        return ds ? inPeriod(ds, mFrom, mTo) : false;
       });
       const mRev = mOrders.reduce((s: number, o: any) => s + getOrderVal(o), 0);
       const mInc = transactions.filter(t => t.type === 'income' && inPeriod(t.date, mFrom, mTo)).reduce((s, t) => s + t.value, 0);

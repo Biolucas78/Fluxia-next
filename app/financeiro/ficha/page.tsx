@@ -36,6 +36,30 @@ function getOrderVal(o: any): number {
   return 0;
 }
 
+function isOrderPaid(o: any): boolean {
+  if (o.isSample) return false;
+  if (o.paymentConfirmedManually) return true;
+  if (o.boletoLinked) {
+    if (Array.isArray(o.boletos) && o.boletos.length > 0)
+      return o.boletos.some((b: any) => b.situacao === 'LIQUIDADO');
+    return o.boletSituacao === 'LIQUIDADO';
+  }
+  return o.paymentStatus === 'paid' || o.boletSituacao === 'LIQUIDADO';
+}
+
+function getOrderPaymentDate(o: any): string {
+  if (o.paymentDate) return String(o.paymentDate).split('T')[0];
+  if (o.paymentConfirmedAt) return String(o.paymentConfirmedAt).split('T')[0];
+  if (Array.isArray(o.boletos) && o.boletos.length > 0) {
+    const paidBoleto = [...o.boletos].reverse().find((b: any) => b.situacao === 'LIQUIDADO' && b.dataPagamento);
+    if (paidBoleto?.dataPagamento) return String(paidBoleto.dataPagamento).split('T')[0];
+    const last = o.boletos[o.boletos.length - 1];
+    if (last?.dataVencimento) return String(last.dataVencimento).split('T')[0];
+  }
+  if (o.updatedAt) return String(o.updatedAt).split('T')[0];
+  return '';
+}
+
 interface FichaEntry {
   id: string;
   date: string;
@@ -115,15 +139,12 @@ export default function FichaPage() {
     });
 
     // Paid orders
-    orders.filter((o: any) => {
-      if (o.isSample) return false;
-      return o.paymentConfirmedManually || o.boletSituacao === 'LIQUIDADO' || o.paymentStatus === 'paid';
-    }).forEach((o: any) => {
+    orders.filter((o: any) => isOrderPaid(o)).forEach((o: any) => {
       const val = getOrderVal(o);
       if (val > 0) {
         entries.push({
           id: `order_${o.id}`,
-          date: (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0],
+          date: getOrderPaymentDate(o),
           description: `Pedido #${o.orderNumber || o.id?.slice(-6)}`,
           type: 'income',
           value: val,

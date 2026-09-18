@@ -52,6 +52,30 @@ function getOrderVal(o: any): number {
   return 0;
 }
 
+function isOrderPaid(o: any): boolean {
+  if (o.isSample) return false;
+  if (o.paymentConfirmedManually) return true;
+  if (o.boletoLinked) {
+    if (Array.isArray(o.boletos) && o.boletos.length > 0)
+      return o.boletos.some((b: any) => b.situacao === 'LIQUIDADO');
+    return o.boletSituacao === 'LIQUIDADO';
+  }
+  return o.paymentStatus === 'paid' || o.boletSituacao === 'LIQUIDADO';
+}
+
+function getOrderPaymentDate(o: any): string {
+  if (o.paymentDate) return String(o.paymentDate).split('T')[0];
+  if (o.paymentConfirmedAt) return String(o.paymentConfirmedAt).split('T')[0];
+  if (Array.isArray(o.boletos) && o.boletos.length > 0) {
+    const paidBoleto = [...o.boletos].reverse().find((b: any) => b.situacao === 'LIQUIDADO' && b.dataPagamento);
+    if (paidBoleto?.dataPagamento) return String(paidBoleto.dataPagamento).split('T')[0];
+    const last = o.boletos[o.boletos.length - 1];
+    if (last?.dataVencimento) return String(last.dataVencimento).split('T')[0];
+  }
+  if (o.updatedAt) return String(o.updatedAt).split('T')[0];
+  return '';
+}
+
 function monthKey(d: string) {
   return d ? d.slice(0, 7) : '';
 }
@@ -164,11 +188,9 @@ export default function CaixaPage() {
 
   const paidOrdersInMonth = useMemo(() => {
     return orders.filter((o: any) => {
-      if (o.isSample) return false;
-      const isPaid = o.paymentConfirmedManually || o.boletSituacao === 'LIQUIDADO' || o.paymentStatus === 'paid';
-      if (!isPaid) return false;
-      const d: string = (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0];
-      return monthKey(d) === selectedMonth;
+      if (!isOrderPaid(o)) return false;
+      const d = getOrderPaymentDate(o);
+      return d ? monthKey(d) === selectedMonth : false;
     });
   }, [orders, selectedMonth]);
 
@@ -212,7 +234,7 @@ export default function CaixaPage() {
           category: 'Vendas Diretas',
           description: `Pedido #${o.orderNumber || o.id?.slice(-6)} — ${o.clientName || 'Cliente'}`,
           value: val,
-          date: (o.paymentDate || o.paymentConfirmedAt || o.updatedAt || o.createdAt || '').split('T')[0],
+          date: getOrderPaymentDate(o),
           paymentMethod: o.paymentMethod || '',
           origin: 'order_sync' as const,
           createdAt: o.createdAt || '',
