@@ -42,17 +42,30 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const token = authHeader.split(' ')[1];
 
     const customerData = await request.json();
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
 
     const url = `https://api.bling.com.br/Api/v3/contatos/${id}`;
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(customerData)
-    });
+    const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(customerData) });
+
+    // Se o contato não existe mais no Bling (404), cria como novo (POST)
+    if (res.status === 404) {
+      console.warn(`[Bling Update Customer] ID ${id} não encontrado no Bling — criando como novo contato.`);
+      const createRes = await fetch('https://api.bling.com.br/Api/v3/contatos', {
+        method: 'POST', headers, body: JSON.stringify(customerData),
+      });
+      if (!createRes.ok) {
+        const errorText = await createRes.text();
+        console.error('[Bling Create Customer (fallback)] Error:', errorText);
+        return NextResponse.json({ error: `Erro na API do Bling: ${createRes.status} ${errorText}` }, { status: createRes.status });
+      }
+      const createText = await createRes.text();
+      const createJson = createText ? JSON.parse(createText) : {};
+      return NextResponse.json({ success: true, created: true, data: createJson.data || createJson });
+    }
 
     if (!res.ok) {
       const errorText = await res.text();
@@ -60,7 +73,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: `Erro na API do Bling: ${res.status} ${errorText}` }, { status: res.status });
     }
 
-    // Handle empty response (e.g. 204 No Content)
     if (res.status === 204) {
       return NextResponse.json({ success: true });
     }
