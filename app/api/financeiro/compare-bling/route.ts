@@ -43,6 +43,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Envie um array "orders" com os pedidos do Bling.' }, { status: 400 });
     }
 
+    // Ignorar pedidos cancelados — foram substituídos por novos pedidos no Bling
+    const cancelados = blingOrders.filter(b => String(b.situacao).toLowerCase().includes('cancel'));
+    const activeBlingOrders = blingOrders.filter(b => !String(b.situacao).toLowerCase().includes('cancel'));
+
     // Buscar todos os pedidos do Firestore
     const snap = await adminDb.collection('orders').get();
     const fluxiaOrders: FluxiaOrder[] = snap.docs.map((d: FirebaseFirestore.QueryDocumentSnapshot) => {
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest) {
     // Pool de candidatos: pedidos sem vínculo OU com vínculo (para o caso de re-link)
     const candidatePool = fluxiaOrders.filter(f => !f.isDeleted && !f.isSample);
 
-    for (const b of blingOrders) {
+    for (const b of activeBlingOrders) {
       const numero = Number(b.numero);
       const f = fluxiaByNumero.get(String(numero)) ?? fluxiaByBlingId.get(String(numero));
 
@@ -161,11 +165,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Pedidos no Bling que possuem algum match no Fluxia (por numero)
-    const blingNums = new Set(blingOrders.map(b => String(Number(b.numero))));
+    const blingNums = new Set(activeBlingOrders.map(b => String(Number(b.numero))));
 
     const summary = {
-      total_bling: blingOrders.length,
+      total_bling_bruto: blingOrders.length,
+      total_cancelados: cancelados.length,
+      total_bling: activeBlingOrders.length,
       total_fluxia: fluxiaOrders.length,
       total_fluxia_com_vinculo: fluxiaOrders.filter(f => f.blingOrderNumero || f.blingOrderId).length,
       total_fluxia_sem_vinculo: fluxiaSemVinculo.length,
@@ -173,7 +178,7 @@ export async function POST(req: NextRequest) {
       deletados_no_fluxia: results.filter(r => r.status === 'DELETADO_NO_FLUXIA').length,
       com_valor_divergente: results.filter(r => r.status === 'VALOR_DIVERGENTE').length,
       ok: results.filter(r => r.status === 'OK').length,
-      soma_bling: blingOrders.reduce((s, b) => s + (b.valor ?? 0), 0),
+      soma_bling: activeBlingOrders.reduce((s, b) => s + (b.valor ?? 0), 0),
       soma_fluxia_correspondentes: results.filter(r => r.fluxiaValor != null).reduce((s, r) => s + (r.fluxiaValor ?? 0), 0),
     };
 

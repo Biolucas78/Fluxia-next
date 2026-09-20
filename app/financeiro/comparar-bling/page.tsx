@@ -27,6 +27,7 @@ interface CompareResult {
 interface FluxiaSemVinculo { fluxiaId: string; clientName: string; totalValue: number; status: string; createdAt: string; }
 
 interface Summary {
+  total_bling_bruto: number; total_cancelados: number;
   total_bling: number; total_fluxia: number; total_fluxia_com_vinculo: number;
   total_fluxia_sem_vinculo: number; ausentes_no_fluxia: number; deletados_no_fluxia: number;
   com_valor_divergente: number; ok: number; soma_bling: number; soma_fluxia_correspondentes: number;
@@ -242,8 +243,14 @@ export default function CompararBlingPage() {
       {result && (
         <>
           {/* KPIs */}
+          {result.summary.total_cancelados > 0 && (
+            <p className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+              ⚠ {result.summary.total_cancelados} pedido(s) com status <strong>Cancelado</strong> ignorados —
+              {' '}analisando {result.summary.total_bling} de {result.summary.total_bling_bruto} pedidos do Bling.
+            </p>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-            <KPI label="Total Bling" value={result.summary.total_bling} color="blue" />
+            <KPI label="Bling (ativos)" value={result.summary.total_bling} color="blue" />
             <KPI label="OK" value={result.summary.ok} color="emerald" />
             <KPI label="Divergentes" value={result.summary.com_valor_divergente} color="orange" />
             <KPI label="Ausentes" value={result.summary.ausentes_no_fluxia} color="red" />
