@@ -1,44 +1,46 @@
 'use client';
 
-import { useState } from 'react';
-import { AlertTriangle, CheckCircle, XCircle, Search, Download } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { AlertTriangle, CheckCircle, XCircle, Search, Download, Link, RefreshCw, Plus } from 'lucide-react';
 
-interface BlingRow {
-  numero: number;
-  data: string;
-  cliente: string;
-  situacao: string;
-  valor: number;
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
+interface BlingRow { numero: number; data: string; cliente: string; situacao: string; valor: number; }
+
+interface Candidato {
+  fluxiaId: string; clientName: string; totalValue: number;
+  status: string; createdAt: string; jaVinculado: boolean; score: number;
+}
+
+interface AusenteComCandidatos {
+  blingNumero: number; blingCliente: string; blingSituacao: string;
+  blingValor: number; blingData: string; candidatos: Candidato[];
 }
 
 interface CompareResult {
-  blingNumero: number;
-  blingCliente: string;
-  blingSituacao: string;
-  blingValor: number;
+  blingNumero: number; blingCliente: string; blingSituacao: string;
+  blingValor: number; blingData: string;
   status: 'OK' | 'AUSENTE_NO_FLUXIA' | 'DELETADO_NO_FLUXIA' | 'VALOR_DIVERGENTE';
-  fluxiaStatus: string | null;
-  fluxiaValor: number | null;
-  diferenca: number | null;
+  fluxiaStatus: string | null; fluxiaValor: number | null; diferenca: number | null;
 }
+
+interface FluxiaSemVinculo { fluxiaId: string; clientName: string; totalValue: number; status: string; createdAt: string; }
 
 interface Summary {
-  total_bling: number;
-  total_fluxia: number;
-  total_fluxia_com_blingId: number;
-  ausentes_no_fluxia: number;
-  deletados_no_fluxia: number;
-  com_valor_divergente: number;
-  ok: number;
-  no_fluxia_sem_bling: number;
-  soma_bling: number;
-  soma_fluxia_correspondentes: number;
+  total_bling: number; total_fluxia: number; total_fluxia_com_vinculo: number;
+  total_fluxia_sem_vinculo: number; ausentes_no_fluxia: number; deletados_no_fluxia: number;
+  com_valor_divergente: number; ok: number; soma_bling: number; soma_fluxia_correspondentes: number;
 }
 
-const fmt = (v: number) =>
-  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+interface CompareResponse {
+  summary: Summary; problemas: CompareResult[]; ausentes: AusenteComCandidatos[];
+  fluxia_sem_vinculo: FluxiaSemVinculo[];
+}
 
-// Detectar separador: tabulação (Excel), ; ou ,
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
 function detectSep(line: string): string {
   const tabs = (line.match(/\t/g) ?? []).length;
   const semis = (line.match(/;/g) ?? []).length;
@@ -48,48 +50,41 @@ function detectSep(line: string): string {
   return ',';
 }
 
-// Converter dados colados do Excel / CSV do Bling para array de objetos
-// Formato: Nº Pedido | Data | Cliente | Situação | Valor (qualquer separador)
 function parseCSV(text: string): BlingRow[] {
   const lines = text.trim().split('\n').filter(l => l.trim());
   if (lines.length < 2) return [];
-
   const sep = detectSep(lines[0]);
-  const normalize = (s: string) => s.trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')  // remove acentos
-    .replace(/['"]/g, '');
-
-  const headers = lines[0].split(sep).map(normalize);
-
-  const numIdx = headers.findIndex(h => h.includes('pedido') || h === 'numero' || h === 'n' || h.startsWith('nº') || h === 'no');
-  const dateIdx = headers.findIndex(h => h.includes('data') || h.includes('emiss'));
-  const clientIdx = headers.findIndex(h => h.includes('cliente') || h.includes('nome') || h.includes('razao'));
-  const situacaoIdx = headers.findIndex(h => h.includes('situa') || h.includes('status'));
-  const valorIdx = headers.findIndex(h => (h.includes('valor') || h.includes('total')) && !h.includes('custo'));
-
-  // Fallback: se headers não detectados, assumir ordem padrão do Bling: 0=nº, 1=data, 2=cliente, 3=situação, 4=valor
-  const iNum = numIdx >= 0 ? numIdx : 0;
-  const iDate = dateIdx >= 0 ? dateIdx : 1;
-  const iClient = clientIdx >= 0 ? clientIdx : 2;
-  const iSit = situacaoIdx >= 0 ? situacaoIdx : 3;
-  const iVal = valorIdx >= 0 ? valorIdx : 4;
-
+  const norm = (s: string) => s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/['"]/g, '');
+  const headers = lines[0].split(sep).map(norm);
+  const iNum = Math.max(0, headers.findIndex(h => h.includes('pedido') || h === 'numero' || h.startsWith('n')));
+  const iDate = headers.findIndex(h => h.includes('data') || h.includes('emiss'));
+  const iClient = headers.findIndex(h => h.includes('cliente') || h.includes('nome') || h.includes('razao'));
+  const iSit = headers.findIndex(h => h.includes('situa') || h.includes('status'));
+  const iVal = headers.findIndex(h => (h.includes('valor') || h.includes('total')) && !h.includes('custo'));
   const rows: BlingRow[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''));
     const numero = parseInt(cols[iNum] ?? '', 10);
     if (isNaN(numero)) continue;
-    const valorRaw = (cols[iVal] ?? '0').replace(/\./g, '').replace(',', '.');
+    const valorRaw = (cols[iVal >= 0 ? iVal : 4] ?? '0').replace(/\./g, '').replace(',', '.');
     rows.push({
       numero,
-      data: cols[iDate] ?? '',
-      cliente: cols[iClient] ?? '',
-      situacao: cols[iSit] ?? '',
+      data: cols[iDate >= 0 ? iDate : 1] ?? '',
+      cliente: cols[iClient >= 0 ? iClient : 2] ?? '',
+      situacao: cols[iSit >= 0 ? iSit : 3] ?? '',
       valor: parseFloat(valorRaw) || 0,
     });
   }
   return rows;
 }
+
+function scoreBadge(score: number) {
+  if (score >= 80) return <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 font-medium">{score}%</span>;
+  if (score >= 50) return <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">{score}%</span>;
+  return <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 font-medium">{score}%</span>;
+}
+
+// ─── Componente principal ──────────────────────────────────────────────────────
 
 export default function CompararBlingPage() {
   const [csvText, setCsvText] = useState('');
@@ -97,256 +92,446 @@ export default function CompararBlingPage() {
   const [loading, setLoading] = useState(false);
   const [populando, setPopulando] = useState(false);
   const [populandoMsg, setPopulandoMsg] = useState('');
-  const [result, setResult] = useState<{ summary: Summary; problemas: CompareResult[]; fluxia_sem_bling: any[] } | null>(null);
+  const [result, setResult] = useState<CompareResponse | null>(null);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<'todos' | 'ausente' | 'divergente' | 'deletado'>('todos');
+  const [activeTab, setActiveTab] = useState<'comparar' | 'sincronizar'>('comparar');
+  const [filterProblemas, setFilterProblemas] = useState<'todos' | 'ausente' | 'divergente' | 'deletado'>('todos');
+  const [vinculados, setVinculados] = useState<Record<number, string>>({});   // blingNumero → status
+  const [vinculandoId, setVinculandoId] = useState<number | null>(null);
+  const [buscaManual, setBuscaManual] = useState<Record<number, string>>({});  // blingNumero → texto busca
+  const [expandido, setExpandido] = useState<number | null>(null);
 
   function handleParse() {
     const rows = parseCSV(csvText);
     setParsed(rows);
     setResult(null);
-    setError(rows.length === 0 ? 'Nenhum pedido encontrado. Verifique o formato do CSV.' : '');
+    setVinculados({});
+    setError(rows.length === 0 ? 'Nenhum pedido encontrado. Verifique o formato.' : '');
   }
 
   async function handleCompare() {
     if (parsed.length === 0) return;
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const res = await fetch('/api/financeiro/compare-bling', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: parsed }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Erro desconhecido');
+      if (!res.ok) throw new Error(data.error ?? 'Erro');
       setResult(data);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+      setActiveTab('comparar');
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   }
 
   async function handlePopularNumeros() {
-    setPopulando(true);
-    setPopulandoMsg('Buscando números de pedidos no Bling...');
+    setPopulando(true); setPopulandoMsg('Buscando números no Bling...');
     try {
       const res = await fetch('/api/financeiro/populate-bling-numero', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Erro desconhecido');
-      setPopulandoMsg(`Concluído: ${data.atualizados} pedidos atualizados, ${data.erros} erros. Agora clique em "Comparar" novamente.`);
-    } catch (e: any) {
-      setPopulandoMsg(`Erro: ${e.message}`);
-    } finally {
-      setPopulando(false);
-    }
+      if (!res.ok) throw new Error(data.error ?? 'Erro');
+      setPopulandoMsg(`✓ ${data.atualizados} pedidos atualizados. Clique em "Comparar" novamente.`);
+    } catch (e: any) { setPopulandoMsg(`Erro: ${e.message}`); }
+    finally { setPopulando(false); }
+  }
+
+  async function vincular(blingNumero: number, blingData: string, blingValor: number, blingCliente: string, blingSituacao: string, fluxiaId: string) {
+    setVinculandoId(blingNumero);
+    try {
+      const res = await fetch('/api/financeiro/vincular-pedido', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fluxiaId, blingNumero, blingValor, blingData, blingCliente }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Erro');
+      setVinculados(prev => ({ ...prev, [blingNumero]: fluxiaId }));
+    } catch (e: any) { alert(`Erro ao vincular: ${e.message}`); }
+    finally { setVinculandoId(null); }
   }
 
   function downloadCSV() {
     if (!result) return;
-    const header = 'Nº Bling;Cliente;Situação Bling;Valor Bling;Status;Status Fluxia;Valor Fluxia;Diferença\n';
+    const header = 'Nº Bling;Data;Cliente;Situação;Valor Bling;Status;Status Fluxia;Valor Fluxia;Diferença\n';
     const rows = result.problemas.map(r =>
-      [r.blingNumero, r.blingCliente, r.blingSituacao, r.blingValor, r.status, r.fluxiaStatus ?? '', r.fluxiaValor ?? '', r.diferenca ?? ''].join(';')
+      [r.blingNumero, r.blingData, r.blingCliente, r.blingSituacao, r.blingValor, r.status, r.fluxiaStatus ?? '', r.fluxiaValor ?? '', r.diferenca ?? ''].join(';')
     );
     const blob = new Blob([header + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = 'divergencias-bling-fluxia.csv';
     a.click();
   }
 
-  const filtered = result?.problemas.filter(r => {
-    if (filter === 'todos') return true;
-    if (filter === 'ausente') return r.status === 'AUSENTE_NO_FLUXIA';
-    if (filter === 'divergente') return r.status === 'VALOR_DIVERGENTE';
-    if (filter === 'deletado') return r.status === 'DELETADO_NO_FLUXIA';
+  const filteredProblemas = result?.problemas.filter(r => {
+    if (filterProblemas === 'todos') return true;
+    if (filterProblemas === 'ausente') return r.status === 'AUSENTE_NO_FLUXIA';
+    if (filterProblemas === 'divergente') return r.status === 'VALOR_DIVERGENTE';
+    if (filterProblemas === 'deletado') return r.status === 'DELETADO_NO_FLUXIA';
     return true;
   }) ?? [];
 
-  return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Comparar Bling × Fluxia</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        Exporte os pedidos do Bling como CSV (Vendas → Exportar) e cole abaixo. A comparação usa o campo <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">Nº Pedido</code> para cruzar os dados.
-      </p>
+  // Ausentes ainda não vinculados nessa sessão
+  const ausentesRestantes = useMemo(
+    () => (result?.ausentes ?? []).filter(a => !vinculados[a.blingNumero]),
+    [result, vinculados]
+  );
 
-      {/* Entrada de CSV */}
+  return (
+    <div className="p-4 max-w-7xl mx-auto space-y-5">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Bling × Fluxia</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Exporte os pedidos do Bling (Vendas → Pedidos → Exportar CSV), cole abaixo e compare.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <button onClick={handlePopularNumeros} disabled={populando}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-400 text-amber-700 dark:text-amber-400 text-xs font-medium hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50">
+            <RefreshCw size={12} className={populando ? 'animate-spin' : ''} />
+            {populando ? 'Buscando...' : 'Preencher nº de pedidos (1x)'}
+          </button>
+          {populandoMsg && <p className="text-xs text-gray-500 max-w-xs text-right">{populandoMsg}</p>}
+        </div>
+      </div>
+
+      {/* Input CSV */}
       <div className="space-y-3">
-        <textarea
-          value={csvText}
-          onChange={e => { setCsvText(e.target.value); setParsed([]); setResult(null); }}
-          placeholder={'Nº Pedido;Data;Cliente;Situação;Valor\n1542;01/01/2026;CLIENTE A;Atendido;500,00\n...'}
-          className="w-full h-40 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono resize-y text-gray-800 dark:text-gray-200"
-        />
+        <textarea value={csvText} onChange={e => { setCsvText(e.target.value); setParsed([]); setResult(null); }}
+          placeholder={'Nº do pedido\tData\tCliente\tSituação\tValor\n1542\t01/01/2026\tCLIENTE A\tAtendido\t500,00'}
+          className="w-full h-36 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-mono resize-y text-gray-800 dark:text-gray-200" />
         <div className="flex gap-3 flex-wrap items-center">
-          <button
-            onClick={handleParse}
-            disabled={!csvText.trim()}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
+          <button onClick={handleParse} disabled={!csvText.trim()}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
             Processar CSV
           </button>
           {parsed.length > 0 && (
-            <button
-              onClick={handleCompare}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
-            >
-              <Search size={16} />
+            <button onClick={handleCompare} disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+              <Search size={15} />
               {loading ? 'Comparando...' : `Comparar ${parsed.length} pedidos`}
             </button>
           )}
-          <div className="ml-auto flex flex-col items-end gap-1">
-            <button
-              onClick={handlePopularNumeros}
-              disabled={populando}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-400 text-amber-700 dark:text-amber-400 text-xs font-medium hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50"
-            >
-              {populando ? 'Buscando no Bling...' : '🔄 Preencher nº de pedidos (1x)'}
-            </button>
-            {populandoMsg && <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm text-right">{populandoMsg}</p>}
-          </div>
         </div>
         {parsed.length > 0 && !result && (
-          <div className="space-y-2">
-            <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{parsed.length} pedidos detectados. Verifique as primeiras linhas abaixo e clique em "Comparar":</p>
-            <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
-              <table className="text-xs w-full">
-                <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Nº</th>
-                    <th className="px-3 py-2 text-left">Data</th>
-                    <th className="px-3 py-2 text-left">Cliente</th>
-                    <th className="px-3 py-2 text-left">Situação</th>
-                    <th className="px-3 py-2 text-right">Valor</th>
+          <div className="text-xs text-gray-500 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-800"><tr>
+                {['Nº', 'Data', 'Cliente', 'Situação', 'Valor'].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {parsed.slice(0, 4).map((r, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-1 font-mono">{r.numero}</td>
+                    <td className="px-3 py-1">{r.data}</td>
+                    <td className="px-3 py-1 max-w-[200px] truncate">{r.cliente}</td>
+                    <td className="px-3 py-1">{r.situacao}</td>
+                    <td className="px-3 py-1 font-mono">{fmt(r.valor)}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {parsed.slice(0, 5).map((r, i) => (
-                    <tr key={i}>
-                      <td className="px-3 py-1 font-mono">{r.numero}</td>
-                      <td className="px-3 py-1">{r.data}</td>
-                      <td className="px-3 py-1 max-w-[200px] truncate">{r.cliente}</td>
-                      <td className="px-3 py-1">{r.situacao}</td>
-                      <td className="px-3 py-1 text-right font-mono">{fmt(r.valor)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
+            <p className="px-3 py-1.5 text-emerald-600 dark:text-emerald-400 font-medium">{parsed.length} pedidos lidos. Clique em "Comparar".</p>
           </div>
         )}
         {error && <p className="text-sm text-red-500">{error}</p>}
       </div>
 
-      {/* Resumo */}
+      {/* Resultado */}
       {result && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Card color="blue" label="Total Bling" value={result.summary.total_bling} />
-            <Card color="emerald" label="OK" value={result.summary.ok} />
-            <Card color="amber" label="Valor Divergente" value={result.summary.com_valor_divergente} />
-            <Card color="red" label="Ausentes no Fluxia" value={result.summary.ausentes_no_fluxia} />
+          {/* KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            <KPI label="Total Bling" value={result.summary.total_bling} color="blue" />
+            <KPI label="OK" value={result.summary.ok} color="emerald" />
+            <KPI label="Divergentes" value={result.summary.com_valor_divergente} color="orange" />
+            <KPI label="Ausentes" value={result.summary.ausentes_no_fluxia} color="red" />
+            <KPI label="Vinculados sessão" value={Object.keys(vinculados).length} color="purple" />
+            <KPI label="Restam" value={ausentesRestantes.length} color={ausentesRestantes.length === 0 ? 'emerald' : 'amber'} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800 space-y-1">
-              <p className="text-gray-500 dark:text-gray-400">Soma Bling</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{fmt(result.summary.soma_bling)}</p>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+              <p className="text-xs text-gray-500 mb-0.5">Soma Bling</p>
+              <p className="font-bold text-gray-900 dark:text-white text-lg">{fmt(result.summary.soma_bling)}</p>
             </div>
-            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800 space-y-1">
-              <p className="text-gray-500 dark:text-gray-400">Soma Fluxia (correspondentes)</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{fmt(result.summary.soma_fluxia_correspondentes)}</p>
-              <p className="text-xs text-gray-400">Diferença: {fmt(Math.abs(result.summary.soma_bling - result.summary.soma_fluxia_correspondentes))}</p>
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+              <p className="text-xs text-gray-500 mb-0.5">Soma Fluxia (correspondentes)</p>
+              <p className="font-bold text-gray-900 dark:text-white text-lg">{fmt(result.summary.soma_fluxia_correspondentes)}</p>
+              <p className="text-xs text-gray-400">Δ {fmt(Math.abs(result.summary.soma_bling - result.summary.soma_fluxia_correspondentes))}</p>
             </div>
           </div>
 
-          {/* Filtros */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {(['todos', 'ausente', 'divergente', 'deletado'] as const).map(f => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                  filter === f
-                    ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-transparent'
-                    : 'text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-gray-500'
-                }`}
-              >
-                {f === 'todos' ? `Todos os problemas (${result.problemas.length})` :
-                 f === 'ausente' ? `Ausentes (${result.summary.ausentes_no_fluxia})` :
-                 f === 'divergente' ? `Divergentes (${result.summary.com_valor_divergente})` :
-                 `Deletados (${result.summary.deletados_no_fluxia})`}
+          {/* Abas */}
+          <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+            {(['comparar', 'sincronizar'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  activeTab === tab
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}>
+                {tab === 'comparar' ? `Comparação (${result.problemas.length} problemas)` : `Sincronizar (${ausentesRestantes.length} restantes)`}
               </button>
             ))}
-            <button onClick={downloadCSV} className="ml-auto flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-500">
-              <Download size={12} /> Exportar CSV
-            </button>
           </div>
 
-          {/* Tabela de problemas */}
-          <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 uppercase">
-                <tr>
-                  <th className="px-4 py-3 text-left">Nº Bling</th>
-                  <th className="px-4 py-3 text-left">Cliente</th>
-                  <th className="px-4 py-3 text-left">Situação Bling</th>
-                  <th className="px-4 py-3 text-right">Valor Bling</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                  <th className="px-4 py-3 text-left">Status Fluxia</th>
-                  <th className="px-4 py-3 text-right">Valor Fluxia</th>
-                  <th className="px-4 py-3 text-right">Diferença</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Nenhum problema encontrado neste filtro</td></tr>
-                )}
-                {filtered.map((r, i) => (
-                  <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-4 py-2 font-mono font-medium text-gray-900 dark:text-white">{r.blingNumero}</td>
-                    <td className="px-4 py-2 text-gray-700 dark:text-gray-300 max-w-[200px] truncate">{r.blingCliente}</td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{r.blingSituacao}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-900 dark:text-white">{fmt(r.blingValor)}</td>
-                    <td className="px-4 py-2 text-center">
-                      <StatusBadge status={r.status} />
-                    </td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{r.fluxiaStatus ?? '—'}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{r.fluxiaValor != null ? fmt(r.fluxiaValor) : '—'}</td>
-                    <td className="px-4 py-2 text-right font-mono text-red-600 dark:text-red-400">{r.diferenca != null ? fmt(r.diferenca) : '—'}</td>
-                  </tr>
+          {/* ABA: COMPARAR */}
+          {activeTab === 'comparar' && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                {(['todos', 'ausente', 'divergente', 'deletado'] as const).map(f => (
+                  <button key={f} onClick={() => setFilterProblemas(f)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      filterProblemas === f
+                        ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-transparent'
+                        : 'text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-gray-500'
+                    }`}>
+                    {f === 'todos' ? `Todos (${result.problemas.length})` :
+                     f === 'ausente' ? `Ausentes (${result.summary.ausentes_no_fluxia})` :
+                     f === 'divergente' ? `Divergentes (${result.summary.com_valor_divergente})` :
+                     `Deletados (${result.summary.deletados_no_fluxia})`}
+                  </button>
                 ))}
-              </tbody>
-            </table>
-          </div>
+                <button onClick={downloadCSV} className="ml-auto flex items-center gap-1 px-3 py-1 rounded-full text-xs border border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-500">
+                  <Download size={11} /> CSV
+                </button>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 uppercase">
+                    <tr>
+                      {['Nº', 'Data', 'Cliente', 'Situação', 'Valor Bling', 'Status', 'Status Fluxia', 'Valor Fluxia', 'Δ'].map(h =>
+                        <th key={h} className="px-3 py-2.5 text-left">{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {filteredProblemas.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Nenhum resultado</td></tr>}
+                    {filteredProblemas.map((r, i) => (
+                      <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td className="px-3 py-2 font-mono font-medium text-gray-900 dark:text-white">{r.blingNumero}</td>
+                        <td className="px-3 py-2 text-gray-500">{r.blingData}</td>
+                        <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[160px] truncate">{r.blingCliente}</td>
+                        <td className="px-3 py-2 text-gray-400">{r.blingSituacao}</td>
+                        <td className="px-3 py-2 font-mono text-right text-gray-900 dark:text-white">{fmt(r.blingValor)}</td>
+                        <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
+                        <td className="px-3 py-2 text-gray-400">{r.fluxiaStatus ?? '—'}</td>
+                        <td className="px-3 py-2 font-mono text-right">{r.fluxiaValor != null ? fmt(r.fluxiaValor) : '—'}</td>
+                        <td className="px-3 py-2 font-mono text-right text-red-500">{r.diferenca != null ? fmt(r.diferenca) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ABA: SINCRONIZAR */}
+          {activeTab === 'sincronizar' && (
+            <SincronizarTab
+              ausentes={result.ausentes}
+              fluxiaSemVinculo={result.fluxia_sem_vinculo}
+              vinculados={vinculados}
+              vinculandoId={vinculandoId}
+              buscaManual={buscaManual}
+              setBuscaManual={setBuscaManual}
+              expandido={expandido}
+              setExpandido={setExpandido}
+              onVincular={vincular}
+            />
+          )}
         </>
       )}
     </div>
   );
 }
 
-function Card({ color, label, value }: { color: string; label: string; value: number }) {
-  const colors: Record<string, string> = {
+// ─── Aba Sincronizar ──────────────────────────────────────────────────────────
+
+interface SincronizarTabProps {
+  ausentes: AusenteComCandidatos[];
+  fluxiaSemVinculo: FluxiaSemVinculo[];
+  vinculados: Record<number, string>;
+  vinculandoId: number | null;
+  buscaManual: Record<number, string>;
+  setBuscaManual: (v: Record<number, string>) => void;
+  expandido: number | null;
+  setExpandido: (v: number | null) => void;
+  onVincular: (blingNumero: number, blingData: string, blingValor: number, blingCliente: string, blingSituacao: string, fluxiaId: string) => void;
+}
+
+function SincronizarTab({ ausentes, fluxiaSemVinculo, vinculados, vinculandoId, buscaManual, setBuscaManual, expandido, setExpandido, onVincular }: SincronizarTabProps) {
+  const restantes = ausentes.filter(a => !vinculados[a.blingNumero]);
+  const concluidos = ausentes.filter(a => vinculados[a.blingNumero]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {restantes.length} pedidos do Bling sem correspondente vinculado no Fluxia
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Candidatos calculados por similaridade de nome + valor. Clique em "Vincular" para confirmar o match.
+          </p>
+        </div>
+        {concluidos.length > 0 && (
+          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+            ✓ {concluidos.length} vinculados nesta sessão
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {restantes.map(a => {
+          const busca = (buscaManual[a.blingNumero] ?? '').toLowerCase();
+          const candidatosFiltrados = busca
+            ? fluxiaSemVinculo.filter(f =>
+                f.clientName.toLowerCase().includes(busca) ||
+                String(f.totalValue).includes(busca)
+              ).slice(0, 6)
+            : a.candidatos;
+
+          const isExpanded = expandido === a.blingNumero;
+
+          return (
+            <div key={a.blingNumero} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              {/* Cabeçalho do pedido Bling */}
+              <div
+                onClick={() => setExpandido(isExpanded ? null : a.blingNumero)}
+                className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono font-bold text-gray-900 dark:text-white text-sm">#{a.blingNumero}</span>
+                    <span className="text-xs text-gray-500">{a.blingData}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{a.blingSituacao}</span>
+                  </div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 truncate mt-0.5">{a.blingCliente}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="font-mono font-bold text-gray-900 dark:text-white">{fmt(a.blingValor)}</p>
+                  <p className="text-xs text-gray-400">{a.candidatos.length} sugestão(ões)</p>
+                </div>
+                <span className="text-gray-400 text-xs">{isExpanded ? '▲' : '▼'}</span>
+              </div>
+
+              {/* Painel expandido */}
+              {isExpanded && (
+                <div className="px-4 py-3 space-y-3 border-t border-gray-200 dark:border-gray-700">
+                  {/* Busca manual */}
+                  <div className="flex items-center gap-2">
+                    <Search size={13} className="text-gray-400 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nome ou valor no Fluxia..."
+                      value={buscaManual[a.blingNumero] ?? ''}
+                      onChange={e => setBuscaManual({ ...buscaManual, [a.blingNumero]: e.target.value })}
+                      className="flex-1 text-xs px-3 py-1.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 outline-none focus:border-blue-400"
+                      onClick={e => e.stopPropagation()}
+                    />
+                    {buscaManual[a.blingNumero] && (
+                      <button onClick={e => { e.stopPropagation(); setBuscaManual({ ...buscaManual, [a.blingNumero]: '' }); }}
+                        className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                    )}
+                  </div>
+
+                  {/* Lista de candidatos */}
+                  {candidatosFiltrados.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-3">
+                      {busca ? 'Nenhum pedido encontrado com esse critério.' : 'Nenhuma sugestão automática. Use a busca acima.'}
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {candidatosFiltrados.map((c: any) => (
+                        <div key={c.fluxiaId}
+                          className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{c.clientName}</p>
+                              {c.score != null && scoreBadge(c.score)}
+                              {c.jaVinculado && <span className="text-xs text-amber-500">já vinculado</span>}
+                            </div>
+                            <div className="flex gap-3 text-xs text-gray-400 mt-0.5">
+                              <span>{c.status}</span>
+                              <span>{c.createdAt}</span>
+                              <span className="font-mono">{fmt(c.totalValue ?? 0)}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => onVincular(a.blingNumero, a.blingData, a.blingValor, a.blingCliente, a.blingSituacao, c.fluxiaId)}
+                            disabled={vinculandoId === a.blingNumero}
+                            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
+                            <Link size={11} />
+                            {vinculandoId === a.blingNumero ? '...' : 'Vincular'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Botão importar do Bling */}
+                  <div className="pt-1 border-t border-gray-100 dark:border-gray-800 flex justify-end">
+                    <a href={`/importar-bling?pedido=${a.blingNumero}`} target="_blank"
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                      <Plus size={11} /> Criar como novo pedido no Fluxia
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {restantes.length === 0 && (
+          <div className="text-center py-10 text-emerald-600 dark:text-emerald-400">
+            <CheckCircle size={32} className="mx-auto mb-2" />
+            <p className="font-medium">Todos os pedidos foram vinculados!</p>
+          </div>
+        )}
+      </div>
+
+      {/* Pedidos vinculados nessa sessão */}
+      {concluidos.length > 0 && (
+        <details className="text-xs text-gray-400">
+          <summary className="cursor-pointer hover:text-gray-600">▶ {concluidos.length} vinculados nesta sessão</summary>
+          <ul className="mt-2 space-y-1 pl-4">
+            {concluidos.map(a => (
+              <li key={a.blingNumero} className="text-emerald-600 dark:text-emerald-400">
+                ✓ #{a.blingNumero} {a.blingCliente} → Fluxia {vinculados[a.blingNumero]}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+// ─── Componentes menores ───────────────────────────────────────────────────────
+
+function KPI({ label, value, color }: { label: string; value: number; color: string }) {
+  const c: Record<string, string> = {
     blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300',
     emerald: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300',
-    amber: 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300',
+    orange: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300',
     red: 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300',
+    amber: 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300',
+    purple: 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300',
   };
   return (
-    <div className={`rounded-lg p-4 ${colors[color]}`}>
+    <div className={`rounded-lg p-3 ${c[color]}`}>
       <p className="text-xs opacity-70 mb-1">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
+      <p className="text-xl font-bold">{value}</p>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === 'OK') return <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle size={14} /> OK</span>;
-  if (status === 'AUSENTE_NO_FLUXIA') return <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400"><XCircle size={14} /> Ausente</span>;
-  if (status === 'DELETADO_NO_FLUXIA') return <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><AlertTriangle size={14} /> Deletado</span>;
-  if (status === 'VALOR_DIVERGENTE') return <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-400"><AlertTriangle size={14} /> Divergente</span>;
-  return <span>{status}</span>;
+  if (status === 'OK') return <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs"><CheckCircle size={12} /> OK</span>;
+  if (status === 'AUSENTE_NO_FLUXIA') return <span className="flex items-center gap-1 text-red-600 dark:text-red-400 text-xs"><XCircle size={12} /> Ausente</span>;
+  if (status === 'DELETADO_NO_FLUXIA') return <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs"><AlertTriangle size={12} /> Deletado</span>;
+  if (status === 'VALOR_DIVERGENTE') return <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400 text-xs"><AlertTriangle size={12} /> Divergente</span>;
+  return <span className="text-xs">{status}</span>;
 }
