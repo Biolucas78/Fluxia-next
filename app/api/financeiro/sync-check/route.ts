@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
       const info: BlingOrderInfo = {
         id: String(o.id),
         numero: Number(o.numero),
-        total: o.totalProdutos || o.total || 0,
+        total: o.total || o.totalProdutos || 0,
         cliente: o.contato?.nome || '',
         clienteNorm: normalizeNome(o.contato?.nome || ''),
         data: o.data || '',
