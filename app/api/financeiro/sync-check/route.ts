@@ -23,6 +23,16 @@ async function fetchAllPages(url: string, headers: Record<string, string>, maxPa
   return all;
 }
 
+function normalizeNome(nome: string): string {
+  return (nome ?? '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\b(ltda|me|eireli|sa|ss|epp|mei|comercio|comercial|industria|servicos|alimentos|bebidas|cafeteria|emporio|distribuidora)\b/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export type SyncStatus = 'OK' | 'VALOR_DIVERGENTE' | 'AUSENTE_NO_FLUXIA' | 'SEM_CORRESPONDENTE';
 export type LinkType = 'invoiceLinked' | 'noInvoiceLinked';
 
@@ -37,8 +47,19 @@ export interface SyncResult {
   fluxiaStatus: string | null;
   fluxiaTipo: LinkType | null;
   fluxiaValor: number | null;
+  matchMethod: string;
   status: SyncStatus;
   diferenca: number | null;
+}
+
+interface BlingOrderInfo {
+  id: string;
+  numero: number;
+  total: number;
+  cliente: string;
+  clienteNorm: string;
+  data: string;
+  situacao: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -59,21 +80,28 @@ export async function POST(req: NextRequest) {
     const cancelados = blingList.filter(o => SITUACOES_CANCELADAS.has(o.situacao?.id));
     const blingAtivos = blingList.filter(o => !SITUACOES_CANCELADAS.has(o.situacao?.id));
 
-    // Index: blingId → order info
-    const blingById = new Map<string, { id: string; numero: number; total: number; cliente: string; data: string; situacao: string }>();
+    // Index por ID e por valor arredondado (para fuzzy match)
+    const blingById = new Map<string, BlingOrderInfo>();
+    const blingByValor = new Map<string, BlingOrderInfo[]>();  // chave: valor arredondado em centavos
+
     for (const o of blingAtivos) {
-      blingById.set(String(o.id), {
+      const info: BlingOrderInfo = {
         id: String(o.id),
         numero: Number(o.numero),
         total: o.totalProdutos || o.total || 0,
         cliente: o.contato?.nome || '',
+        clienteNorm: normalizeNome(o.contato?.nome || ''),
         data: o.data || '',
-        situacao: o.situacao?.valor || '',
-      });
+        situacao: o.situacao?.valor || String(o.situacao?.id || ''),
+      };
+      blingById.set(info.id, info);
+
+      const valorKey = String(Math.round(info.total * 100));
+      if (!blingByValor.has(valorKey)) blingByValor.set(valorKey, []);
+      blingByValor.get(valorKey)!.push(info);
     }
 
-    // 2. Buscar todas as NFs do Bling → nfByNumero: invoiceNumber → { blingOrderId, nfValor }
-    // A listagem de NFs no Bling v3 inclui pedidoVenda.id em cada item
+    // 2. Buscar listagem de NFs para tentar extrair pedidoVenda (se disponível)
     const nfList = await fetchAllPages(`${BLING_BASE}/nfe`, headers);
     const nfByNumero = new Map<string, { blingOrderId: string; nfValor: number }>();
     for (const nf of nfList) {
@@ -85,42 +113,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback: se a listagem não trouxe pedidoVenda, buscar detalhes para as NFs que precisamos
-    // (identificadas pelos invoiceNumbers dos pedidos do Fluxia com invoiceLinked)
-    const snapPre = await adminDb.collection('orders').where('invoiceLinked', '==', true).get();
-    const neededNFNumbers = new Set<string>();
-    for (const d of snapPre.docs) {
-      const inv = d.data().invoiceNumber;
-      if (inv && !nfByNumero.has(String(inv))) neededNFNumbers.add(String(inv));
-    }
-
-    if (neededNFNumbers.size > 0) {
-      // Buscar detalhes dessas NFs específicas (máx 50 por chamada para não demorar demais)
-      const needed = [...neededNFNumbers].slice(0, 50);
-      for (const num of needed) {
-        await delay(200);
-        const res = await fetchWithRetry(`${BLING_BASE}/nfe?numero=${num}&limite=5`, { headers });
-        if (!res.ok) continue;
-        const json = await res.json();
-        const nfs: any[] = json.data || [];
-        for (const nf of nfs) {
-          const nfNum = String(nf.numero || '');
-          if (nfNum !== num) continue;
-          // Buscar detalhe para pegar pedidoVenda
-          await delay(150);
-          const detRes = await fetchWithRetry(`${BLING_BASE}/nfe/${nf.id}`, { headers });
-          if (!detRes.ok) continue;
-          const det = await detRes.json();
-          const d = det.data || {};
-          const pedidoId = d.pedidoVenda?.id ? String(d.pedidoVenda.id) : null;
-          if (pedidoId) {
-            nfByNumero.set(nfNum, { blingOrderId: pedidoId, nfValor: d.valorNota || d.total || 0 });
-          }
-        }
-      }
-    }
-
-    // 3. Carregar todos os pedidos do Fluxia
+    // 3. Carregar todos os pedidos do Fluxia (com blingOrderId para match direto)
     const snap = await adminDb.collection('orders').get();
     const fluxiaOrders = snap.docs.map((d: FirebaseFirestore.QueryDocumentSnapshot) => {
       const data = d.data();
@@ -130,12 +123,16 @@ export async function POST(req: NextRequest) {
         status: data.status ?? '',
         isDeleted: !!(data.isDeleted || data.deleted),
         isSample: !!data.isSample,
+        // Vínculo via NF
         invoiceLinked: !!data.invoiceLinked,
         invoiceNumber: data.invoiceNumber ? String(data.invoiceNumber) : null,
         invoiceValue: typeof data.invoiceValue === 'number' ? data.invoiceValue : null,
+        // Vínculo via Pedido sem NF
         noInvoiceLinked: !!data.noInvoiceLinked,
         noInvoiceBlingOrderId: data.noInvoiceBlingOrderId ? String(data.noInvoiceBlingOrderId) : null,
         noInvoiceValue: typeof data.noInvoiceValue === 'number' ? data.noInvoiceValue : null,
+        // blingOrderId pode estar setado em ambos os casos
+        blingOrderId: data.blingOrderId ? String(data.blingOrderId) : null,
       };
     });
 
@@ -143,28 +140,90 @@ export async function POST(req: NextRequest) {
     const matchedBlingIds = new Set<string>();
     const resultados: SyncResult[] = [];
 
+    function fuzzyFindBlingOrder(clientName: string, valor: number | null): { order: BlingOrderInfo; method: string } | null {
+      if (valor == null) return null;
+      const valorKey = String(Math.round(valor * 100));
+      const candidates = blingByValor.get(valorKey) ?? [];
+      const normFluxia = normalizeNome(clientName);
+      const firstWord = normFluxia.split(' ')[0];
+      for (const bo of candidates) {
+        if (matchedBlingIds.has(bo.id)) continue;
+        // Match exato de nome normalizado
+        if (bo.clienteNorm === normFluxia) return { order: bo, method: 'nome+valor' };
+        // Match por primeiro nome
+        if (firstWord.length > 2 && (bo.clienteNorm.startsWith(firstWord) || normFluxia.startsWith(bo.clienteNorm.split(' ')[0]))) {
+          return { order: bo, method: 'primeiroNome+valor' };
+        }
+        // Match parcial: nome do Bling contém nome do Fluxia ou vice-versa
+        if (firstWord.length > 3 && (bo.clienteNorm.includes(firstWord) || normFluxia.includes(bo.clienteNorm.split(' ')[0]))) {
+          return { order: bo, method: 'nomeContém+valor' };
+        }
+      }
+      return null;
+    }
+
     for (const f of fluxiaOrders) {
       if (f.isDeleted || f.isSample) continue;
       if (!f.invoiceLinked && !f.noInvoiceLinked) continue;
 
-      let blingOrder: ReturnType<typeof blingById.get> | null = null;
+      let blingOrder: BlingOrderInfo | null = null;
       let fluxiaValor: number | null = null;
       let fluxiaTipo: LinkType | null = null;
       let blingValorRef: number | null = null;
+      let matchMethod = '';
 
-      if (f.noInvoiceLinked && f.noInvoiceBlingOrderId) {
-        blingOrder = blingById.get(f.noInvoiceBlingOrderId) ?? null;
+      if (f.noInvoiceLinked) {
+        // ─── Pedido sem NF: match direto por noInvoiceBlingOrderId ───
+        if (f.noInvoiceBlingOrderId) {
+          blingOrder = blingById.get(f.noInvoiceBlingOrderId) ?? null;
+          if (blingOrder) matchMethod = 'noInvoiceBlingOrderId';
+        }
+        // Fallback: blingOrderId genérico
+        if (!blingOrder && f.blingOrderId) {
+          blingOrder = blingById.get(f.blingOrderId) ?? null;
+          if (blingOrder) matchMethod = 'blingOrderId';
+        }
         fluxiaValor = f.noInvoiceValue;
         fluxiaTipo = 'noInvoiceLinked';
         blingValorRef = blingOrder?.total ?? null;
-      } else if (f.invoiceLinked && f.invoiceNumber) {
-        const nfInfo = nfByNumero.get(f.invoiceNumber);
-        if (nfInfo) {
-          blingOrder = blingById.get(nfInfo.blingOrderId) ?? null;
-          blingValorRef = nfInfo.nfValor;
+
+      } else if (f.invoiceLinked) {
+        // ─── Pedido com NF: 3 estratégias ───
+
+        // Estratégia 1: blingOrderId direto no Fluxia (mais confiável)
+        if (f.blingOrderId) {
+          blingOrder = blingById.get(f.blingOrderId) ?? null;
+          if (blingOrder) matchMethod = 'blingOrderId';
         }
+
+        // Estratégia 2: nfByNumero → pedidoVenda.id (se Bling retornou pedidoVenda na lista de NFs)
+        if (!blingOrder && f.invoiceNumber) {
+          const nfInfo = nfByNumero.get(f.invoiceNumber);
+          if (nfInfo) {
+            blingOrder = blingById.get(nfInfo.blingOrderId) ?? null;
+            if (blingOrder) {
+              blingValorRef = nfInfo.nfValor;
+              matchMethod = 'nfPedidoVenda';
+            }
+          }
+        }
+
+        // Estratégia 3: fuzzy por nome + valor (quando blingOrderId não está setado)
+        if (!blingOrder) {
+          const found = fuzzyFindBlingOrder(f.clientName, f.invoiceValue);
+          if (found) {
+            blingOrder = found.order;
+            matchMethod = found.method;
+          }
+        }
+
         fluxiaValor = f.invoiceValue;
         fluxiaTipo = 'invoiceLinked';
+        // Valor de referência: NF value se disponível, senão total do pedido Bling
+        if (!blingValorRef) {
+          const nfInfo = f.invoiceNumber ? nfByNumero.get(f.invoiceNumber) : null;
+          blingValorRef = nfInfo?.nfValor ?? blingOrder?.total ?? null;
+        }
       }
 
       if (blingOrder) {
@@ -182,11 +241,12 @@ export async function POST(req: NextRequest) {
           fluxiaStatus: f.status,
           fluxiaTipo,
           fluxiaValor,
+          matchMethod,
           status,
           diferenca: diff != null && diff > 0.05 ? diff : null,
         });
       } else {
-        // Pedido vinculado no Fluxia mas sem correspondente no Bling (cancelado ou fora do período)
+        // Fluxia order linked mas sem correspondente no Bling no período selecionado
         resultados.push({
           blingId: null,
           blingNumero: null,
@@ -198,6 +258,7 @@ export async function POST(req: NextRequest) {
           fluxiaStatus: f.status,
           fluxiaTipo,
           fluxiaValor,
+          matchMethod: 'sem-match',
           status: 'SEM_CORRESPONDENTE',
           diferenca: null,
         });
@@ -218,6 +279,7 @@ export async function POST(req: NextRequest) {
           fluxiaStatus: null,
           fluxiaTipo: null,
           fluxiaValor: null,
+          matchMethod: '',
           status: 'AUSENTE_NO_FLUXIA',
           diferenca: null,
         });
@@ -241,6 +303,7 @@ export async function POST(req: NextRequest) {
         total_bling: blingAtivos.length,
         total_cancelados: cancelados.length,
         total_nfs: nfList.length,
+        nfs_com_pedido: nfByNumero.size,
         ok: resultados.filter(r => r.status === 'OK').length,
         divergentes: resultados.filter(r => r.status === 'VALOR_DIVERGENTE').length,
         ausentes: resultados.filter(r => r.status === 'AUSENTE_NO_FLUXIA').length,
