@@ -135,6 +135,8 @@ export async function POST(request: Request) {
             cliente: d.contato?.nome || inv.contato?.nome || '',
             chaveAcesso: d.chaveAcesso || inv.chaveAcesso || '',
             situacao: d.situacao?.valor || d.situacao || '',
+            pedidoVendaNumero: d.pedidoVenda?.numero ?? inv.pedidoVenda?.numero ?? null,
+            pedidoVendaId: d.pedidoVenda?.id ?? inv.pedidoVenda?.id ?? null,
           });
         } else {
           lista.push({

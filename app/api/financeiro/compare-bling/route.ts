@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 
-// Normaliza nome para comparação: remove acentos, sufixos jurídicos, pontuação
 function normalizeNome(nome: string): string {
   return (nome ?? '')
     .toLowerCase()
@@ -28,8 +27,7 @@ function nomeScore(a: string, b: string): number {
 function candidateScore(blingCliente: string, blingValor: number, f: FluxiaOrder): number {
   const nome = nomeScore(blingCliente, f.clientName);
   if (nome < 0.25) return 0;
-  const fVal = f.totalValue ?? 0;
-  const diff = Math.abs(fVal - blingValor);
+  const diff = Math.abs(f.financialValue - blingValor);
   const valorScore = diff < 0.5 ? 1 : diff < 50 ? 0.8 : diff < 200 ? 0.5 : diff < 500 ? 0.2 : 0;
   return nome * 0.65 + valorScore * 0.35;
 }
@@ -43,64 +41,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Envie um array "orders" com os pedidos do Bling.' }, { status: 400 });
     }
 
-    // Ignorar pedidos cancelados — foram substituídos por novos pedidos no Bling
     const cancelados = blingOrders.filter(b => String(b.situacao).toLowerCase().includes('cancel'));
     const activeBlingOrders = blingOrders.filter(b => !String(b.situacao).toLowerCase().includes('cancel'));
 
-    // Buscar todos os pedidos do Firestore
     const snap = await adminDb.collection('orders').get();
     const fluxiaOrders: FluxiaOrder[] = snap.docs.map((d: FirebaseFirestore.QueryDocumentSnapshot) => {
       const data = d.data();
+      const linkType: LinkType = data.invoiceLinked ? 'invoiceLinked' : data.noInvoiceLinked ? 'noInvoiceLinked' : 'none';
+      const financialValue =
+        linkType === 'invoiceLinked' ? (data.invoiceValue ?? 0) :
+        linkType === 'noInvoiceLinked' ? (data.noInvoiceValue ?? 0) :
+        (data.totalValue ?? data.total ?? 0);
       return {
         id: d.id,
-        blingOrderId: data.blingOrderId ?? null,
         blingOrderNumero: data.blingOrderNumero ?? null,
         clientName: data.clientName ?? data.client ?? '',
         status: data.status ?? '',
-        totalValue: data.totalValue ?? data.invoiceValue ?? data.noInvoiceValue ?? data.total ?? 0,
+        financialValue,
+        linkType,
         createdAt: data.createdAt ?? '',
         isDeleted: !!(data.isDeleted || data.deleted),
         isSample: !!data.isSample,
-        paymentStatus: data.paymentStatus ?? '',
-        paymentConfirmedManually: !!data.paymentConfirmedManually,
       };
     });
 
-    // Índices por número e ID
     const fluxiaByNumero = new Map<string, FluxiaOrder>();
-    const fluxiaByBlingId = new Map<string, FluxiaOrder>();
     for (const o of fluxiaOrders) {
       if (o.blingOrderNumero != null && String(o.blingOrderNumero) !== '') {
         fluxiaByNumero.set(String(o.blingOrderNumero), o);
       }
-      if (o.blingOrderId != null && String(o.blingOrderId) !== '' && String(o.blingOrderId) !== '0') {
-        fluxiaByBlingId.set(String(o.blingOrderId), o);
-      }
     }
 
-    // Fluxia sem vínculo: não é amostra, não é deletado, sem blingOrderNumero e sem blingOrderId
     const fluxiaSemVinculo = fluxiaOrders.filter(
-      f => !f.isDeleted && !f.isSample && !f.blingOrderNumero && !f.blingOrderId
+      f => !f.isDeleted && !f.isSample && f.linkType === 'none' && !f.blingOrderNumero
     );
 
     const results: CompareResult[] = [];
     const ausentes: AusenteComCandidatos[] = [];
-
-    // IDs de Fluxia já vinculados (para não sugerir como candidatos)
-    const fluxiaVinculados = new Set<string>();
-    for (const o of fluxiaOrders) {
-      if (o.blingOrderNumero || o.blingOrderId) fluxiaVinculados.add(o.id);
-    }
-
-    // Pool de candidatos: pedidos sem vínculo OU com vínculo (para o caso de re-link)
+    const linkedIds = new Set(fluxiaOrders.filter(o => o.blingOrderNumero || o.linkType !== 'none').map(o => o.id));
     const candidatePool = fluxiaOrders.filter(f => !f.isDeleted && !f.isSample);
 
     for (const b of activeBlingOrders) {
       const numero = Number(b.numero);
-      const f = fluxiaByNumero.get(String(numero)) ?? fluxiaByBlingId.get(String(numero));
+      const f = fluxiaByNumero.get(String(numero));
 
       if (!f) {
-        // Calcular candidatos por similaridade de nome + valor
         const scored = candidatePool
           .map(fl => ({ fl, score: candidateScore(b.cliente, b.valor, fl) }))
           .filter(x => x.score >= 0.25)
@@ -108,71 +93,56 @@ export async function POST(req: NextRequest) {
           .slice(0, 4);
 
         results.push({
-          blingNumero: numero,
-          blingCliente: b.cliente,
-          blingSituacao: b.situacao,
-          blingValor: b.valor,
-          blingData: b.data,
+          blingNumero: numero, blingCliente: b.cliente, blingSituacao: b.situacao,
+          blingValor: b.valor, blingData: b.data,
           status: 'AUSENTE_NO_FLUXIA',
-          fluxiaStatus: null,
-          fluxiaValor: null,
-          diferenca: null,
+          fluxiaId: null, linkType: null, fluxiaStatus: null, fluxiaValor: null, diferenca: null,
         });
-
         ausentes.push({
-          blingNumero: numero,
-          blingCliente: b.cliente,
-          blingSituacao: b.situacao,
-          blingValor: b.valor,
-          blingData: b.data,
+          blingNumero: numero, blingCliente: b.cliente, blingSituacao: b.situacao,
+          blingValor: b.valor, blingData: b.data,
           candidatos: scored.map(x => ({
-            fluxiaId: x.fl.id,
-            clientName: x.fl.clientName,
-            totalValue: x.fl.totalValue,
-            status: x.fl.status,
-            createdAt: String(x.fl.createdAt).substring(0, 10),
-            jaVinculado: fluxiaVinculados.has(x.fl.id),
-            score: Math.round(x.score * 100),
+            fluxiaId: x.fl.id, clientName: x.fl.clientName, totalValue: x.fl.financialValue,
+            status: x.fl.status, createdAt: String(x.fl.createdAt).substring(0, 10),
+            jaVinculado: linkedIds.has(x.fl.id), score: Math.round(x.score * 100),
           })),
         });
         continue;
       }
 
-      const diff = Math.abs((f.totalValue ?? 0) - (b.valor ?? 0));
+      const diff = Math.abs(f.financialValue - (b.valor ?? 0));
       const hasValueDiff = diff > 0.05;
 
       if (f.isDeleted) {
         results.push({
           blingNumero: numero, blingCliente: b.cliente, blingSituacao: b.situacao,
           blingValor: b.valor, blingData: b.data,
-          status: 'DELETADO_NO_FLUXIA', fluxiaStatus: f.status,
-          fluxiaValor: f.totalValue, diferenca: hasValueDiff ? diff : null,
+          status: 'DELETADO_NO_FLUXIA', fluxiaId: f.id, linkType: f.linkType,
+          fluxiaStatus: f.status, fluxiaValor: f.financialValue, diferenca: hasValueDiff ? diff : null,
         });
       } else if (hasValueDiff) {
         results.push({
           blingNumero: numero, blingCliente: b.cliente, blingSituacao: b.situacao,
           blingValor: b.valor, blingData: b.data,
-          status: 'VALOR_DIVERGENTE', fluxiaStatus: f.status,
-          fluxiaValor: f.totalValue, diferenca: diff,
+          status: 'VALOR_DIVERGENTE', fluxiaId: f.id, linkType: f.linkType,
+          fluxiaStatus: f.status, fluxiaValor: f.financialValue, diferenca: diff,
         });
       } else {
         results.push({
           blingNumero: numero, blingCliente: b.cliente, blingSituacao: b.situacao,
           blingValor: b.valor, blingData: b.data,
-          status: 'OK', fluxiaStatus: f.status,
-          fluxiaValor: f.totalValue, diferenca: null,
+          status: 'OK', fluxiaId: f.id, linkType: f.linkType,
+          fluxiaStatus: f.status, fluxiaValor: f.financialValue, diferenca: null,
         });
       }
     }
-
-    const blingNums = new Set(activeBlingOrders.map(b => String(Number(b.numero))));
 
     const summary = {
       total_bling_bruto: blingOrders.length,
       total_cancelados: cancelados.length,
       total_bling: activeBlingOrders.length,
       total_fluxia: fluxiaOrders.length,
-      total_fluxia_com_vinculo: fluxiaOrders.filter(f => f.blingOrderNumero || f.blingOrderId).length,
+      total_fluxia_com_vinculo: fluxiaOrders.filter(f => f.blingOrderNumero).length,
       total_fluxia_sem_vinculo: fluxiaSemVinculo.length,
       ausentes_no_fluxia: results.filter(r => r.status === 'AUSENTE_NO_FLUXIA').length,
       deletados_no_fluxia: results.filter(r => r.status === 'DELETADO_NO_FLUXIA').length,
@@ -182,18 +152,13 @@ export async function POST(req: NextRequest) {
       soma_fluxia_correspondentes: results.filter(r => r.fluxiaValor != null).reduce((s, r) => s + (r.fluxiaValor ?? 0), 0),
     };
 
-    const problemas = results.filter(r => r.status !== 'OK');
-
     return NextResponse.json({
       summary,
-      problemas,
+      problemas: results.filter(r => r.status !== 'OK'),
       ausentes,
       fluxia_sem_vinculo: fluxiaSemVinculo.map(f => ({
-        fluxiaId: f.id,
-        clientName: f.clientName,
-        totalValue: f.totalValue,
-        status: f.status,
-        createdAt: String(f.createdAt).substring(0, 10),
+        fluxiaId: f.id, clientName: f.clientName, totalValue: f.financialValue,
+        status: f.status, createdAt: String(f.createdAt).substring(0, 10),
       })),
     });
   } catch (err: any) {
@@ -201,6 +166,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+type LinkType = 'invoiceLinked' | 'noInvoiceLinked' | 'none';
 
 interface BlingOrder {
   numero: number | string;
@@ -212,16 +179,14 @@ interface BlingOrder {
 
 interface FluxiaOrder {
   id: string;
-  blingOrderId: string | number | null;
   blingOrderNumero: string | number | null;
   clientName: string;
   status: string;
-  totalValue: number;
+  financialValue: number;
+  linkType: LinkType;
   createdAt: string;
   isDeleted: boolean;
   isSample: boolean;
-  paymentStatus: string;
-  paymentConfirmedManually: boolean;
 }
 
 interface CompareResult {
@@ -231,6 +196,8 @@ interface CompareResult {
   blingValor: number;
   blingData: string;
   status: 'OK' | 'AUSENTE_NO_FLUXIA' | 'DELETADO_NO_FLUXIA' | 'VALOR_DIVERGENTE';
+  fluxiaId: string | null;
+  linkType: LinkType | null;
   fluxiaStatus: string | null;
   fluxiaValor: number | null;
   diferenca: number | null;

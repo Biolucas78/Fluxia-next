@@ -154,7 +154,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [isSearchingBling, setIsSearchingBling] = useState(false);
   const [isCreatingBlingOrder, setIsCreatingBlingOrder] = useState(false);
   const [isCheckingInvoice, setIsCheckingInvoice] = useState(false);
-  const [pendingInvoice, setPendingInvoice] = useState<{invoiceId?: string; invoiceKey?: string; invoiceNumber?: string; invoiceValue?: number; clientNameMatch?: string} | null>(null);
+  const [pendingInvoice, setPendingInvoice] = useState<{invoiceId?: string; invoiceKey?: string; invoiceNumber?: string; invoiceValue?: number; clientNameMatch?: string; pedidoVendaNumero?: number | null} | null>(null);
   const [nfList, setNfList] = useState<any[]>([]);
   const [isEditingInvoiceManually, setIsEditingInvoiceManually] = useState(false);
   const [manualInvoiceKey, setManualInvoiceKey] = useState(order.invoiceKey || '');
@@ -1795,7 +1795,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                     }
                                   } catch {}
                                 }
-                                onUpdateOrder({ ...order, hasInvoice: true, invoiceLinked: true, invoiceKey: pendingInvoice.invoiceKey||'', invoiceNumber: pendingInvoice.invoiceNumber||'', invoiceValue: pendingInvoice.invoiceValue, ...(nfDueDate ? { paymentDueDate: nfDueDate } : {}), statusHistory: [...(order.statusHistory||[]), { action: 'Nota Fiscal vinculada e confirmada', details: `NF: ${pendingInvoice.invoiceNumber} | Valor: ${pendingInvoice.invoiceValue}`, timestamp: new Date().toISOString() }] });
+                                onUpdateOrder({ ...order, hasInvoice: true, invoiceLinked: true, invoiceKey: pendingInvoice.invoiceKey||'', invoiceNumber: pendingInvoice.invoiceNumber||'', invoiceValue: pendingInvoice.invoiceValue, ...(pendingInvoice.pedidoVendaNumero ? { blingOrderNumero: pendingInvoice.pedidoVendaNumero } : {}), ...(nfDueDate ? { paymentDueDate: nfDueDate } : {}), statusHistory: [...(order.statusHistory||[]), { action: 'Nota Fiscal vinculada e confirmada', details: `NF: ${pendingInvoice.invoiceNumber} | Valor: ${pendingInvoice.invoiceValue}`, timestamp: new Date().toISOString() }] });
                                 setManualInvoiceKey(pendingInvoice.invoiceKey||''); setManualInvoiceNumber(pendingInvoice.invoiceNumber||''); setManualInvoiceValue(pendingInvoice.invoiceValue||'');
                                 if (nfDueDate) setInvoicePaymentDueDate(nfDueDate);
                                 setPendingInvoice(null); setNfList([]);
@@ -1815,7 +1815,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                             <p className="text-[9px] font-bold text-slate-500 uppercase">Escolha a nota fiscal correta:</p>
                             <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
                               {nfList.map((nf: any, i: number) => (
-                                <button key={i} onClick={() => { setPendingInvoice({ invoiceId: nf.id, invoiceKey: nf.chaveAcesso, invoiceNumber: String(nf.numero), invoiceValue: nf.valor, clientNameMatch: nf.cliente }); setNfList([]); }}
+                                <button key={i} onClick={() => { setPendingInvoice({ invoiceId: nf.id, invoiceKey: nf.chaveAcesso, invoiceNumber: String(nf.numero), invoiceValue: nf.valor, clientNameMatch: nf.cliente, pedidoVendaNumero: nf.pedidoVendaNumero ?? null }); setNfList([]); }}
                                   className="w-full text-left p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-primary hover:bg-primary/5 transition-all">
                                   <div className="flex justify-between items-center">
                                     <span className="text-xs font-bold text-slate-900 dark:text-white">NF {nf.numero}</span>
@@ -2082,7 +2082,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                         }
                                       }
                                     } catch {}
-                                    onUpdateOrder({ ...order, noInvoiceLinked: true, noInvoiceBlingOrderId: String(pendingBlingOrder.id||''), noInvoiceValue: pendingBlingOrder.valor, ...(blingDueDate ? { noInvoiceDueDate: blingDueDate, paymentDueDate: blingDueDate } : {}), statusHistory: [...(order.statusHistory||[]), { action: 'Pedido Bling vinculado (Sem NF)', details: `Pedido: ${pendingBlingOrder.numero} | Valor: ${pendingBlingOrder.valor}`, timestamp: new Date().toISOString() }] });
+                                    onUpdateOrder({ ...order, noInvoiceLinked: true, noInvoiceBlingOrderId: String(pendingBlingOrder.id||''), noInvoiceValue: pendingBlingOrder.valor, blingOrderNumero: pendingBlingOrder.numero, ...(blingDueDate ? { noInvoiceDueDate: blingDueDate, paymentDueDate: blingDueDate } : {}), statusHistory: [...(order.statusHistory||[]), { action: 'Pedido Bling vinculado (Sem NF)', details: `Pedido: ${pendingBlingOrder.numero} | Valor: ${pendingBlingOrder.valor}`, timestamp: new Date().toISOString() }] });
                                     setNoInvoiceValue(String(pendingBlingOrder.valor||''));
                                     if (blingDueDate) { setNoInvoiceDueDate(blingDueDate); setInvoicePaymentDueDate(blingDueDate); }
                                     setPendingBlingOrder(null); setBlingOrdersList([]);

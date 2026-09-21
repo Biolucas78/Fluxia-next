@@ -151,6 +151,7 @@ export interface Order {
   labelUrl?: string;
   trackingNumber?: string;
   blingOrderId?: number;
+  blingOrderNumero?: number;
   hasInvoice: boolean;
   invoiceLinked?: boolean;
   boletoLinked?: boolean;

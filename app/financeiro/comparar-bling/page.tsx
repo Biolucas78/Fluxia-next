@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { AlertTriangle, CheckCircle, XCircle, Search, Download, Link, RefreshCw, Plus } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Search, Download, Link, RefreshCw, Plus, Zap } from 'lucide-react';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
+
+type LinkType = 'invoiceLinked' | 'noInvoiceLinked' | 'none';
 
 interface BlingRow { numero: number; data: string; cliente: string; situacao: string; valor: number; }
 
@@ -21,6 +23,7 @@ interface CompareResult {
   blingNumero: number; blingCliente: string; blingSituacao: string;
   blingValor: number; blingData: string;
   status: 'OK' | 'AUSENTE_NO_FLUXIA' | 'DELETADO_NO_FLUXIA' | 'VALOR_DIVERGENTE';
+  fluxiaId: string | null; linkType: LinkType | null;
   fluxiaStatus: string | null; fluxiaValor: number | null; diferenca: number | null;
 }
 
@@ -79,6 +82,12 @@ function parseCSV(text: string): BlingRow[] {
   return rows;
 }
 
+function linkTypeBadge(lt: LinkType | null) {
+  if (lt === 'invoiceLinked') return <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">NF</span>;
+  if (lt === 'noInvoiceLinked') return <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">Pedido</span>;
+  return null;
+}
+
 function scoreBadge(score: number) {
   if (score >= 80) return <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 font-medium">{score}%</span>;
   if (score >= 50) return <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">{score}%</span>;
@@ -97,9 +106,11 @@ export default function CompararBlingPage() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'comparar' | 'sincronizar'>('comparar');
   const [filterProblemas, setFilterProblemas] = useState<'todos' | 'ausente' | 'divergente' | 'deletado'>('todos');
-  const [vinculados, setVinculados] = useState<Record<number, string>>({});   // blingNumero → status
+  const [vinculados, setVinculados] = useState<Record<number, string>>({});
   const [vinculandoId, setVinculandoId] = useState<number | null>(null);
-  const [buscaManual, setBuscaManual] = useState<Record<number, string>>({});  // blingNumero → texto busca
+  const [sincronizandoId, setSincronizandoId] = useState<string | null>(null);
+  const [sincronizados, setSincronizados] = useState<Record<string, number>>({});  // fluxiaId → novo valor
+  const [buscaManual, setBuscaManual] = useState<Record<number, string>>({});
   const [expandido, setExpandido] = useState<number | null>(null);
 
   function handleParse() {
@@ -107,6 +118,7 @@ export default function CompararBlingPage() {
     setParsed(rows);
     setResult(null);
     setVinculados({});
+    setSincronizados({});
     setError(rows.length === 0 ? 'Nenhum pedido encontrado. Verifique o formato.' : '');
   }
 
@@ -137,6 +149,20 @@ export default function CompararBlingPage() {
     finally { setPopulando(false); }
   }
 
+  async function sincronizarValor(fluxiaId: string, blingValor: number, blingNumero: number) {
+    setSincronizandoId(fluxiaId);
+    try {
+      const res = await fetch('/api/financeiro/sincronizar-valor', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fluxiaId, blingValor, blingNumero }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Erro');
+      setSincronizados(prev => ({ ...prev, [fluxiaId]: blingValor }));
+    } catch (e: any) { alert(`Erro ao sincronizar: ${e.message}`); }
+    finally { setSincronizandoId(null); }
+  }
+
   async function vincular(blingNumero: number, blingData: string, blingValor: number, blingCliente: string, blingSituacao: string, fluxiaId: string) {
     setVinculandoId(blingNumero);
     try {
@@ -153,9 +179,9 @@ export default function CompararBlingPage() {
 
   function downloadCSV() {
     if (!result) return;
-    const header = 'Nº Bling;Data;Cliente;Situação;Valor Bling;Status;Status Fluxia;Valor Fluxia;Diferença\n';
+    const header = 'Nº Bling;Data;Cliente;Situação;Valor Bling;Tipo Vínculo;Status;Status Fluxia;Valor Fluxia;Diferença\n';
     const rows = result.problemas.map(r =>
-      [r.blingNumero, r.blingData, r.blingCliente, r.blingSituacao, r.blingValor, r.status, r.fluxiaStatus ?? '', r.fluxiaValor ?? '', r.diferenca ?? ''].join(';')
+      [r.blingNumero, r.blingData, r.blingCliente, r.blingSituacao, r.blingValor, r.linkType ?? '', r.status, r.fluxiaStatus ?? '', r.fluxiaValor ?? '', r.diferenca ?? ''].join(';')
     );
     const blob = new Blob([header + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
@@ -172,10 +198,14 @@ export default function CompararBlingPage() {
     return true;
   }) ?? [];
 
-  // Ausentes ainda não vinculados nessa sessão
   const ausentesRestantes = useMemo(
     () => (result?.ausentes ?? []).filter(a => !vinculados[a.blingNumero]),
     [result, vinculados]
+  );
+
+  const divergentesRestantes = useMemo(
+    () => (result?.problemas ?? []).filter(r => r.status === 'VALOR_DIVERGENTE' && r.fluxiaId && !sincronizados[r.fluxiaId]),
+    [result, sincronizados]
   );
 
   return (
@@ -242,7 +272,6 @@ export default function CompararBlingPage() {
       {/* Resultado */}
       {result && (
         <>
-          {/* KPIs */}
           {result.summary.total_cancelados > 0 && (
             <p className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
               ⚠ {result.summary.total_cancelados} pedido(s) com status <strong>Cancelado</strong> ignorados —
@@ -254,8 +283,8 @@ export default function CompararBlingPage() {
             <KPI label="OK" value={result.summary.ok} color="emerald" />
             <KPI label="Divergentes" value={result.summary.com_valor_divergente} color="orange" />
             <KPI label="Ausentes" value={result.summary.ausentes_no_fluxia} color="red" />
-            <KPI label="Vinculados sessão" value={Object.keys(vinculados).length} color="purple" />
-            <KPI label="Restam" value={ausentesRestantes.length} color={ausentesRestantes.length === 0 ? 'emerald' : 'amber'} />
+            <KPI label="Vinculados" value={Object.keys(vinculados).length} color="purple" />
+            <KPI label="Sincronizados" value={Object.keys(sincronizados).length} color="emerald" />
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -279,7 +308,9 @@ export default function CompararBlingPage() {
                     ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
                     : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}>
-                {tab === 'comparar' ? `Comparação (${result.problemas.length} problemas)` : `Sincronizar (${ausentesRestantes.length} restantes)`}
+                {tab === 'comparar'
+                  ? `Comparação (${result.problemas.length} problemas)`
+                  : `Ausentes (${ausentesRestantes.length} restantes)`}
               </button>
             ))}
           </div>
@@ -301,40 +332,73 @@ export default function CompararBlingPage() {
                      `Deletados (${result.summary.deletados_no_fluxia})`}
                   </button>
                 ))}
-                <button onClick={downloadCSV} className="ml-auto flex items-center gap-1 px-3 py-1 rounded-full text-xs border border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-500">
+
+                {/* Botão sincronizar todos divergentes */}
+                {divergentesRestantes.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Sincronizar ${divergentesRestantes.length} pedidos divergentes com os valores do Bling?`)) return;
+                      for (const r of divergentesRestantes) {
+                        if (r.fluxiaId) await sincronizarValor(r.fluxiaId, r.blingValor, r.blingNumero);
+                      }
+                    }}
+                    className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-orange-600 text-white hover:bg-orange-700">
+                    <Zap size={11} /> Sincronizar todos ({divergentesRestantes.length})
+                  </button>
+                )}
+
+                <button onClick={downloadCSV} className={`${divergentesRestantes.length > 0 ? '' : 'ml-auto'} flex items-center gap-1 px-3 py-1 rounded-full text-xs border border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-500`}>
                   <Download size={11} /> CSV
                 </button>
               </div>
+
               <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 uppercase">
                     <tr>
-                      {['Nº', 'Data', 'Cliente', 'Situação', 'Valor Bling', 'Status', 'Status Fluxia', 'Valor Fluxia', 'Δ'].map(h =>
+                      {['Nº', 'Data', 'Cliente', 'Valor Bling', 'Vínculo', 'Status', 'Valor Fluxia', 'Δ', ''].map(h =>
                         <th key={h} className="px-3 py-2.5 text-left">{h}</th>)}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                     {filteredProblemas.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Nenhum resultado</td></tr>}
-                    {filteredProblemas.map((r, i) => (
-                      <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-3 py-2 font-mono font-medium text-gray-900 dark:text-white">{r.blingNumero}</td>
-                        <td className="px-3 py-2 text-gray-500">{r.blingData}</td>
-                        <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[160px] truncate">{r.blingCliente}</td>
-                        <td className="px-3 py-2 text-gray-400">{r.blingSituacao}</td>
-                        <td className="px-3 py-2 font-mono text-right text-gray-900 dark:text-white">{fmt(r.blingValor)}</td>
-                        <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
-                        <td className="px-3 py-2 text-gray-400">{r.fluxiaStatus ?? '—'}</td>
-                        <td className="px-3 py-2 font-mono text-right">{r.fluxiaValor != null ? fmt(r.fluxiaValor) : '—'}</td>
-                        <td className="px-3 py-2 font-mono text-right text-red-500">{r.diferenca != null ? fmt(r.diferenca) : '—'}</td>
-                      </tr>
-                    ))}
+                    {filteredProblemas.map((r, i) => {
+                      const jaSincronizado = r.fluxiaId ? sincronizados[r.fluxiaId] != null : false;
+                      return (
+                        <tr key={i} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${jaSincronizado ? 'opacity-50' : ''}`}>
+                          <td className="px-3 py-2 font-mono font-medium text-gray-900 dark:text-white">{r.blingNumero}</td>
+                          <td className="px-3 py-2 text-gray-500">{r.blingData}</td>
+                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[160px] truncate">{r.blingCliente}</td>
+                          <td className="px-3 py-2 font-mono text-right text-gray-900 dark:text-white">{fmt(r.blingValor)}</td>
+                          <td className="px-3 py-2">{linkTypeBadge(r.linkType)}</td>
+                          <td className="px-3 py-2"><StatusBadge status={jaSincronizado ? 'OK' : r.status} /></td>
+                          <td className="px-3 py-2 font-mono text-right">
+                            {jaSincronizado
+                              ? <span className="text-emerald-600 dark:text-emerald-400">{fmt(sincronizados[r.fluxiaId!])}</span>
+                              : (r.fluxiaValor != null ? fmt(r.fluxiaValor) : '—')}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-right text-red-500">{!jaSincronizado && r.diferenca != null ? fmt(r.diferenca) : '—'}</td>
+                          <td className="px-3 py-2">
+                            {r.status === 'VALOR_DIVERGENTE' && r.fluxiaId && !jaSincronizado && (
+                              <button
+                                onClick={() => sincronizarValor(r.fluxiaId!, r.blingValor, r.blingNumero)}
+                                disabled={sincronizandoId === r.fluxiaId}
+                                className="flex items-center gap-1 px-2 py-1 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-900/50 disabled:opacity-50 whitespace-nowrap">
+                                <Zap size={10} />
+                                {sincronizandoId === r.fluxiaId ? '...' : 'Sincronizar'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* ABA: SINCRONIZAR */}
+          {/* ABA: AUSENTES/VINCULAR */}
           {activeTab === 'sincronizar' && (
             <SincronizarTab
               ausentes={result.ausentes}
@@ -354,7 +418,7 @@ export default function CompararBlingPage() {
   );
 }
 
-// ─── Aba Sincronizar ──────────────────────────────────────────────────────────
+// ─── Aba Ausentes ─────────────────────────────────────────────────────────────
 
 interface SincronizarTabProps {
   ausentes: AusenteComCandidatos[];
@@ -380,7 +444,7 @@ function SincronizarTab({ ausentes, fluxiaSemVinculo, vinculados, vinculandoId, 
             {restantes.length} pedidos do Bling sem correspondente vinculado no Fluxia
           </p>
           <p className="text-xs text-gray-400 mt-0.5">
-            Candidatos calculados por similaridade de nome + valor. Clique em "Vincular" para confirmar o match.
+            Sugestões calculadas por nome + valor. Use a busca manual para encontrar outros candidatos.
           </p>
         </div>
         {concluidos.length > 0 && (
@@ -404,7 +468,6 @@ function SincronizarTab({ ausentes, fluxiaSemVinculo, vinculados, vinculandoId, 
 
           return (
             <div key={a.blingNumero} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-              {/* Cabeçalho do pedido Bling */}
               <div
                 onClick={() => setExpandido(isExpanded ? null : a.blingNumero)}
                 className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -424,10 +487,8 @@ function SincronizarTab({ ausentes, fluxiaSemVinculo, vinculados, vinculandoId, 
                 <span className="text-gray-400 text-xs">{isExpanded ? '▲' : '▼'}</span>
               </div>
 
-              {/* Painel expandido */}
               {isExpanded && (
                 <div className="px-4 py-3 space-y-3 border-t border-gray-200 dark:border-gray-700">
-                  {/* Busca manual */}
                   <div className="flex items-center gap-2">
                     <Search size={13} className="text-gray-400 shrink-0" />
                     <input
@@ -444,7 +505,6 @@ function SincronizarTab({ ausentes, fluxiaSemVinculo, vinculados, vinculandoId, 
                     )}
                   </div>
 
-                  {/* Lista de candidatos */}
                   {candidatosFiltrados.length === 0 ? (
                     <p className="text-xs text-gray-400 text-center py-3">
                       {busca ? 'Nenhum pedido encontrado com esse critério.' : 'Nenhuma sugestão automática. Use a busca acima.'}
@@ -478,7 +538,6 @@ function SincronizarTab({ ausentes, fluxiaSemVinculo, vinculados, vinculandoId, 
                     </div>
                   )}
 
-                  {/* Botão importar do Bling */}
                   <div className="pt-1 border-t border-gray-100 dark:border-gray-800 flex justify-end">
                     <a href={`/importar-bling?pedido=${a.blingNumero}`} target="_blank"
                       className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -499,7 +558,6 @@ function SincronizarTab({ ausentes, fluxiaSemVinculo, vinculados, vinculandoId, 
         )}
       </div>
 
-      {/* Pedidos vinculados nessa sessão */}
       {concluidos.length > 0 && (
         <details className="text-xs text-gray-400">
           <summary className="cursor-pointer hover:text-gray-600">▶ {concluidos.length} vinculados nesta sessão</summary>
