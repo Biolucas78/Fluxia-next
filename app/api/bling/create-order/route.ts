@@ -407,8 +407,28 @@ async function createClient(token: string, order: any) {
     if (response.status === 401) {
       throw new Error('Bling token expired (401). Please re-authenticate in Settings.');
     }
+    // CNPJ/CPF já cadastrado → buscar o contato existente pelo documento
+    const isCnpjDuplicate = response.status === 400 &&
+      errorData?.error?.fields?.some((f: any) => f.element === 'cnpj' || f.element === 'cpf');
+    if (isCnpjDuplicate) {
+      const documento = (order.cnpj || order.cpf || '').replace(/\D/g, '');
+      console.log(`[Bling API] CNPJ/CPF duplicado, buscando contato existente: ${documento}`);
+      const searchRes = await fetchWithRetry(
+        `https://api.bling.com.br/Api/v3/contatos?numeroDocumento=${documento}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        const existing = searchData?.data?.[0];
+        if (existing?.id) {
+          console.log(`[Bling API] Contato existente encontrado: id=${existing.id} nome=${existing.nome}`);
+          saveClientToCache(existing.id, existing.nome || order.clientName, documento);
+          return existing.id;
+        }
+      }
+    }
     console.error('Bling API error creating client:', response.status, JSON.stringify(errorData, null, 2));
-    throw new Error(`Failed to create client in Bling: ${response.status}`);
+    throw new Error(`Erro na API do Bling: ${response.status} ${JSON.stringify(errorData)}`);
   }
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
