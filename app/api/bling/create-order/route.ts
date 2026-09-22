@@ -31,9 +31,13 @@ export async function POST(request: Request) {
     let clientId = await findClient(token, order);
     if (!clientId) {
       console.log(`[Bling API] Client not found, creating: ${order.clientName}`);
-      // Increased delay before creating client
       await new Promise(resolve => setTimeout(resolve, 1000));
       clientId = await createClient(token, order);
+    }
+
+    const clientIdNum = Number(clientId);
+    if (!clientIdNum || isNaN(clientIdNum)) {
+      throw new Error(`Contato não encontrado ou inválido no Bling para o cliente "${order.clientName}". Verifique se o contato existe no Bling.`);
     }
 
     // Increased delay before next major operation
@@ -183,7 +187,7 @@ export async function POST(request: Request) {
     console.log(`[Bling API] Generated ${parcelas.length} installments:`, JSON.stringify(parcelas, null, 2));
 
     const orderPayload: any = {
-      contato: { id: Number(clientId) },
+      contato: { id: clientIdNum },
       itens: items,
       data: today,
       dataSaida: today,
@@ -283,8 +287,13 @@ async function findClient(token: string, order: any) {
       
       if (snapshot && !snapshot.empty) {
         const cachedClient = snapshot.docs[0].data();
-        console.log(`[Bling API] Client found in local cache (Admin): ${cachedClient.id}`);
-        return cachedClient.id;
+        const cachedId = Number(cachedClient.id);
+        if (cachedId && !isNaN(cachedId)) {
+          console.log(`[Bling API] Client found in local cache (Admin): ${cachedId}`);
+          return cachedId;
+        }
+        // Cache entry inválida — ignorar e buscar no Bling
+        console.log(`[Bling API] Cache entry sem id válido para ${order.clientName}, buscando no Bling`);
       }
     } catch (adminErr: any) {
       console.log(`[Bling API] Admin cache check info: ${adminErr.message}`);
