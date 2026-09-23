@@ -416,25 +416,54 @@ async function createClient(token: string, order: any) {
     if (response.status === 401) {
       throw new Error('Bling token expired (401). Please re-authenticate in Settings.');
     }
-    // CNPJ/CPF já cadastrado → buscar o contato existente pelo documento
-    const isCnpjDuplicate = response.status === 400 &&
-      errorData?.error?.fields?.some((f: any) => f.element === 'cnpj' || f.element === 'cpf');
+    // CNPJ/CPF já cadastrado → buscar o contato existente
+    const duplicateField = errorData?.error?.fields?.find((f: any) => f.element === 'cnpj' || f.element === 'cpf');
+    const isCnpjDuplicate = response.status === 400 && !!duplicateField;
     if (isCnpjDuplicate) {
       const documento = (order.cnpj || order.cpf || '').replace(/\D/g, '');
-      console.log(`[Bling API] CNPJ/CPF duplicado, buscando contato existente: ${documento}`);
-      const searchRes = await fetchWithRetry(
-        `https://api.bling.com.br/Api/v3/contatos?numeroDocumento=${documento}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (searchRes.ok) {
-        const searchData = await searchRes.json();
-        const existing = searchData?.data?.[0];
-        if (existing?.id) {
-          console.log(`[Bling API] Contato existente encontrado: id=${existing.id} nome=${existing.nome}`);
-          saveClientToCache(existing.id, existing.nome || order.clientName, documento);
-          return existing.id;
+
+      // Estratégia 1: buscar pelo CNPJ/CPF
+      if (documento) {
+        console.log(`[Bling API] CNPJ duplicado, buscando por documento: ${documento}`);
+        const r1 = await fetchWithRetry(
+          `https://api.bling.com.br/Api/v3/contatos?numeroDocumento=${documento}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (r1.ok) {
+          const d1 = await r1.json();
+          const existing = d1?.data?.[0];
+          if (existing?.id) {
+            console.log(`[Bling API] Contato encontrado por CNPJ: id=${existing.id}`);
+            saveClientToCache(existing.id, existing.nome || order.clientName, documento);
+            return existing.id;
+          }
         }
       }
+
+      // Estratégia 2: buscar pelo nome que está na mensagem de erro do Bling
+      // Ex: "O CNPJ já está cadastrado no contato NOME DA EMPRESA LTDA"
+      const errorMsg: string = duplicateField?.msg || '';
+      const nameFromError = errorMsg.match(/no contato (.+)$/i)?.[1]?.trim();
+      const searchName = nameFromError || order.clientName;
+      console.log(`[Bling API] Buscando contato por nome: "${searchName}"`);
+      await new Promise(r => setTimeout(r, 400));
+      const r2 = await fetchWithRetry(
+        `https://api.bling.com.br/Api/v3/contatos?nome=${encodeURIComponent(searchName)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (r2.ok) {
+        const d2 = await r2.json();
+        if (d2?.data?.length > 0) {
+          const existing = d2.data[0];
+          if (existing?.id) {
+            console.log(`[Bling API] Contato encontrado por nome: id=${existing.id} nome=${existing.nome}`);
+            saveClientToCache(existing.id, existing.nome || order.clientName, documento);
+            return existing.id;
+          }
+        }
+      }
+
+      throw new Error(`Contato com CNPJ duplicado não encontrado no Bling. Verifique se "${searchName}" existe e está ativo.`);
     }
     console.error('Bling API error creating client:', response.status, JSON.stringify(errorData, null, 2));
     throw new Error(`Erro na API do Bling: ${response.status} ${JSON.stringify(errorData)}`);
