@@ -339,19 +339,21 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         .map((b: any) => b.nossoNumero)
         .filter(Boolean);
 
-      // Download dos PDFs
+      // Download dos PDFs — escalonado para o navegador não bloquear múltiplos downloads simultâneos
       data.boletos.forEach((b: any, i: number) => {
         if (b.pdfBoleto) {
-          const link = document.createElement('a');
-          link.href = 'data:application/pdf;base64,' + b.pdfBoleto;
-          const nomeArquivo = order.clientName.replace(/[^a-zA-Z0-9]/g, '_')
-            + (order.invoiceNumber ? '_NF' + order.invoiceNumber : '')
-            + (data.boletos.length > 1 ? '_parcela' + (i + 1) : '')
-            + '.pdf';
-          link.download = nomeArquivo;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          setTimeout(() => {
+            const link = document.createElement('a');
+            link.href = 'data:application/pdf;base64,' + b.pdfBoleto;
+            const nomeArquivo = order.clientName.replace(/[^a-zA-Z0-9]/g, '_')
+              + (order.invoiceNumber ? '_NF' + order.invoiceNumber : '')
+              + (data.boletos.length > 1 ? '_parcela' + (i + 1) : '')
+              + '.pdf';
+            link.download = nomeArquivo;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }, i * 800);
         }
       });
 
