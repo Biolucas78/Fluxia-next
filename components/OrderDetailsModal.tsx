@@ -2006,7 +2006,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                     </button>
                                   )}
                                 </div>
-                                <input type="date" value={noInvoiceDueDate} onChange={(e) => { setNoInvoiceDueDate(e.target.value); onUpdateOrder({ ...order, noInvoiceDueDate: e.target.value }); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary" />
+                                <input type="date" value={noInvoiceDueDate} onChange={(e) => { setNoInvoiceDueDate(e.target.value); setInvoicePaymentDueDate(e.target.value); onUpdateOrder({ ...order, noInvoiceDueDate: e.target.value, paymentDueDate: e.target.value, statusHistory: [...(order.statusHistory||[]), { action: `Data de vencimento definida manualmente: ${e.target.value.split('-').reverse().join('/')}`, timestamp: new Date().toISOString() }] }); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-primary" />
                               </div>
                             </div>
                             {/* Botão Buscar Pedido no Bling */}
