@@ -10,7 +10,7 @@ import { Order } from '@/lib/types';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   DollarSign, Clock, AlertTriangle, CheckCircle2, FileText,
-  Loader2, X, Filter, Calendar, ChevronDown,
+  Loader2, X, Filter, Calendar, ChevronDown, CalendarOff, ArrowUpDown,
   MessageSquare, CreditCard, Search, SlidersHorizontal,
   Receipt, Landmark, Smartphone, ShoppingBag, Store, Warehouse, RefreshCw, ExternalLink
 } from 'lucide-react';
@@ -38,6 +38,7 @@ const DOC_FILTERS = [
 ];
 
 const PERIOD_PRESETS = [
+  { value: 'all',         label: 'Todo o período' },
   { value: 'today',       label: 'Hoje' },
   { value: 'week',        label: 'Esta semana' },
   { value: 'month',       label: 'Este mês' },
@@ -49,6 +50,22 @@ const PERIOD_PRESETS = [
 ];
 
 const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+// Base de data usada para filtrar/ordenar/agrupar cada aba
+type DateBasis = 'vencimento' | 'criacao' | 'recebimento';
+
+const DATE_BASIS_OPTIONS: { value: DateBasis; label: string }[] = [
+  { value: 'vencimento',  label: 'Vencimento' },
+  { value: 'criacao',     label: 'Criação' },
+  { value: 'recebimento', label: 'Recebimento' },
+];
+
+const DEFAULT_BASIS_BY_SECTION: Record<string, DateBasis> = {
+  receber: 'vencimento',
+  vencidos: 'vencimento',
+  recebidos: 'recebimento',
+  todos: 'criacao',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +119,45 @@ function getIssueDate(order: Order): string | undefined {
   return hist?.timestamp?.split('T')[0];
 }
 
+// Normaliza qualquer string de data (timestamp ISO ou 'YYYY-MM-DD') para só a parte 'YYYY-MM-DD'
+function toDateOnly(s?: string): string | undefined {
+  if (!s) return undefined;
+  return s.length >= 10 ? s.substring(0, 10) : s;
+}
+
+// Retorna a data do pedido conforme a base escolhida (vencimento / criação / recebimento)
+function getDateForBasis(order: Order, basis: DateBasis): string | undefined {
+  if (basis === 'vencimento') return getDueDate(order);
+  if (basis === 'recebimento') return (order as any).paymentDate || undefined;
+  return order.createdAt || (order as any).updatedAt || undefined;
+}
+
+interface DateGroup { dateKey: string; orders: Order[]; total: number }
+
+// Agrupa pedidos por dia (conforme a base de data escolhida), ordenando os grupos.
+// Pedidos sem a data escolhida ficam num grupo "__nodate__", sempre no final.
+function groupByDate(orders: Order[], basis: DateBasis, sortDir: 'asc' | 'desc'): DateGroup[] {
+  const groups = new Map<string, Order[]>();
+  for (const o of orders) {
+    const key = toDateOnly(getDateForBasis(o, basis)) || '__nodate__';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(o);
+  }
+  const dateKeys = [...groups.keys()].filter(k => k !== '__nodate__')
+    .sort((a, b) => sortDir === 'desc' ? b.localeCompare(a) : a.localeCompare(b));
+  const orderedKeys = groups.has('__nodate__') ? [...dateKeys, '__nodate__'] : dateKeys;
+  return orderedKeys.map(key => {
+    const orders = groups.get(key)!.sort((a, b) => a.clientName.localeCompare(b.clientName));
+    return { dateKey: key, orders, total: orders.reduce((s, o) => s + getOrderValue(o), 0) };
+  });
+}
+
+function formatGroupDateHeader(dateKey: string): string {
+  if (dateKey === '__nodate__') return 'Data não informada';
+  const d = new Date(dateKey + 'T12:00:00');
+  return `Dia ${String(d.getDate()).padStart(2, '0')} de ${MONTH_NAMES[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
 function isPaid(order: Order): boolean {
   if ((order as any).paymentConfirmedManually) return true;
   const boletoLinked = (order as any).boletoLinked as boolean | undefined;
@@ -146,7 +202,13 @@ function getPaymentMethodInfo(method?: string) {
   return PAYMENT_METHODS.find(m => m.value === method) || { label: method || '—', icon: '💰', color: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300' };
 }
 
-function getPeriodRange(preset: string, customFrom: string, customTo: string): { from: Date; to: Date } {
+// Quantas "semanas" (blocos de 7 dias) cabem num mês — usado no seletor de semana do mês
+function getWeeksInMonth(year: number, monthIdx0: number): number {
+  const lastDay = new Date(year, monthIdx0 + 1, 0).getDate();
+  return Math.ceil(lastDay / 7);
+}
+
+function getPeriodRange(preset: string, customFrom: string, customTo: string, weekOfMonth?: number | null): { from: Date; to: Date } {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Mês específico: formato 'mes_YYYY_MM'
@@ -154,6 +216,12 @@ function getPeriodRange(preset: string, customFrom: string, customTo: string): {
     const parts = preset.split('_');
     const year = parseInt(parts[1]);
     const month = parseInt(parts[2]) - 1; // 0-indexed
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    if (weekOfMonth) {
+      const startDay = (weekOfMonth - 1) * 7 + 1;
+      const endDay = Math.min(startDay + 6, lastDay);
+      return { from: new Date(year, month, startDay), to: new Date(year, month, endDay, 23, 59, 59) };
+    }
     return { from: new Date(year, month, 1), to: new Date(year, month + 1, 0, 23, 59, 59) };
   }
   switch (preset) {
@@ -475,16 +543,21 @@ export default function FinanceiroPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Aba principal
-  const [activeSection, setActiveSection] = useState<'receber' | 'recebidos' | 'vencidos' | 'todos'>('receber');
+  const [activeSection, setActiveSection] = useState<'receber' | 'recebidos' | 'vencidos' | 'todos' | 'sem_data'>('receber');
 
   // Filtros
   const [showFilters, setShowFilters] = useState(false);
   const [filterDoc, setFilterDoc] = useState('all');
   const [filterPayment, setFilterPayment] = useState('all');
-  const [filterPeriod, setFilterPeriod] = useState('month');
+  const [filterPeriod, setFilterPeriod] = useState('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [filterWeek, setFilterWeek] = useState<number | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  // Base de data usada em cada aba (vencimento/criação/recebimento) — lembrada por aba
+  const [dateBasisBySection, setDateBasisBySection] = useState<Record<string, DateBasis>>(DEFAULT_BASIS_BY_SECTION);
+  const activeBasis = dateBasisBySection[activeSection] ?? 'criacao';
 
   // Modal pagamento (ordem completa)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -524,14 +597,13 @@ export default function FinanceiroPage() {
     return order.paymentMethod === filterPayment;
   }
 
-  // ── Filtro de período (usa data de vencimento ou entrega) ────────────────────
-  function matchesPeriod(order: Order) {
-    // Sem filtro ativo = mostrar todos
-    if (filterPeriod === 'month' && !customFrom && !customTo) return true;
-    const dateStr = order.createdAt || (order as any).updatedAt || '';
-    if (!dateStr) return true;
-    const { from, to } = getPeriodRange(filterPeriod, customFrom, customTo);
-    const d = new Date(dateStr.length === 10 ? dateStr + 'T12:00:00' : dateStr);
+  // ── Filtro de período (usa a base de data escolhida para a aba: vencimento/criação/recebimento) ──
+  function matchesPeriod(order: Order, basis: DateBasis) {
+    if (filterPeriod === 'all') return true;
+    const dateStr = toDateOnly(getDateForBasis(order, basis));
+    if (!dateStr) return false; // sem a data escolhida não dá pra dizer se está no período
+    const { from, to } = getPeriodRange(filterPeriod, customFrom, customTo, filterWeek);
+    const d = new Date(dateStr + 'T12:00:00');
     return d >= from && d <= to;
   }
 
@@ -547,66 +619,75 @@ export default function FinanceiroPage() {
     );
   }, [todosOsPedidos]);
 
-  // A RECEBER: nao pago + vencimento >= hoje (ou sem vencimento)
-  // Cobre: boleto em aberto, PIX/deposito com data futura, pedidos sem data ainda
+  // A RECEBER: nao pago + vencimento >= hoje + vencimento definido (sem vencimento vai pra aba "Sem Vencimento")
+  // Cobre: boleto em aberto, PIX/deposito com data futura
   const toReceive = useMemo(() => {
+    const basis = dateBasisBySection.receber ?? 'vencimento';
     return pedidosElegiveis.filter(o =>
       !isPaid(o) &&
       !isOverdue(o) &&
+      !!getDueDate(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o) &&
-      matchesPeriod(o)
-    ).sort((a, b) => {
-      const da = getDueDate(a) || '9999';
-      const db = getDueDate(b) || '9999';
-      return da.localeCompare(db);
-    });
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
+      matchesPeriod(o, basis)
+    );
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.receber]);
 
   // VENCIDOS: nao pago + vencimento < hoje
   // Cobre: boleto vencido (Sicoob nao sincronizou) E PIX/deposito com data passada
   const overdue = useMemo(() => {
+    const basis = dateBasisBySection.vencidos ?? 'vencimento';
     return pedidosElegiveis.filter(o =>
       !isPaid(o) &&
       isOverdue(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o) &&
-      matchesPeriod(o)
-    ).sort((a, b) => (getDueDate(a) || '').localeCompare(getDueDate(b) || ''));
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
+      matchesPeriod(o, basis)
+    );
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.vencidos]);
 
   // RECEBIDOS: paymentStatus === 'pago'
   // Cobre: boleto confirmado pelo Sicoob E pagamento confirmado manualmente no modal
   const received = useMemo(() => {
+    const basis = dateBasisBySection.recebidos ?? 'recebimento';
     return pedidosElegiveis.filter(o =>
       isPaid(o) &&
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o) &&
-      matchesPeriod(o)
-    ).sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
+      matchesPeriod(o, basis)
+    );
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.recebidos]);
 
-  // TODOS: todos os pedidos elegíveis com filtros, ordenados por data de criação desc
+  // TODOS: todos os pedidos elegíveis com filtros
   const allFiltered = useMemo(() => {
+    const basis = dateBasisBySection.todos ?? 'criacao';
     return pedidosElegiveis.filter(o =>
       matchesSearch(o) &&
       matchesDoc(o) &&
       matchesPayment(o) &&
-      matchesPeriod(o)
-    ).sort((a, b) => {
-      const da = a.createdAt || (a as any).updatedAt || '';
-      const db = b.createdAt || (b as any).updatedAt || '';
-      return db.localeCompare(da);
-    });
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo]);
+      matchesPeriod(o, basis)
+    );
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.todos]);
+
+  // SEM VENCIMENTO: pedidos elegíveis sem data de vencimento e/ou sem data de emissão definida
+  // Não tem filtro de período (não há data pra filtrar) — serve como lista de correção.
+  const semVencimento = useMemo(() => {
+    return pedidosElegiveis.filter(o =>
+      (!getDueDate(o) || !getIssueDate(o)) &&
+      matchesSearch(o) &&
+      matchesDoc(o) &&
+      matchesPayment(o)
+    ).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment]);
 
   const totalToReceive = useMemo(() => toReceive.reduce((s, o) => s + getOrderValue(o), 0), [toReceive]);
   const totalOverdue = useMemo(() => overdue.reduce((s, o) => s + getOrderValue(o), 0), [overdue]);
   const totalReceived = useMemo(() => received.reduce((s, o) => s + getOrderValue(o), 0), [received]);
   const totalAll = useMemo(() => allFiltered.reduce((s, o) => s + getOrderValue(o), 0), [allFiltered]);
+  const totalSemVencimento = useMemo(() => semVencimento.reduce((s, o) => s + getOrderValue(o), 0), [semVencimento]);
 
   // ── Modal pagamento ──────────────────────────────────────────────────────────
 
@@ -684,17 +765,24 @@ export default function FinanceiroPage() {
   if (!userProfile) return <Login />;
 
   const sections = [
-    { id: 'receber',   label: 'A Receber', count: toReceive.length,   total: totalToReceive,  color: 'text-amber-600',   bg: 'bg-amber-600',   icon: Clock },
-    { id: 'recebidos', label: 'Recebidos', count: received.length,    total: totalReceived,   color: 'text-emerald-600', bg: 'bg-emerald-600', icon: CheckCircle2 },
-    { id: 'vencidos',  label: 'Vencidos',  count: overdue.length,     total: totalOverdue,    color: 'text-red-600',     bg: 'bg-red-600',    icon: AlertTriangle },
-    { id: 'todos',     label: 'Todos',     count: allFiltered.length, total: totalAll,        color: 'text-slate-600',   bg: 'bg-slate-600',  icon: DollarSign },
+    { id: 'receber',   label: 'A Receber',      count: toReceive.length,      total: totalToReceive,      color: 'text-amber-600',   bg: 'bg-amber-600',   icon: Clock },
+    { id: 'recebidos', label: 'Recebidos',      count: received.length,       total: totalReceived,       color: 'text-emerald-600', bg: 'bg-emerald-600', icon: CheckCircle2 },
+    { id: 'vencidos',  label: 'Vencidos',       count: overdue.length,        total: totalOverdue,        color: 'text-red-600',     bg: 'bg-red-600',    icon: AlertTriangle },
+    { id: 'todos',     label: 'Todos',          count: allFiltered.length,    total: totalAll,            color: 'text-slate-600',   bg: 'bg-slate-600',  icon: DollarSign },
+    { id: 'sem_data',  label: 'Sem Vencimento', count: semVencimento.length,  total: totalSemVencimento,  color: 'text-fuchsia-600', bg: 'bg-fuchsia-600', icon: CalendarOff },
   ];
 
   const activeList =
     activeSection === 'receber'   ? toReceive :
     activeSection === 'recebidos' ? received :
     activeSection === 'vencidos'  ? overdue :
+    activeSection === 'sem_data'  ? semVencimento :
     allFiltered;
+
+  const activeGroups = activeSection === 'sem_data' ? null : groupByDate(activeList, activeBasis, sortDir);
+  const currentWeeksInMonth = filterPeriod.startsWith('mes_')
+    ? getWeeksInMonth(parseInt(filterPeriod.split('_')[1]), parseInt(filterPeriod.split('_')[2]) - 1)
+    : 0;
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
@@ -714,7 +802,7 @@ export default function FinanceiroPage() {
           </p>
 
           {/* Cards de resumo */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {sections.map(sec => {
               const Icon = sec.icon;
               return (
@@ -732,6 +820,7 @@ export default function FinanceiroPage() {
                       sec.id === 'receber'   ? 'bg-amber-100 dark:bg-amber-900/30' :
                       sec.id === 'recebidos' ? 'bg-emerald-100 dark:bg-emerald-900/30' :
                       sec.id === 'vencidos'  ? 'bg-red-100 dark:bg-red-900/30' :
+                      sec.id === 'sem_data'  ? 'bg-fuchsia-100 dark:bg-fuchsia-900/30' :
                                               'bg-slate-100 dark:bg-slate-800'
                     }`}>
                       <Icon className={`size-4 ${sec.color}`} />
@@ -771,6 +860,15 @@ export default function FinanceiroPage() {
                   </button>
                 ))}
               </div>
+              {/* Ordenação */}
+              <button
+                onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                title={sortDir === 'desc' ? 'Mais recente primeiro' : 'Mais antiga primeiro'}
+                className="px-3 py-3 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-all border-l border-slate-100 dark:border-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <ArrowUpDown className="size-3.5" />
+                <span className="hidden sm:inline">{sortDir === 'desc' ? 'Recente' : 'Antiga'}</span>
+              </button>
               {/* Botão filtros */}
               <button
                 onClick={() => setShowFilters(f => !f)}
@@ -780,7 +878,7 @@ export default function FinanceiroPage() {
               >
                 <SlidersHorizontal className="size-3.5" />
                 Filtros
-                {(filterDoc !== 'all' || filterPayment !== 'all' || filterPeriod !== 'month' || filterPeriod.startsWith('mes_')) && (
+                {(filterDoc !== 'all' || filterPayment !== 'all' || filterPeriod !== 'all') && (
                   <span className="size-1.5 rounded-full bg-primary" />
                 )}
               </button>
@@ -798,6 +896,25 @@ export default function FinanceiroPage() {
                 >
                   <div className="p-4 space-y-3 bg-slate-50/50 dark:bg-slate-800/30">
 
+                    {/* Base de data (por aba) */}
+                    {activeSection !== 'sem_data' && (
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Filtrar/agrupar por</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {DATE_BASIS_OPTIONS.map(b => (
+                            <button key={b.value}
+                              onClick={() => setDateBasisBySection(prev => ({ ...prev, [activeSection]: b.value }))}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                activeBasis === b.value
+                                  ? 'bg-primary text-white'
+                                  : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:border-primary hover:text-primary'
+                              }`}
+                            >{b.label}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Período */}
                     <div>
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Período</p>
@@ -811,6 +928,7 @@ export default function FinanceiroPage() {
                                 } else {
                                   setFilterPeriod(p.value);
                                   setShowMonthPicker(false);
+                                  setFilterWeek(null);
                                 }
                               }}
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
@@ -834,7 +952,7 @@ export default function FinanceiroPage() {
                                         const val = `mes_${year}_${String(idx+1).padStart(2,'0')}`;
                                         return (
                                           <button key={val}
-                                            onClick={() => { setFilterPeriod(val); setShowMonthPicker(false); }}
+                                            onClick={() => { setFilterPeriod(val); setShowMonthPicker(false); setFilterWeek(null); }}
                                             className={`px-1.5 py-1 rounded-lg text-[10px] font-bold transition-all ${filterPeriod === val ? 'bg-primary text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
                                           >{name.slice(0,3)}</button>
                                         );
@@ -847,6 +965,19 @@ export default function FinanceiroPage() {
                           </div>
                         ))}
                       </div>
+                      {/* Semana do mês (só quando um mês específico está selecionado) */}
+                      {filterPeriod.startsWith('mes_') && currentWeeksInMonth > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <button onClick={() => setFilterWeek(null)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${!filterWeek ? 'bg-slate-700 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:border-primary hover:text-primary'}`}
+                          >Mês inteiro</button>
+                          {Array.from({ length: currentWeeksInMonth }, (_, i) => i + 1).map(w => (
+                            <button key={w} onClick={() => setFilterWeek(w)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${filterWeek === w ? 'bg-slate-700 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:border-primary hover:text-primary'}`}
+                            >Semana {w}</button>
+                          ))}
+                        </div>
+                      )}
                       {filterPeriod === 'custom' && (
                         <div className="flex gap-2 mt-2">
                           <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
@@ -891,9 +1022,9 @@ export default function FinanceiroPage() {
                     </div>
 
                     {/* Limpar filtros */}
-                    {(filterDoc !== 'all' || filterPayment !== 'all' || filterPeriod !== 'month') && (
+                    {(filterDoc !== 'all' || filterPayment !== 'all' || filterPeriod !== 'all') && (
                       <button
-                        onClick={() => { setFilterDoc('all'); setFilterPayment('all'); setFilterPeriod('month'); setCustomFrom(''); setCustomTo(''); setShowMonthPicker(false); }}
+                        onClick={() => { setFilterDoc('all'); setFilterPayment('all'); setFilterPeriod('all'); setCustomFrom(''); setCustomTo(''); setShowMonthPicker(false); setFilterWeek(null); }}
                         className="text-[10px] font-black text-red-500 hover:text-red-600 uppercase tracking-widest"
                       >
                         Limpar filtros
@@ -905,7 +1036,7 @@ export default function FinanceiroPage() {
             </AnimatePresence>
 
             {/* Lista de pedidos */}
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[55vh] overflow-y-auto custom-scrollbar">
+            <div className="max-h-[55vh] overflow-y-auto custom-scrollbar">
               {!isLoaded && (
                 <div className="py-12 text-center"><Loader2 className="size-8 animate-spin text-primary mx-auto" /></div>
               )}
@@ -915,30 +1046,74 @@ export default function FinanceiroPage() {
                   {activeSection === 'receber'   && <Clock className="size-10 mx-auto mb-3 opacity-30" />}
                   {activeSection === 'recebidos' && <CheckCircle2 className="size-10 mx-auto mb-3 text-emerald-400 opacity-60" />}
                   {activeSection === 'vencidos'  && <AlertTriangle className="size-10 mx-auto mb-3 opacity-30" />}
+                  {activeSection === 'sem_data'  && <CalendarOff className="size-10 mx-auto mb-3 text-fuchsia-400 opacity-60" />}
                   {activeSection === 'todos'     && <DollarSign className="size-10 mx-auto mb-3 opacity-30" />}
                   <p className="font-bold text-sm">
                     {activeSection === 'receber'   ? 'Nenhum recebimento pendente' :
                      activeSection === 'recebidos' ? 'Nenhum recebimento no período' :
                      activeSection === 'vencidos'  ? 'Nenhum pagamento vencido' :
+                     activeSection === 'sem_data'  ? 'Todos os pedidos têm data de emissão e vencimento' :
                                                      'Nenhum pedido no período'}
                   </p>
                   {searchQuery && <p className="text-xs">Tente limpar a busca</p>}
                 </div>
               )}
 
-              {isLoaded && activeList.map(order => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  showOverdue={activeSection === 'vencidos' || activeSection === 'receber' || activeSection === 'todos'}
-                  showReceiveBtn={activeSection === 'todos' ? !isPaid(order) : activeSection !== 'recebidos'}
-                  showStatusBadge={activeSection === 'todos'}
-                  onReceive={openReceive}
-                  onManualPayBoleto={(ord, idx, val, nf) => {
-                    setSelectedBoleto({ order: ord, boletIndex: idx, valor: val, seuNumero: nf });
-                    setBoletoPayForm({ method: 'pix', date: new Date().toISOString().split('T')[0] });
-                  }}
-                />
+              {/* Aba Sem Vencimento: lista simples, sem agrupamento por dia */}
+              {isLoaded && activeSection === 'sem_data' && (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {semVencimento.map(order => (
+                    <div key={order.id}>
+                      <div className="px-4 pt-2 flex gap-1.5">
+                        {!getDueDate(order) && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-300">Sem vencimento</span>
+                        )}
+                        {!getIssueDate(order) && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">Sem emissão</span>
+                        )}
+                      </div>
+                      <OrderCard
+                        order={order}
+                        showOverdue={false}
+                        showReceiveBtn={!isPaid(order)}
+                        showStatusBadge={true}
+                        onReceive={openReceive}
+                        onManualPayBoleto={(ord, idx, val, nf) => {
+                          setSelectedBoleto({ order: ord, boletIndex: idx, valor: val, seuNumero: nf });
+                          setBoletoPayForm({ method: 'pix', date: new Date().toISOString().split('T')[0] });
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Demais abas: agrupado por dia (conforme a base de data escolhida) */}
+              {isLoaded && activeSection !== 'sem_data' && activeGroups?.map(group => (
+                <div key={group.dateKey}>
+                  <div className="sticky top-0 z-10 px-4 py-2 bg-slate-100 dark:bg-slate-800/80 backdrop-blur border-y border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <p className="text-[10px] font-black text-slate-500 dark:text-slate-300 uppercase tracking-widest">
+                      {formatGroupDateHeader(group.dateKey)}
+                    </p>
+                    <p className="text-xs font-black text-slate-700 dark:text-slate-200">{formatCurrency(group.total)}</p>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {group.orders.map(order => (
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        showOverdue={activeSection === 'vencidos' || activeSection === 'receber' || activeSection === 'todos'}
+                        showReceiveBtn={activeSection === 'todos' ? !isPaid(order) : activeSection !== 'recebidos'}
+                        showStatusBadge={activeSection === 'todos'}
+                        onReceive={openReceive}
+                        onManualPayBoleto={(ord, idx, val, nf) => {
+                          setSelectedBoleto({ order: ord, boletIndex: idx, valor: val, seuNumero: nf });
+                          setBoletoPayForm({ method: 'pix', date: new Date().toISOString().split('T')[0] });
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
 
