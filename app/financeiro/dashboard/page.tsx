@@ -125,7 +125,7 @@ function isEligibleForFaturamento(o: any): boolean {
 function isEligibleForReceita(o: any): boolean {
   if (o.isSample) return false;
   if (o.isDeleted || o.deleted) return false;
-  return o.status === 'entregue';
+  return !!(o.paymentLinked || o.invoiceLinked || o.noInvoiceLinked || o.boletoLinked);
 }
 
 // Data de faturamento: emissão boleto/NF → statusHistory → createdAt (= mesmo que A Receber)

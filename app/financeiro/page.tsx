@@ -537,11 +537,11 @@ export default function FinanceiroPage() {
 
   // ── Listas calculadas ────────────────────────────────────────────────────────
 
-    // Pedidos elegiveis: entregues + nao excluidos (Amostras) + nao deletados
+  // Pedidos elegiveis: tem pagamento lancado (qualquer coluna) + nao excluidos (Amostras) + nao deletados
   // Inclui arquivados pois todosOsPedidos ja contem archivedOrders
   const pedidosElegiveis = useMemo(() => {
     return todosOsPedidos.filter(o =>
-      o.status === 'entregue' &&
+      (o.paymentLinked || o.invoiceLinked || (o as any).noInvoiceLinked || o.boletoLinked) &&
       !isExcluded(o) &&
       !(o as any).deleted
     );
