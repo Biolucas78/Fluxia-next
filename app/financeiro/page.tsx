@@ -112,11 +112,9 @@ function getDueDate(order: Order): string | undefined {
   return base.toISOString().split('T')[0];
 }
 
+// Data de emissão = data de entrada do pedido no Fluxia.
 function getIssueDate(order: Order): string | undefined {
-  const boletos = order.boletos as any[] | undefined;
-  if (boletos && boletos.length > 0 && boletos[0].dataEmissao) return boletos[0].dataEmissao;
-  const hist = order.statusHistory?.find((h: any) => h.status === 'entregue' || h.action?.includes('faturad'));
-  return hist?.timestamp?.split('T')[0];
+  return toDateOnly(order.createdAt || (order as any).updatedAt || undefined);
 }
 
 // Normaliza qualquer string de data (timestamp ISO ou 'YYYY-MM-DD') para só a parte 'YYYY-MM-DD'
