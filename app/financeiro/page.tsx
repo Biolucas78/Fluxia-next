@@ -130,6 +130,86 @@ function getDateForBasis(order: Order, basis: DateBasis): string | undefined {
   return order.createdAt || (order as any).updatedAt || undefined;
 }
 
+// Um "item recebível": pedido não parcelado = o pedido inteiro; pedido parcelado = CADA parcela
+// vira um item próprio, com seu próprio vencimento/valor/situação — para não jogar o valor
+// total do pedido inteiro numa única data (a da última parcela).
+interface ReceivableItem {
+  order: Order;
+  parcelaIndex: number | null; // null = pedido não parcelado (o pedido inteiro é o item)
+  valor: number;
+  dueDate?: string;
+  paymentDate?: string;
+  paid: boolean;
+  overdueFlag: boolean;
+  seuNumero?: string;
+  nossoNumero?: string;
+  paidManually?: boolean;
+}
+
+function getReceivableItems(order: Order): ReceivableItem[] {
+  const boletos = (order.boletos as any[]) || [];
+  if (boletos.length > 1) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return boletos.map((b, i) => {
+      const sit = (b.situacao || '').toLowerCase();
+      const paid = sit === 'liquidado' || sit === 'pago';
+      const due = b.dataVencimento as string | undefined;
+      const overdueFlag = !paid && !!due && new Date(due + 'T12:00:00') < today;
+      return {
+        order,
+        parcelaIndex: i,
+        valor: b.valor || 0,
+        dueDate: due,
+        paymentDate: b.dataPagamento || b.paymentDate || undefined,
+        paid,
+        overdueFlag,
+        seuNumero: b.seuNumero,
+        nossoNumero: b.nossoNumero,
+        paidManually: !!b.paidManually,
+      };
+    });
+  }
+  return [{
+    order,
+    parcelaIndex: null,
+    valor: getOrderValue(order),
+    dueDate: getDueDate(order),
+    paymentDate: order.paymentDate,
+    paid: isPaid(order),
+    overdueFlag: isOverdue(order),
+    seuNumero: boletos[0]?.seuNumero,
+    nossoNumero: boletos[0]?.nossoNumero ?? (order as any).boletoNossoNumero,
+    paidManually: !!(boletos[0]?.paidManually ?? (order as any).paymentConfirmedManually),
+  }];
+}
+
+// Data do item conforme a base escolhida (vencimento/criação/recebimento).
+// Criação é sempre a do pedido inteiro (não existe "data de criação da parcela").
+function getItemDate(item: ReceivableItem, basis: DateBasis): string | undefined {
+  if (basis === 'vencimento') return item.dueDate;
+  if (basis === 'recebimento') return item.paymentDate;
+  return item.order.createdAt || (item.order as any).updatedAt || undefined;
+}
+
+interface ItemGroup { dateKey: string; items: ReceivableItem[]; total: number }
+
+function groupItemsByDate(items: ReceivableItem[], basis: DateBasis, sortDir: 'asc' | 'desc'): ItemGroup[] {
+  const groups = new Map<string, ReceivableItem[]>();
+  for (const it of items) {
+    const key = toDateOnly(getItemDate(it, basis)) || '__nodate__';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(it);
+  }
+  const dateKeys = [...groups.keys()].filter(k => k !== '__nodate__')
+    .sort((a, b) => sortDir === 'desc' ? b.localeCompare(a) : a.localeCompare(b));
+  const orderedKeys = groups.has('__nodate__') ? [...dateKeys, '__nodate__'] : dateKeys;
+  return orderedKeys.map(key => {
+    const its = groups.get(key)!.sort((a, b) => a.order.clientName.localeCompare(b.order.clientName));
+    return { dateKey: key, items: its, total: its.reduce((s, i) => s + i.valor, 0) };
+  });
+}
+
 interface DateGroup { dateKey: string; orders: Order[]; total: number }
 
 // Agrupa pedidos por dia (conforme a base de data escolhida), ordenando os grupos.
@@ -307,6 +387,34 @@ function SyncBoletoButton({ order }: { order: Order }) {
   );
 }
 
+function BoletoSyncButton({ orderId, nossoNumero }: { orderId: string; nossoNumero: string }) {
+  const [syncing, setSyncing] = React.useState(false);
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/sicoob/atualizar-boleto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, nossoNumero }),
+      });
+      const data = await res.json();
+      if (data.ok) toast.success(data.message || 'Boleto atualizado!');
+      else toast.error('Erro: ' + (data.error || 'Falha ao sincronizar'));
+    } catch (e: any) {
+      toast.error('Erro ao sincronizar boleto: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+  return (
+    <button onClick={handleSync} disabled={syncing}
+      className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all disabled:opacity-50"
+      title="Sincronizar boleto com Sicoob">
+      {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+    </button>
+  );
+}
+
 interface OrderCardProps {
   order: Order;
   showOverdue?: boolean;
@@ -314,14 +422,20 @@ interface OrderCardProps {
   showStatusBadge?: boolean;
   onReceive?: (order: Order) => void;
   onManualPayBoleto?: (order: Order, boletIndex: number, valor: number, seuNumero: string) => void;
+  // Quando presente, o card exibe os dados de UMA parcela específica (não o pedido inteiro)
+  itemOverride?: ReceivableItem;
 }
 
-function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onReceive, onManualPayBoleto }: OrderCardProps) {
-  const due = getDueDate(order);
+function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onReceive, onManualPayBoleto, itemOverride }: OrderCardProps) {
+  const isItemView = !!itemOverride;
+  const due = isItemView ? itemOverride!.dueDate : getDueDate(order);
   const issue = getIssueDate(order);
-  const overdueFlag = isOverdue(order);
-  const value = getOrderValue(order);
-  const boletos = order.boletos as any[] | undefined;
+  const overdueFlag = isItemView ? itemOverride!.overdueFlag : isOverdue(order);
+  const value = isItemView ? itemOverride!.valor : getOrderValue(order);
+  const paidFlag = isItemView ? itemOverride!.paid : isPaid(order);
+  const paymentDateValue = isItemView ? itemOverride!.paymentDate : order.paymentDate;
+  // Em visão de parcela única, não repete a lista de todas as parcelas dentro do card
+  const boletos = isItemView ? undefined : (order.boletos as any[] | undefined);
   const { userProfile } = useUser();
   const router = useRouter();
   const daysOverdue = (overdueFlag && due)
@@ -358,6 +472,11 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
             >
               <ExternalLink className="size-3" />
             </button>
+            {itemOverride?.parcelaIndex != null && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                Parc. {itemOverride.parcelaIndex + 1}
+              </span>
+            )}
             {overdueFlag && showOverdue && (
               <span className="text-[9px] font-black bg-red-600 text-white px-2 py-0.5 rounded-full uppercase">
                 {daysOverdue}d atraso
@@ -374,13 +493,13 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
             <DocBadge order={order} />
             {showStatusBadge && (
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black ${
-                isPaid(order)
+                paidFlag
                   ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                  : isOverdue(order)
+                  : overdueFlag
                     ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
                     : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
               }`}>
-                {isPaid(order) ? 'Recebido' : isOverdue(order) ? 'Vencido' : 'A Receber'}
+                {paidFlag ? 'Recebido' : overdueFlag ? 'Vencido' : 'A Receber'}
               </span>
             )}
           </div>
@@ -396,9 +515,9 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
             {boletos && boletos.length > 1 && (
               <span className="text-blue-500">{boletos.length}x parcelas</span>
             )}
-            {isPaid(order) && order.paymentDate && !(boletos && boletos.length > 1) && (
+            {paidFlag && paymentDateValue && !(boletos && boletos.length > 1) && (
               <span className="text-emerald-600 font-semibold">
-                Pago em: {order.paymentDate.substring(0, 10).split('-').reverse().join('/')}
+                Pago em: {paymentDateValue.substring(0, 10).split('-').reverse().join('/')}
               </span>
             )}
           </div>
@@ -496,7 +615,7 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
               {formatCurrency(value)}
             </p>
           )}
-          {(showReceiveBtn || waPersonal || ((order as any).boletoLinked && (order as any).boletoNossoNumero && !(boletos && boletos.length > 1))) && (
+          {(showReceiveBtn || waPersonal || (isItemView ? (itemOverride!.nossoNumero || itemOverride!.paidManually) : ((order as any).boletoLinked && (order as any).boletoNossoNumero && !(boletos && boletos.length > 1)))) && (
             <div className="flex gap-1.5 items-center flex-wrap justify-end">
               {waPersonal && (
                 <a href={waPersonal} target="_blank" rel="noopener noreferrer"
@@ -512,16 +631,58 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
                   <MessageSquare className="size-3.5" />
                 </a>
               )}
-              {(order as any).boletoLinked && (order as any).boletoNossoNumero && !(boletos && boletos.length > 1) && (
-                <SyncBoletoButton order={order} />
-              )}
-              {showReceiveBtn && onReceive && (
-                <button
-                  onClick={() => onReceive(order)}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-black hover:bg-primary/90 transition-all"
-                >
-                  Receber
-                </button>
+              {isItemView ? (
+                <>
+                  {itemOverride!.nossoNumero && (
+                    <BoletoSyncButton orderId={order.id} nossoNumero={itemOverride!.nossoNumero} />
+                  )}
+                  {paidFlag && itemOverride!.paidManually && itemOverride!.parcelaIndex != null && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/orders/update-boleto-manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: order.id, boletIndex: itemOverride!.parcelaIndex, paidManually: false, userName: userProfile?.email, userId: userProfile?.uid }) });
+                          const data = await res.json();
+                          if (data.ok) toast.success(data.message || 'Baixa desfeita.');
+                          else toast.error('Erro: ' + (data.error || 'Falha'));
+                        } catch (err: any) { toast.error('Erro: ' + err.message); }
+                      }}
+                      className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all"
+                      title="Desfazer baixa manual"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                  {showReceiveBtn && !paidFlag && itemOverride!.parcelaIndex != null && onManualPayBoleto && (
+                    <button
+                      onClick={() => onManualPayBoleto(order, itemOverride!.parcelaIndex!, itemOverride!.valor, itemOverride!.seuNumero || '')}
+                      className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-black hover:bg-primary/90 transition-all"
+                    >
+                      Receber
+                    </button>
+                  )}
+                  {showReceiveBtn && !paidFlag && itemOverride!.parcelaIndex == null && onReceive && (
+                    <button
+                      onClick={() => onReceive(order)}
+                      className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-black hover:bg-primary/90 transition-all"
+                    >
+                      Receber
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  {(order as any).boletoLinked && (order as any).boletoNossoNumero && !(boletos && boletos.length > 1) && (
+                    <SyncBoletoButton order={order} />
+                  )}
+                  {showReceiveBtn && onReceive && (
+                    <button
+                      onClick={() => onReceive(order)}
+                      className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-black hover:bg-primary/90 transition-all"
+                    >
+                      Receber
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -617,49 +778,60 @@ export default function FinanceiroPage() {
     );
   }, [todosOsPedidos]);
 
+  // Itens recebíveis: pedido não parcelado = 1 item (o pedido), pedido parcelado = 1 item POR PARCELA.
+  // É isso que faz o vencimento/soma do período respeitar cada parcela e não o valor total do pedido.
+  const allReceivableItems = useMemo(() => pedidosElegiveis.flatMap(getReceivableItems), [pedidosElegiveis]);
+
+  function matchesPeriodItem(item: ReceivableItem, basis: DateBasis) {
+    if (filterPeriod === 'all') return true;
+    const dateStr = toDateOnly(getItemDate(item, basis));
+    if (!dateStr) return false;
+    const { from, to } = getPeriodRange(filterPeriod, customFrom, customTo, filterWeek);
+    const d = new Date(dateStr + 'T12:00:00');
+    return d >= from && d <= to;
+  }
+
   // A RECEBER: nao pago + vencimento >= hoje + vencimento definido (sem vencimento vai pra aba "Sem Vencimento")
-  // Cobre: boleto em aberto, PIX/deposito com data futura
+  // Cobre: boleto em aberto (cada parcela separada), PIX/deposito com data futura
   const toReceive = useMemo(() => {
     const basis = dateBasisBySection.receber ?? 'vencimento';
-    return pedidosElegiveis.filter(o =>
-      !isPaid(o) &&
-      !isOverdue(o) &&
-      !!getDueDate(o) &&
-      matchesSearch(o) &&
-      matchesDoc(o) &&
-      matchesPayment(o) &&
-      matchesPeriod(o, basis)
+    return allReceivableItems.filter(it =>
+      !it.paid &&
+      !it.overdueFlag &&
+      !!it.dueDate &&
+      matchesSearch(it.order) &&
+      matchesDoc(it.order) &&
+      matchesPayment(it.order) &&
+      matchesPeriodItem(it, basis)
     );
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.receber]);
+  }, [allReceivableItems, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.receber]);
 
-  // VENCIDOS: nao pago + vencimento < hoje
-  // Cobre: boleto vencido (Sicoob nao sincronizou) E PIX/deposito com data passada
+  // VENCIDOS: nao pago + vencimento < hoje (cada parcela separada)
   const overdue = useMemo(() => {
     const basis = dateBasisBySection.vencidos ?? 'vencimento';
-    return pedidosElegiveis.filter(o =>
-      !isPaid(o) &&
-      isOverdue(o) &&
-      matchesSearch(o) &&
-      matchesDoc(o) &&
-      matchesPayment(o) &&
-      matchesPeriod(o, basis)
+    return allReceivableItems.filter(it =>
+      !it.paid &&
+      it.overdueFlag &&
+      matchesSearch(it.order) &&
+      matchesDoc(it.order) &&
+      matchesPayment(it.order) &&
+      matchesPeriodItem(it, basis)
     );
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.vencidos]);
+  }, [allReceivableItems, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.vencidos]);
 
-  // RECEBIDOS: paymentStatus === 'pago'
-  // Cobre: boleto confirmado pelo Sicoob E pagamento confirmado manualmente no modal
+  // RECEBIDOS: pago (cada parcela separada, com sua própria data/valor de recebimento)
   const received = useMemo(() => {
     const basis = dateBasisBySection.recebidos ?? 'recebimento';
-    return pedidosElegiveis.filter(o =>
-      isPaid(o) &&
-      matchesSearch(o) &&
-      matchesDoc(o) &&
-      matchesPayment(o) &&
-      matchesPeriod(o, basis)
+    return allReceivableItems.filter(it =>
+      it.paid &&
+      matchesSearch(it.order) &&
+      matchesDoc(it.order) &&
+      matchesPayment(it.order) &&
+      matchesPeriodItem(it, basis)
     );
-  }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.recebidos]);
+  }, [allReceivableItems, searchQuery, filterDoc, filterPayment, filterPeriod, customFrom, customTo, filterWeek, dateBasisBySection.recebidos]);
 
-  // TODOS: todos os pedidos elegíveis com filtros
+  // TODOS: todos os pedidos elegíveis com filtros (visão por pedido, não por parcela)
   const allFiltered = useMemo(() => {
     const basis = dateBasisBySection.todos ?? 'criacao';
     return pedidosElegiveis.filter(o =>
@@ -681,9 +853,9 @@ export default function FinanceiroPage() {
     ).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   }, [pedidosElegiveis, searchQuery, filterDoc, filterPayment]);
 
-  const totalToReceive = useMemo(() => toReceive.reduce((s, o) => s + getOrderValue(o), 0), [toReceive]);
-  const totalOverdue = useMemo(() => overdue.reduce((s, o) => s + getOrderValue(o), 0), [overdue]);
-  const totalReceived = useMemo(() => received.reduce((s, o) => s + getOrderValue(o), 0), [received]);
+  const totalToReceive = useMemo(() => toReceive.reduce((s, i) => s + i.valor, 0), [toReceive]);
+  const totalOverdue = useMemo(() => overdue.reduce((s, i) => s + i.valor, 0), [overdue]);
+  const totalReceived = useMemo(() => received.reduce((s, i) => s + i.valor, 0), [received]);
   const totalAll = useMemo(() => allFiltered.reduce((s, o) => s + getOrderValue(o), 0), [allFiltered]);
   const totalSemVencimento = useMemo(() => semVencimento.reduce((s, o) => s + getOrderValue(o), 0), [semVencimento]);
 
@@ -770,14 +942,28 @@ export default function FinanceiroPage() {
     { id: 'sem_data',  label: 'Sem Vencimento', count: semVencimento.length,  total: totalSemVencimento,  color: 'text-fuchsia-600', bg: 'bg-fuchsia-600', icon: CalendarOff },
   ];
 
-  const activeList =
-    activeSection === 'receber'   ? toReceive :
-    activeSection === 'recebidos' ? received :
-    activeSection === 'vencidos'  ? overdue :
-    activeSection === 'sem_data'  ? semVencimento :
-    allFiltered;
+  // A Receber/Vencidos/Recebidos operam por PARCELA (ReceivableItem); Todos/Sem Vencimento operam por PEDIDO.
+  const isItemBasedSection = activeSection === 'receber' || activeSection === 'vencidos' || activeSection === 'recebidos';
 
-  const activeGroups = activeSection === 'sem_data' ? null : groupByDate(activeList, activeBasis, sortDir);
+  const activeItems: ReceivableItem[] =
+    activeSection === 'receber'   ? toReceive :
+    activeSection === 'vencidos'  ? overdue :
+    activeSection === 'recebidos' ? received :
+    [];
+
+  const activeOrders: Order[] =
+    activeSection === 'todos'    ? allFiltered :
+    activeSection === 'sem_data' ? semVencimento :
+    [];
+
+  const activeCount = isItemBasedSection ? activeItems.length : activeOrders.length;
+  const activeTotal = isItemBasedSection
+    ? activeItems.reduce((s, i) => s + i.valor, 0)
+    : activeOrders.reduce((s, o) => s + getOrderValue(o), 0);
+
+  const itemGroups = isItemBasedSection ? groupItemsByDate(activeItems, activeBasis, sortDir) : null;
+  const orderGroups = activeSection === 'todos' ? groupByDate(activeOrders, activeBasis, sortDir) : null;
+
   const currentWeeksInMonth = filterPeriod.startsWith('mes_')
     ? getWeeksInMonth(parseInt(filterPeriod.split('_')[1]), parseInt(filterPeriod.split('_')[2]) - 1)
     : 0;
@@ -1039,7 +1225,7 @@ export default function FinanceiroPage() {
                 <div className="py-12 text-center"><Loader2 className="size-8 animate-spin text-primary mx-auto" /></div>
               )}
 
-              {isLoaded && activeList.length === 0 && (
+              {isLoaded && activeCount === 0 && (
                 <div className="py-12 text-center text-slate-400 space-y-2">
                   {activeSection === 'receber'   && <Clock className="size-10 mx-auto mb-3 opacity-30" />}
                   {activeSection === 'recebidos' && <CheckCircle2 className="size-10 mx-auto mb-3 text-emerald-400 opacity-60" />}
@@ -1057,7 +1243,7 @@ export default function FinanceiroPage() {
                 </div>
               )}
 
-              {/* Aba Sem Vencimento: lista simples, sem agrupamento por dia */}
+              {/* Aba Sem Vencimento: lista simples por pedido, sem agrupamento por dia */}
               {isLoaded && activeSection === 'sem_data' && (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {semVencimento.map(order => (
@@ -1086,8 +1272,8 @@ export default function FinanceiroPage() {
                 </div>
               )}
 
-              {/* Demais abas: agrupado por dia (conforme a base de data escolhida) */}
-              {isLoaded && activeSection !== 'sem_data' && activeGroups?.map(group => (
+              {/* Todos: agrupado por dia, por PEDIDO (visão geral, não quebra em parcelas) */}
+              {isLoaded && activeSection === 'todos' && orderGroups?.map(group => (
                 <div key={group.dateKey}>
                   <div className="sticky top-0 z-10 px-4 py-2 bg-slate-100 dark:bg-slate-800/80 backdrop-blur border-y border-slate-200 dark:border-slate-700 flex items-center justify-between">
                     <p className="text-[10px] font-black text-slate-500 dark:text-slate-300 uppercase tracking-widest">
@@ -1100,9 +1286,38 @@ export default function FinanceiroPage() {
                       <OrderCard
                         key={order.id}
                         order={order}
-                        showOverdue={activeSection === 'vencidos' || activeSection === 'receber' || activeSection === 'todos'}
-                        showReceiveBtn={activeSection === 'todos' ? !isPaid(order) : activeSection !== 'recebidos'}
-                        showStatusBadge={activeSection === 'todos'}
+                        showOverdue={true}
+                        showReceiveBtn={!isPaid(order)}
+                        showStatusBadge={true}
+                        onReceive={openReceive}
+                        onManualPayBoleto={(ord, idx, val, nf) => {
+                          setSelectedBoleto({ order: ord, boletIndex: idx, valor: val, seuNumero: nf });
+                          setBoletoPayForm({ method: 'pix', date: new Date().toISOString().split('T')[0] });
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* A Receber / Vencidos / Recebidos: agrupado por dia, por PARCELA — cada uma com seu próprio valor */}
+              {isLoaded && isItemBasedSection && itemGroups?.map(group => (
+                <div key={group.dateKey}>
+                  <div className="sticky top-0 z-10 px-4 py-2 bg-slate-100 dark:bg-slate-800/80 backdrop-blur border-y border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <p className="text-[10px] font-black text-slate-500 dark:text-slate-300 uppercase tracking-widest">
+                      {formatGroupDateHeader(group.dateKey)}
+                    </p>
+                    <p className="text-xs font-black text-slate-700 dark:text-slate-200">{formatCurrency(group.total)}</p>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {group.items.map(item => (
+                      <OrderCard
+                        key={item.order.id + (item.parcelaIndex != null ? `-${item.parcelaIndex}` : '')}
+                        order={item.order}
+                        itemOverride={item}
+                        showOverdue={activeSection === 'vencidos' || activeSection === 'receber'}
+                        showReceiveBtn={activeSection !== 'recebidos'}
+                        showStatusBadge={false}
                         onReceive={openReceive}
                         onManualPayBoleto={(ord, idx, val, nf) => {
                           setSelectedBoleto({ order: ord, boletIndex: idx, valor: val, seuNumero: nf });
@@ -1116,13 +1331,13 @@ export default function FinanceiroPage() {
             </div>
 
             {/* Rodapé com total filtrado */}
-            {isLoaded && activeList.length > 0 && (
+            {isLoaded && activeCount > 0 && (
               <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {activeList.length} pedido{activeList.length !== 1 ? 's' : ''}
+                  {activeCount} {isItemBasedSection ? 'lançamento' : 'pedido'}{activeCount !== 1 ? 's' : ''}
                 </p>
                 <p className="text-sm font-black text-slate-900 dark:text-white">
-                  {formatCurrency(activeList.reduce((s, o) => s + getOrderValue(o), 0))}
+                  {formatCurrency(activeTotal)}
                 </p>
               </div>
             )}
