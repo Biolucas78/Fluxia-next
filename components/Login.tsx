@@ -1,20 +1,42 @@
 'use client';
 
-import React, { useState } from 'react';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import React, { useState, useEffect } from 'react';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+
+// Navegadores mobile e webviews embutidos (Instagram, Facebook, etc.) costumam bloquear ou
+// falhar silenciosamente com signInWithPopup — usamos redirecionamento nesses casos.
+function shouldUseRedirect() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /Android|iPhone|iPad|iPod|FBAN|FBAV|Instagram|Line\//i.test(ua);
+}
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    // Se o login anterior foi por redirecionamento (mobile), captura o resultado/erro aqui.
+    getRedirectResult(auth).catch((error: any) => {
+      console.error('Erro ao concluir login (redirect):', error);
+      toast.error('Erro ao fazer login: ' + (error.message || 'tente novamente'));
+    });
+  }, []);
+
   const handleLogin = async () => {
     setLoading(true);
+    const provider = new GoogleAuthProvider();
     try {
-      const provider = new GoogleAuthProvider();
+      if (shouldUseRedirect()) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error logging in:', error);
+      toast.error('Erro ao fazer login: ' + (error.message || 'tente novamente'));
     } finally {
       setLoading(false);
     }
