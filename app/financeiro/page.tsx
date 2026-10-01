@@ -449,6 +449,44 @@ function BoletoSyncButton({ orderId, nossoNumero }: { orderId: string; nossoNume
   );
 }
 
+// Campo rápido pra definir o vencimento direto na aba "Sem Vencimento", sem precisar
+// abrir o pedido no Kanban. Se o pedido já tem data de pagamento, pré-preenche com ela
+// (comum: pedido já foi recebido mas nunca teve o vencimento formal registrado).
+function DueDateQuickFix({ order, onSave }: { order: Order; onSave: (date: string) => Promise<void> }) {
+  const [value, setValue] = useState(() => (order.paymentDate ? order.paymentDate.substring(0, 10) : ''));
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <div className="flex items-center gap-2 px-4 pb-2 flex-wrap">
+      <label className="text-[9px] font-black text-fuchsia-600 dark:text-fuchsia-400 uppercase tracking-widest shrink-0">
+        Definir vencimento:
+      </label>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs outline-none focus:border-primary"
+      />
+      <button
+        onClick={async () => {
+          if (!value) return;
+          setSaving(true);
+          try {
+            await onSave(value);
+          } finally {
+            setSaving(false);
+          }
+        }}
+        disabled={!value || saving}
+        className="px-3 py-1 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
+      >
+        {saving ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
+        Confirmar
+      </button>
+    </div>
+  );
+}
+
 interface OrderCardProps {
   order: Order;
   showOverdue?: boolean;
@@ -1290,6 +1328,23 @@ export default function FinanceiroPage() {
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">Sem emissão</span>
                         )}
                       </div>
+                      {!getDueDate(order) && (
+                        <DueDateQuickFix
+                          order={order}
+                          onSave={async (date) => {
+                            await handleUpdateOrder({
+                              ...order,
+                              paymentDueDate: date,
+                              noInvoiceDueDate: date,
+                              statusHistory: [
+                                ...(order.statusHistory || []),
+                                { action: `Data de vencimento definida pelo Financeiro: ${date.split('-').reverse().join('/')}`, timestamp: new Date().toISOString() },
+                              ],
+                            } as any);
+                            toast.success('Vencimento definido!');
+                          }}
+                        />
+                      )}
                       <OrderCard
                         order={order}
                         showOverdue={false}
