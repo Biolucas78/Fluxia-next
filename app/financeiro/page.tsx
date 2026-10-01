@@ -147,40 +147,74 @@ interface ReceivableItem {
 }
 
 function getReceivableItems(order: Order): ReceivableItem[] {
-  const boletos = (order.boletos as any[]) || [];
-  if (boletos.length > 1) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return boletos.map((b, i) => {
+  const allBoletos = (order.boletos as any[]) || [];
+  // Parcelas canceladas/baixadas não representam dinheiro a receber nem recebido — ignoradas
+  // na hora de montar os itens (mas o índice original é preservado para as ações de sync/baixa).
+  const activeBoletos = allBoletos.filter((b: any) => {
+    const sit = (b.situacao || '').toLowerCase();
+    return sit !== 'cancelado' && sit !== 'baixado';
+  });
+  // Se o pedido como um todo já foi confirmado como pago (ex: PIX confirmado manualmente,
+  // fora do fluxo de boleto), isso vale pra qualquer parcela restante — mesmo que a situação
+  // individual dela no Sicoob ainda não tenha sido sincronizada.
+  const orderConfirmedPaid = isPaid(order);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (activeBoletos.length > 1) {
+    return activeBoletos.map((b) => {
       const sit = (b.situacao || '').toLowerCase();
-      const paid = sit === 'liquidado' || sit === 'pago';
+      const paid = orderConfirmedPaid || sit === 'liquidado' || sit === 'pago';
       const due = b.dataVencimento as string | undefined;
       const overdueFlag = !paid && !!due && new Date(due + 'T12:00:00') < today;
       return {
         order,
-        parcelaIndex: i,
+        parcelaIndex: allBoletos.indexOf(b),
         valor: b.valor || 0,
         dueDate: due,
-        paymentDate: b.dataPagamento || b.paymentDate || undefined,
+        paymentDate: b.dataPagamento || b.paymentDate || order.paymentDate || undefined,
         paid,
         overdueFlag,
         seuNumero: b.seuNumero,
         nossoNumero: b.nossoNumero,
-        paidManually: !!b.paidManually,
+        paidManually: !!b.paidManually || !!(order as any).paymentConfirmedManually,
       };
     });
   }
+
+  // 0 ou 1 parcela ativa restante (as demais foram canceladas/baixadas)
+  const only = activeBoletos[0];
+  if (only) {
+    const sit = (only.situacao || '').toLowerCase();
+    const paid = orderConfirmedPaid || sit === 'liquidado' || sit === 'pago';
+    const due = only.dataVencimento as string | undefined;
+    const overdueFlag = !paid && !!due && new Date(due + 'T12:00:00') < today;
+    return [{
+      order,
+      parcelaIndex: allBoletos.length > 1 ? allBoletos.indexOf(only) : null,
+      valor: only.valor || 0,
+      dueDate: due,
+      paymentDate: only.dataPagamento || only.paymentDate || order.paymentDate || undefined,
+      paid,
+      overdueFlag,
+      seuNumero: only.seuNumero,
+      nossoNumero: only.nossoNumero,
+      paidManually: !!only.paidManually || !!(order as any).paymentConfirmedManually,
+    }];
+  }
+
+  // Nenhuma parcela ativa (sem boleto, ou todos cancelados) — usa os dados do pedido (PIX, depósito, etc.)
   return [{
     order,
     parcelaIndex: null,
     valor: getOrderValue(order),
     dueDate: getDueDate(order),
     paymentDate: order.paymentDate,
-    paid: isPaid(order),
+    paid: orderConfirmedPaid,
     overdueFlag: isOverdue(order),
-    seuNumero: boletos[0]?.seuNumero,
-    nossoNumero: boletos[0]?.nossoNumero ?? (order as any).boletoNossoNumero,
-    paidManually: !!(boletos[0]?.paidManually ?? (order as any).paymentConfirmedManually),
+    seuNumero: undefined,
+    nossoNumero: (order as any).boletoNossoNumero,
+    paidManually: !!(order as any).paymentConfirmedManually,
   }];
 }
 
