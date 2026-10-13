@@ -9,7 +9,7 @@ import Login from '@/components/Login';
 import { motion, AnimatePresence } from 'motion/react';
 import { Order } from '@/lib/types';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
 
 interface ClientRecurrence {
@@ -21,8 +21,26 @@ interface ClientRecurrence {
   origin: string;
   totalOrders: number;
   latestOrder: Order;
-  daysSinceDelivered: number;
+  // Dias desde a CRIAÇÃO do último pedido real — é o que o card exibe e a base da fila
+  daysSinceLastOrder: number;
+  // Data de entrega do último pedido, só pra exibição (não rege mais a fila)
+  deliveryDateDisplay: string | null;
   daysSinceContact: number | null;
+  // Data efetiva usada pra ordenar a fila: a mais recente entre criação do pedido e último
+  // "mover pro fim" — pedido novo OU clique no botão empurram o cliente pro final.
+  queueDate: number;
+}
+
+// Entrada do cliente na coleção bling_customers (fonte única da flag de participação)
+interface CustomerFlagEntry {
+  id: string;
+  participaRecorrencia?: boolean;
+}
+
+const EXCLUDED_ORIGINS = ['amazon', 'wix', 'meli', 'mercado'];
+function isExcludedOrigin(origin?: string): boolean {
+  const o = (origin || '').toLowerCase();
+  return EXCLUDED_ORIGINS.some(k => o.includes(k));
 }
 
 const normalizeString = (str?: string) => {
@@ -47,7 +65,67 @@ export default function RecorrenciaPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOrigin, setFilterOrigin] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'need_contact' | 'contacted'>('need_contact');
+
+  // Índice de clientes (bling_customers) — fonte única da flag "participa da recorrência".
+  // Indexado por: doc.id, identifier (cnpj/cpf/telefone/nome normalizado) e 'nome:<normalizado>'.
+  const [customersIndex, setCustomersIndex] = useState<Map<string, CustomerFlagEntry>>(new Map());
+  const [customersLoaded, setCustomersLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'bling_customers'));
+        const idx = new Map<string, CustomerFlagEntry>();
+        snap.docs.forEach(d => {
+          const data = d.data() as any;
+          const entry: CustomerFlagEntry = { id: d.id, participaRecorrencia: data.participaRecorrencia };
+          idx.set(d.id, entry);
+          const docNum = (data.numeroDocumento || '').replace(/\D/g, '');
+          if (docNum) idx.set(docNum, entry);
+          const nome = normalizeString(data.nome || '');
+          if (nome) idx.set('nome:' + nome, entry);
+          const fantasia = normalizeString(data.fantasia || '');
+          if (fantasia) idx.set('nome:' + fantasia, entry);
+        });
+        setCustomersIndex(idx);
+      } catch (e) {
+        console.warn('Não foi possível carregar bling_customers para a recorrência:', e);
+      } finally {
+        setCustomersLoaded(true);
+      }
+    })();
+  }, []);
+
+  const findCustomerEntry = (order: Order, identifier: string): CustomerFlagEntry | null => {
+    if (customersIndex.has(identifier)) return customersIndex.get(identifier)!;
+    const docNum = (order.cnpj || order.cpf || '').replace(/\D/g, '');
+    if (docNum && customersIndex.has(docNum)) return customersIndex.get(docNum)!;
+    const nome = normalizeString(order.clientName);
+    if (nome && customersIndex.has('nome:' + nome)) return customersIndex.get('nome:' + nome)!;
+    return null;
+  };
+
+  // Define a participação do cliente na recorrência (bling_customers é a fonte única da verdade).
+  // Se o cliente ainda não existir em bling_customers, cria um doc mínimo usando o identifier.
+  const setParticipaRecorrencia = async (client: ClientRecurrence, value: boolean) => {
+    const entry = findCustomerEntry(client.latestOrder, client.identifier);
+    const docId = entry?.id || client.identifier;
+    await setDoc(doc(db, 'bling_customers', docId), {
+      participaRecorrencia: value,
+      ...(entry ? {} : { nome: client.clientName, numeroDocumento: (client.cnpj || client.cpf || '').replace(/\D/g, '') }),
+    }, { merge: true });
+
+    setCustomersIndex(prev => {
+      const next = new Map(prev);
+      const newEntry: CustomerFlagEntry = { id: docId, participaRecorrencia: value };
+      next.set(docId, newEntry);
+      next.set(client.identifier, newEntry);
+      const docNum = (client.cnpj || client.cpf || '').replace(/\D/g, '');
+      if (docNum) next.set(docNum, newEntry);
+      next.set('nome:' + normalizeString(client.clientName), newEntry);
+      return next;
+    });
+  };
 
   const [selectedClient, setSelectedClient] = useState<ClientRecurrence | null>(null);
   const [editedName, setEditedName] = useState('');
@@ -86,7 +164,7 @@ export default function RecorrenciaPage() {
   };
 
   const recurrenceData = useMemo(() => {
-    if (!isLoaded) return [];
+    if (!isLoaded || !customersLoaded) return [];
 
     const clientsMap = new Map<string, { orders: Order[] }>();
 
@@ -119,28 +197,41 @@ export default function RecorrenciaPage() {
 
       const latestOrder = realOrders[0];
 
+      // Regra 1: todos os clientes entram, salvo exceções (pedido ainda não entregue continua de fora)
       if (latestOrder.status !== 'entregue') return;
+
+      // Regra 8: exclusão definitiva por cliente. Fonte única: bling_customers.participaRecorrencia.
+      // Quando ainda não há flag explícita, aplica o padrão da regra 7 (Amazon/Wix/Meli começam fora).
+      // recurrenceRemoved (campo antigo, por pedido) é respeitado como exclusão legada, só leitura.
+      const customerEntry = findCustomerEntry(latestOrder, identifier);
+      const participates = customerEntry?.participaRecorrencia !== undefined
+        ? customerEntry.participaRecorrencia !== false
+        : !isExcludedOrigin(latestOrder.origin);
+      if (!participates) return;
       if (latestOrder.recurrenceRemoved) return;
 
-      let deliveredAtStr = latestOrder.createdAt;
-      
+      // Regra 5: contador de dias = desde a CRIAÇÃO do último pedido (não mais a entrega)
+      const createdAtDate = new Date(latestOrder.createdAt);
+      const daysSinceLastOrder = Math.floor((now.getTime() - createdAtDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Regra 6: data de entrega só para exibição no card
+      let deliveredAtStr: string | null = null;
       if (latestOrder.deliveryDate) {
         deliveredAtStr = latestOrder.deliveryDate;
       } else {
         const deliveredHistory = latestOrder.statusHistory?.find(h => h.status === 'entregue');
-        if (deliveredHistory) {
-          deliveredAtStr = deliveredHistory.timestamp;
-        }
+        if (deliveredHistory) deliveredAtStr = deliveredHistory.timestamp;
       }
-
-      const deliveredDate = new Date(deliveredAtStr);
-      const daysSinceDelivered = Math.floor((now.getTime() - deliveredDate.getTime()) / (1000 * 60 * 60 * 24));
 
       let daysSinceContact = null;
       if (latestOrder.lastRecurrenceContact) {
         const contactDate = new Date(latestOrder.lastRecurrenceContact);
         daysSinceContact = Math.floor((now.getTime() - contactDate.getTime()) / (1000 * 60 * 60 * 24));
       }
+
+      // Regras 2+3+4: posição na fila = a mais recente entre criação do pedido e "mover pro fim"
+      const contactTime = latestOrder.lastRecurrenceContact ? new Date(latestOrder.lastRecurrenceContact).getTime() : 0;
+      const queueDate = Math.max(createdAtDate.getTime(), contactTime);
 
       result.push({
         identifier,
@@ -151,13 +242,16 @@ export default function RecorrenciaPage() {
         origin: latestOrder.origin || 'N/A',
         totalOrders: realOrders.length,
         latestOrder,
-        daysSinceDelivered,
-        daysSinceContact
+        daysSinceLastOrder,
+        deliveryDateDisplay: deliveredAtStr,
+        daysSinceContact,
+        queueDate,
       });
     });
 
-    return result.sort((a, b) => b.daysSinceDelivered - a.daysSinceDelivered);
-  }, [allOrders, isLoaded]);
+    // Regra 2: mais antigos primeiro
+    return result.sort((a, b) => a.queueDate - b.queueDate);
+  }, [allOrders, isLoaded, customersIndex, customersLoaded]);
 
   const filteredData = useMemo(() => {
     return recurrenceData.filter(client => {
@@ -170,18 +264,9 @@ export default function RecorrenciaPage() {
 
       if (filterOrigin !== 'all' && client.origin !== filterOrigin) return false;
 
-      if (filterStatus === 'contacted') {
-        if (client.daysSinceContact === null || client.daysSinceContact >= 10) return false;
-      } else if (filterStatus === 'need_contact') {
-        if (client.daysSinceDelivered < 20) return false;
-        if (client.daysSinceContact !== null && client.daysSinceContact < 10) return false;
-      } else if (filterStatus === 'all') {
-        if (client.daysSinceDelivered < 20) return false;
-      }
-
       return true;
     });
-  }, [recurrenceData, searchTerm, filterOrigin, filterStatus]);
+  }, [recurrenceData, searchTerm, filterOrigin]);
 
   const handleOpenClient = (client: ClientRecurrence) => {
     setSelectedClient(client);
@@ -255,44 +340,29 @@ export default function RecorrenciaPage() {
     }
   };
 
-  const handleDidNotBuy = async () => {
-    if (!selectedClient) return;
-    try {
-      const orderToUpdate = { ...selectedClient.latestOrder };
-      orderToUpdate.lastRecurrenceContact = new Date().toISOString();
-      
-      orderToUpdate.statusHistory = [
-        ...(orderToUpdate.statusHistory || []),
-        {
-          action: 'Contato de Recorrência realizado (Não comprou)',
-          timestamp: new Date().toISOString()
-        }
-      ];
-
-      await handleUpdateOrder(orderToUpdate);
-      toast.success('Contato registrado! O cliente retornará para a lista em 10 dias.');
-      setSelectedClient(null);
-    } catch (e: any) {
-      toast.error('Erro ao registrar contato: ' + e.message);
-    }
-  };
-
-  const handleSnoozeClient = async (client: ClientRecurrence) => {
+  // Regras 3+4: move o cliente pro final da fila (lastRecurrenceContact passa a reger o queueDate)
+  const handleMoveToEnd = async (client: ClientRecurrence) => {
     try {
       const orderToUpdate = { ...client.latestOrder };
       orderToUpdate.lastRecurrenceContact = new Date().toISOString();
       orderToUpdate.statusHistory = [
         ...(orderToUpdate.statusHistory || []),
         {
-          action: 'Contato de Recorrência realizado (Não comprou)',
+          action: 'Contato de Recorrência realizado — movido para o fim da fila',
           timestamp: new Date().toISOString()
         }
       ];
       await handleUpdateOrder(orderToUpdate);
-      toast.success('Cliente retornará para a lista em 10 dias.');
+      toast.success('Cliente movido para o fim da fila.');
     } catch (e: any) {
       toast.error('Erro ao registrar contato: ' + e.message);
     }
+  };
+
+  const handleDidNotBuy = async () => {
+    if (!selectedClient) return;
+    await handleMoveToEnd(selectedClient);
+    setSelectedClient(null);
   };
 
   const [clientToRemove, setClientToRemove] = useState<typeof recurrenceData[0] | null>(null);
@@ -300,7 +370,7 @@ export default function RecorrenciaPage() {
   const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false);
 
   // Limpar seleção quando filtros mudam
-  useEffect(() => { setSelectedIds(new Set()); }, [filterOrigin, filterStatus, searchTerm]);
+  useEffect(() => { setSelectedIds(new Set()); }, [filterOrigin, searchTerm]);
 
   const handleToggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -320,20 +390,14 @@ export default function RecorrenciaPage() {
 
   const handleBulkSnooze = async () => {
     const clients = recurrenceData.filter(c => selectedIds.has(c.identifier));
-    await Promise.all(clients.map(client =>
-      handleUpdateOrder({ ...client.latestOrder, lastRecurrenceContact: new Date().toISOString(),
-        statusHistory: [...(client.latestOrder.statusHistory || []), { action: 'Ocultar 10 dias (em massa)', timestamp: new Date().toISOString() }] })
-    ));
+    await Promise.all(clients.map(client => handleMoveToEnd(client)));
     setSelectedIds(new Set());
-    toast.success(`${clients.length} clientes ocultados por 10 dias.`);
+    toast.success(`${clients.length} clientes movidos para o fim da fila.`);
   };
 
   const handleBulkRemove = async () => {
     const clients = recurrenceData.filter(c => selectedIds.has(c.identifier));
-    await Promise.all(clients.map(client =>
-      handleUpdateOrder({ ...client.latestOrder, recurrenceRemoved: true,
-        statusHistory: [...(client.latestOrder.statusHistory || []), { action: 'Removido da Recorrência (em massa)', timestamp: new Date().toISOString() }] })
-    ));
+    await Promise.all(clients.map(client => setParticipaRecorrencia(client, false)));
     setSelectedIds(new Set());
     setBulkRemoveConfirm(false);
     toast.success(`${clients.length} clientes removidos da recorrência.`);
@@ -342,18 +406,7 @@ export default function RecorrenciaPage() {
   const confirmRemove = async () => {
     if (!clientToRemove) return;
     try {
-      const orderToUpdate = { ...clientToRemove.latestOrder };
-      orderToUpdate.recurrenceRemoved = true;
-      
-      orderToUpdate.statusHistory = [
-        ...(orderToUpdate.statusHistory || []),
-        {
-          action: 'Removido da Gestão de Recorrência',
-          timestamp: new Date().toISOString()
-        }
-      ];
-
-      await handleUpdateOrder(orderToUpdate);
+      await setParticipaRecorrencia(clientToRemove, false);
       toast.success('Cliente removido da recorrência.');
       setClientToRemove(null);
       if (selectedClient?.identifier === clientToRemove.identifier) {
@@ -441,19 +494,7 @@ export default function RecorrenciaPage() {
               <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
                 <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3">
                   <Filter className="size-4 text-slate-400" />
-                  <select 
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value as any)}
-                    className="bg-transparent text-sm font-medium text-slate-700 dark:text-slate-300 outline-none"
-                  >
-                    <option value="need_contact">Exigem Contato</option>
-                    <option value="contacted">Já Contatados (Pausa)</option>
-                    <option value="all">Todos (&gt;20 dias entregues)</option>
-                  </select>
-                </div>
-                
-                <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3">
-                  <select 
+                  <select
                     value={filterOrigin}
                     onChange={(e) => setFilterOrigin(e.target.value)}
                     className="bg-transparent text-sm font-medium text-slate-700 dark:text-slate-300 outline-none"
@@ -492,9 +533,9 @@ export default function RecorrenciaPage() {
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 rounded-2xl flex items-start gap-3">
               <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400">Rotina de Abordagem Ativa</h3>
+                <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400">Fila de Recorrência</h3>
                 <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
-                  Estes clientes realizaram o último pedido há mais de 20 dias e estão aguardando contato (ou já faz 10 dias do último papo). Mantenha as abordagens em dia para garantir a reposição de estoque.
+                  Todos os clientes entram na fila, dos mais antigos aos mais recentes. Ao abordar um cliente (ou quando ele fizer um pedido novo), ele vai para o fim da fila automaticamente.
                 </p>
               </div>
             </div>
@@ -516,7 +557,7 @@ export default function RecorrenciaPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-500 font-medium">{selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}</span>
                   <button onClick={handleBulkSnooze} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
-                    <Clock className="size-3.5" /> Ocultar 10 dias
+                    <Clock className="size-3.5" /> Mover para o fim
                   </button>
                   <button onClick={() => setBulkRemoveConfirm(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
                     <EyeOff className="size-3.5" /> Remover selecionados
@@ -540,12 +581,10 @@ export default function RecorrenciaPage() {
                     className={`p-5 rounded-2xl shadow-sm border flex flex-col justify-between group transition-all relative overflow-hidden ${
                       selectedIds.has(client.identifier)
                         ? 'bg-primary/5 dark:bg-primary/10 border-primary ring-1 ring-primary/30'
-                        : client.daysSinceContact && client.daysSinceContact < 10
-                          ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60 hover:opacity-100'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-primary'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-primary'
                     }`}
                   >
-                    {client.daysSinceContact === null && client.daysSinceDelivered > 30 && (
+                    {client.daysSinceLastOrder > 30 && (
                       <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 dark:bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
                     )}
 
@@ -558,7 +597,7 @@ export default function RecorrenciaPage() {
                         className="mt-1 size-4 rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary cursor-pointer shrink-0"
                       />
                       <div className={`size-12 rounded-xl flex items-center justify-center font-bold text-lg shrink-0 ${
-                        client.daysSinceDelivered > 40 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-light'
+                        client.daysSinceLastOrder > 40 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-light'
                       }`}>
                         {client.clientName.charAt(0).toUpperCase()}
                       </div>
@@ -571,17 +610,22 @@ export default function RecorrenciaPage() {
                             {getOriginTag(client.origin).label}
                           </span>
                         </div>
-                        
+
                         <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2">
                           <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
                             {client.phone ? client.phone : <span className="text-slate-400 italic">Sem telefone</span>}
                           </span>
                           <span className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
                             <Calendar className="size-3" />
-                            {client.daysSinceDelivered} dias passados
+                            {client.daysSinceLastOrder} dias desde o último pedido
                           </span>
                         </div>
-                        
+                        {client.deliveryDateDisplay && (
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Entregue em {new Date(client.deliveryDateDisplay).toLocaleDateString('pt-BR')}
+                          </p>
+                        )}
+
                         {client.daysSinceContact !== null && (
                           <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded inline-block">
                             Última abordagem há {client.daysSinceContact} dias
@@ -604,9 +648,9 @@ export default function RecorrenciaPage() {
                           <EyeOff className="size-4" />
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleSnoozeClient(client); }}
+                          onClick={(e) => { e.stopPropagation(); handleMoveToEnd(client); }}
                           className="flex items-center justify-center p-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/40 text-amber-500 rounded-xl transition-all"
-                          title="Avisar em 10 dias"
+                          title="Mover para o fim da fila"
                         >
                           <Clock className="size-4" />
                         </button>
@@ -625,8 +669,8 @@ export default function RecorrenciaPage() {
                 {filteredData.length === 0 && (
                   <div className="col-span-full text-center py-20 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800">
                     <CheckCircle2 className="size-12 text-emerald-400 mx-auto mb-4" />
-                    <p className="text-slate-600 dark:text-slate-400 font-medium">Tudo atualizado por aqui!</p>
-                    <p className="text-sm text-slate-500 mt-1">Nenhum cliente atende aos critérios do filtro de recorrência hoje.</p>
+                    <p className="text-slate-600 dark:text-slate-400 font-medium">Nenhum cliente na fila</p>
+                    <p className="text-sm text-slate-500 mt-1">Ajuste a busca ou o filtro de origem, ou nenhum cliente entregue entrou na recorrência ainda.</p>
                   </div>
                 )}
               </div>
@@ -775,7 +819,7 @@ export default function RecorrenciaPage() {
                       onClick={handleDidNotBuy}
                       className="py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all"
                     >
-                      Avisar em 10 dias
+                      Mover para o fim da fila
                     </button>
                     <button 
                       onClick={handleRemoveFromRecurrence}
@@ -962,7 +1006,7 @@ export default function RecorrenciaPage() {
                     <EyeOff className="size-6" />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Remover {selectedIds.size} cliente{selectedIds.size !== 1 ? 's' : ''} da Recorrência</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Esses clientes não aparecerão mais na lista de recorrência. Esta ação pode ser desfeita reabrindo o pedido mais recente do cliente.</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Esses clientes não aparecerão mais na lista de recorrência, mesmo que façam pedidos novos. Para aceitar algum de volta, use o toggle &quot;Participa da Recorrência&quot; no cadastro do cliente (em Clientes).</p>
                 </div>
                 <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex justify-end gap-3">
                   <button onClick={() => setBulkRemoveConfirm(false)} className="py-2.5 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all">

@@ -41,6 +41,7 @@ const initialCustomerState = {
   celular: '',
   email: '',
   mostrarNoMapa: true,
+  participaRecorrencia: true,
   endereco: {
     geral: {
       cep: '',
@@ -148,6 +149,7 @@ export default function ClientesPage() {
         celular: customer.telefones?.celular || customer.celular || '',
         email: customer.email || '',
         mostrarNoMapa: customer.mostrarNoMapa !== false,
+        participaRecorrencia: customer.participaRecorrencia !== false,
         endereco: {
           geral: {
             cep: customer.endereco?.geral?.cep || customer.endereco?.cep || '',
@@ -227,6 +229,7 @@ export default function ClientesPage() {
         await setDoc(doc(db, 'bling_customers', String(result.data.id)), {
           ...result.data,
           mostrarNoMapa: currentCustomer.mostrarNoMapa,
+          participaRecorrencia: currentCustomer.participaRecorrencia,
           updatedAt: Date.now()
         }, { merge: true });
       }
@@ -257,6 +260,7 @@ export default function ClientesPage() {
           ie: currentCustomer.isentoIE ? "ISENTO" : currentCustomer.ie,
           endereco: currentCustomer.endereco,
           mostrarNoMapa: currentCustomer.mostrarNoMapa,
+          participaRecorrencia: currentCustomer.participaRecorrencia,
         },
         propagate: true,
       })
@@ -272,6 +276,16 @@ export default function ClientesPage() {
     try {
       await setDoc(doc(db, "bling_customers", idStr), { mostrarNoMapa: valor }, { merge: true });
       toast.success(valor ? "Cliente adicionado ao mapa!" : "Cliente removido do mapa!");
+    } catch (e: any) {
+      toast.error("Erro ao salvar: " + e.message);
+    }
+  };
+  const handleSaveParticipaRecorrencia = async (valor: boolean) => {
+    if (!currentCustomer.id) return;
+    const idStr = String(currentCustomer.id);
+    try {
+      await setDoc(doc(db, "bling_customers", idStr), { participaRecorrencia: valor }, { merge: true });
+      toast.success(valor ? "Cliente adicionado à recorrência!" : "Cliente removido da recorrência!");
     } catch (e: any) {
       toast.error("Erro ao salvar: " + e.message);
     }
@@ -1114,6 +1128,28 @@ export default function ClientesPage() {
                     </div>
                     <p className="text-xs text-slate-500">
                       Se desmarcado, este cliente não aparecerá no mapa do seu site Wix, mesmo que seja um CNPJ.
+                    </p>
+                  </div>
+
+                  {/* Configurações da Recorrência */}
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800 pb-2">5. Recorrência</h4>
+                    <div className="flex items-center gap-3">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={currentCustomer.participaRecorrencia}
+                          onChange={(e) => { const v = e.target.checked; setCurrentCustomer({...currentCustomer, participaRecorrencia: v}); handleSaveParticipaRecorrencia(v); }}
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 dark:peer-focus:ring-primary/80 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-primary"></div>
+                        <span className="ml-3 text-sm font-bold text-slate-700 dark:text-slate-300">
+                          Participa da Recorrência
+                        </span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Se desmarcado, este cliente não aparece na fila de recorrência, mesmo que faça pedidos novos. Clientes com origem Amazon, Wix ou Mercado Livre começam desmarcados automaticamente, mas você pode ligar aqui se quiser incluir algum deles.
                     </p>
                   </div>
                 </form>
