@@ -719,6 +719,51 @@ export async function POST(req: Request) {
       const products = (order.products || []).filter((p: any) => p.name);
       const perItemValue = orderValue / (products.length || 1);
 
+      // Pós-cotação: a cotação exibida pro usuário (ShippingQuoteModal) vem da API legada
+      // (api.frenet.com.br), mas a emissão via Whitelabel exige um SessionId gerado por ESTA
+      // API (pós-cotação), feita agora, na hora de gerar a etiqueta — reaproveitar o SessionId
+      // da cotação legada não é válido aqui.
+      const senderZip = (origin.postal_code || origin.zip || '').replace(/\D/g, '');
+      const quoteRes = await fetch(`${frenetOrdersUrl}/quotes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'token': frenetToken,
+          'x-partner-token': frenetPartnerToken
+        },
+        body: JSON.stringify({
+          SenderZipCode: senderZip,
+          RecipientZipCode: destCep,
+          RecipientCountry: 'BR',
+          ShipmentItemValue: orderValue,
+          Volumes: [{
+            Weight: totalWeightKg,
+            Length: Math.max(16, order.boxDimensions?.length || 15),
+            Height: Math.max(2, order.boxDimensions?.height || 10),
+            Width: Math.max(11, order.boxDimensions?.width || 15)
+          }]
+        })
+      });
+      const quoteText = await quoteRes.text();
+      let quoteData: any;
+      try {
+        quoteData = JSON.parse(quoteText);
+      } catch {
+        throw new Error('Resposta inválida da Frenet na pós-cotação.');
+      }
+      if (!quoteRes.ok) {
+        const qMsg = quoteData?.Message || quoteData?.Details?.[0]?.Message || `Frenet HTTP ${quoteRes.status}`;
+        throw new Error(`Falha na pós-cotação Frenet: ${qMsg}`);
+      }
+      const matchedQuote = (quoteData.Quotations || []).find((q: any) =>
+        q.CarrierCode === selectedOption.frenetCarrierCode &&
+        String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode)
+      ) || (quoteData.Quotations || [])[0];
+      if (!matchedQuote || !quoteData.SessionId) {
+        throw new Error('Frenet não retornou cotação válida para gerar a etiqueta.');
+      }
+
       const oneclickPayload = [{
         Order: {
           Id: (order.invoiceNumber || order.id || String(Date.now())).substring(0, 50),
@@ -770,13 +815,13 @@ export async function POST(req: Request) {
           DeclaredValue: orderValue
         }],
         Quotation: {
-          ShippingServiceCode: selectedOption.frenetServiceCode,
-          ShippingServiceName: selectedOption.frenetServiceName,
-          Carrier: selectedOption.frenetCarrier,
-          CarrierCode: selectedOption.frenetCarrierCode,
-          ShippingPrice: selectedOption.frenetShippingPrice || selectedOption.price,
-          DeliveryTime: selectedOption.delivery_time || 0,
-          SessionId: selectedOption.frenetSessionId
+          ShippingServiceCode: matchedQuote.ShippingServiceCode,
+          ShippingServiceName: matchedQuote.ShippingServiceName,
+          Carrier: matchedQuote.Carrier,
+          CarrierCode: matchedQuote.CarrierCode,
+          ShippingPrice: matchedQuote.ShippingPrice,
+          DeliveryTime: matchedQuote.DeliveryTime || 0,
+          SessionId: quoteData.SessionId
         }
       }];
 
