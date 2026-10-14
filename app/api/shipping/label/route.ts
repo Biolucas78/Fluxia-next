@@ -724,35 +724,39 @@ export async function POST(req: Request) {
           Id: (order.invoiceNumber || order.id || String(Date.now())).substring(0, 50),
           Value: orderValue,
           Items: products.map((p: any) => ({
-            Name: (p.name || 'Produto').substring(0, 50),
+            ProductName: (p.name || 'Produto').substring(0, 50),
             Quantity: p.quantity || 1,
-            Value: perItemValue
+            Price: perItemValue
           })),
           To: {
             Name: order.clientName,
             Email: order.email || '',
             Document: destCpfCnpj,
             Phone: (order.phone || '').replace(/\D/g, ''),
-            ZipCode: destCep,
-            Address: safeStr(order.addressDetails?.street || addrParts[0], 'Rua nao informada', 100),
-            Number: safeStr(order.addressDetails?.number || addrParts[1], 'SN', 20),
-            Complement: safeStr(order.addressDetails?.complement || addrParts[2], '', 50),
-            District: safeStr(order.addressDetails?.district || addrParts[3], 'Centro', 50),
-            City: safeStr(order.addressDetails?.city || addrParts[4], 'Cidade', 50),
-            State: safeStr(order.addressDetails?.state || '', 'SP', 2).replace(/[^A-Za-z]/g, '').toUpperCase() || 'SP'
+            Address: {
+              ZipCode: destCep,
+              Street: safeStr(order.addressDetails?.street || addrParts[0], 'Rua nao informada', 100),
+              AddressNumber: safeStr(order.addressDetails?.number || addrParts[1], 'SN', 20),
+              AddressComplement: safeStr(order.addressDetails?.complement || addrParts[2], '', 50),
+              AddressQuarter: safeStr(order.addressDetails?.district || addrParts[3], 'Centro', 50),
+              City: safeStr(order.addressDetails?.city || addrParts[4], 'Cidade', 50),
+              AddressState: safeStr(order.addressDetails?.state || '', 'SP', 2).replace(/[^A-Za-z]/g, '').toUpperCase() || 'SP'
+            }
           },
           From: {
             Name: origin.name || 'Cafe Fazenda Itaoca',
             Email: origin.email || 'contato@cafefazendaitaoca.com.br',
             Document: (origin.company_document || origin.document || '').replace(/\D/g, ''),
             Phone: (origin.phone || '').replace(/\D/g, ''),
-            ZipCode: (origin.postal_code || origin.zip || '').replace(/\D/g, ''),
-            Address: origin.address || 'Rua Padrao',
-            Number: origin.number || 'SN',
-            Complement: origin.complement || '',
-            District: origin.district || 'Centro',
-            City: origin.city || 'Conceicao do Rio Verde',
-            State: (origin.state_abbr || 'MG').toUpperCase()
+            Address: {
+              ZipCode: (origin.postal_code || origin.zip || '').replace(/\D/g, ''),
+              Street: origin.address || 'Rua Padrao',
+              AddressNumber: origin.number || 'SN',
+              AddressComplement: origin.complement || '',
+              AddressQuarter: origin.district || 'Centro',
+              City: origin.city || 'Conceicao do Rio Verde',
+              AddressState: (origin.state_abbr || 'MG').toUpperCase()
+            }
           },
           ...(order.invoiceKey && order.invoiceKey.replace(/\D/g, '').length === 44 ? {
             Invoice: { Key: order.invoiceKey.replace(/\D/g, '') }
@@ -778,7 +782,7 @@ export async function POST(req: Request) {
 
       console.log('Frenet oneclick payload:', JSON.stringify(oneclickPayload, null, 2));
 
-      const frenetRes = await fetch(`${frenetOrdersUrl}/shipments/oneclick`, {
+      const frenetRes = await fetch(`${frenetOrdersUrl}/orders/oneclick`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
