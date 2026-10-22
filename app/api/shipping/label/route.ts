@@ -705,7 +705,7 @@ export async function POST(req: Request) {
     if (selectedOption.provider === 'Frenet') {
       const frenetToken = process.env.FRENET_TOKEN;
       const frenetPartnerToken = process.env.FRENET_PARTNER_TOKEN;
-      const frenetOrdersUrl = (process.env.FRENET_ORDERS_URL || 'https://whitelabel.frenet.com.br/v1').replace(/\/$/, '');
+      const frenetOrdersUrl = (process.env.FRENET_ORDERS_URL || 'https://whitelabel.apifrenet.com.br/v1').replace(/\/$/, '');
 
       if (!frenetToken || !frenetPartnerToken) {
         return NextResponse.json({ error: 'Credenciais Frenet não configuradas.' }, { status: 500 });
