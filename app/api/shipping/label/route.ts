@@ -871,13 +871,20 @@ export async function POST(req: Request) {
       const item = frenetData?.Items?.[0];
       if (!item) throw new Error('Frenet não retornou dados do envio.');
 
+      // O rastreio (app/api/shipping/track) precisa do código real da transportadora
+      // (ex: PY943133131BR), não do ShipmentId interno da Frenet. Esse código vem embutido
+      // no final da TrackingUrl (ex: http://rastreio.../COR/PY943133131BR).
+      const trackingCodeFromUrl = item.TrackingUrl
+        ? String(item.TrackingUrl).split('/').filter(Boolean).pop()
+        : null;
+
       return NextResponse.json({
         success: true,
         labelUrl: item.LabelUrl || null,
         trackingUrl: item.TrackingUrl || null,
         declarationUrl: item.DeclarationUrl || null,
         shipmentId: String(item.ShipmentId || ''),
-        trackingNumber: String(item.ShipmentId || ''),
+        trackingNumber: trackingCodeFromUrl || String(item.ShipmentId || ''),
         shippingProvider: 'frenet'
       });
     }
