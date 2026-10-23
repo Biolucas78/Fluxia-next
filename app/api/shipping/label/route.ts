@@ -756,12 +756,26 @@ export async function POST(req: Request) {
         const qMsg = quoteData?.Message || quoteData?.Details?.[0]?.Message || `Frenet HTTP ${quoteRes.status}`;
         throw new Error(`Falha na pós-cotação Frenet: ${qMsg}`);
       }
-      const matchedQuote = (quoteData.Quotations || []).find((q: any) =>
-        q.CarrierCode === selectedOption.frenetCarrierCode &&
-        String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode)
-      ) || (quoteData.Quotations || [])[0];
+      // O CarrierCode da cotação legada (exibida na tela) às vezes vem como o nome da
+      // transportadora em vez do código curto, então pode não bater exatamente com o da
+      // pós-cotação (whitelabel). Tenta por Carrier+Serviço primeiro, depois só por
+      // Serviço (mais específico/estável entre os dois sistemas), só então usa o primeiro.
+      const quotations: any[] = quoteData.Quotations || [];
+      const matchedQuote =
+        quotations.find((q: any) =>
+          q.CarrierCode === selectedOption.frenetCarrierCode &&
+          String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode)
+        ) ||
+        quotations.find((q: any) => String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode)) ||
+        quotations[0];
       if (!matchedQuote || !quoteData.SessionId) {
         throw new Error('Frenet não retornou cotação válida para gerar a etiqueta.');
+      }
+      if (matchedQuote !== quotations.find((q: any) => q.CarrierCode === selectedOption.frenetCarrierCode && String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode))) {
+        console.warn('Frenet: pós-cotação não encontrou exatamente o mesmo serviço selecionado na tela, usando aproximação:', {
+          selecionado: { carrier: selectedOption.frenetCarrierCode, servico: selectedOption.frenetServiceCode },
+          usado: { carrier: matchedQuote.CarrierCode, servico: matchedQuote.ShippingServiceCode }
+        });
       }
 
       const oneclickPayload = [{
