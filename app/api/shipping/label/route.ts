@@ -848,12 +848,52 @@ export async function POST(req: Request) {
         throw new Error('Resposta inválida da Frenet ao gerar etiqueta.');
       }
 
+      // Fallback de saldo insuficiente: tenta criar o pedido SEM pagar (POST /orders, sem
+      // oneclick) — fica pendente na Frenet, equivalente ao "carrinho" do Melhor Envio. O
+      // pagamento e a impressão da etiqueta precisam ser finalizados no painel da Frenet.
+      const tryCreatePendingFrenetOrder = async (transactionUrl: string | null) => {
+        try {
+          const pendingRes = await fetch(`${frenetOrdersUrl}/orders`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'token': frenetToken,
+              'x-partner-token': frenetPartnerToken
+            },
+            body: JSON.stringify(oneclickPayload)
+          });
+          const pendingText = await pendingRes.text();
+          const pendingData = JSON.parse(pendingText);
+          const pendingItem = pendingData?.Items?.[0];
+          if (!pendingRes.ok || !pendingItem || (pendingItem.Errors && pendingItem.Errors.length > 0)) {
+            console.warn('Frenet: fallback /orders (pendente) também falhou:', pendingText.substring(0, 400));
+            return null;
+          }
+          return NextResponse.json({
+            success: true,
+            inCart: true,
+            message: 'Sem saldo na carteira Frenet — pedido criado, mas é necessário pagar e imprimir a etiqueta no painel da Frenet (painel.frenet.com.br).',
+            shipmentId: String(pendingItem.ShipmentId || ''),
+            trackingNumber: String(pendingItem.ShipmentId || ''),
+            shippingProvider: 'frenet',
+            transactionUrl
+          });
+        } catch (e) {
+          console.warn('Frenet: erro no fallback /orders (pendente):', e);
+          return null;
+        }
+      };
+
       if (!frenetRes.ok) {
         const detail = frenetData?.Details?.[0];
         if (detail?.Code === 3000) {
+          const transactionUrl = frenetData?.TransactionUrl || null;
+          const pendingResponse = await tryCreatePendingFrenetOrder(transactionUrl);
+          if (pendingResponse) return pendingResponse;
           return NextResponse.json({
             error: 'Saldo insuficiente na carteira Frenet.',
-            transactionUrl: frenetData?.TransactionUrl || null
+            transactionUrl
           }, { status: 402 });
         }
         const errMsg = frenetData?.Message || detail?.Message || `Frenet HTTP ${frenetRes.status}`;
@@ -862,9 +902,12 @@ export async function POST(req: Request) {
 
       // StatusBatch 2 = saldo insuficiente, retorna TransactionUrl para recarregar
       if (frenetData.StatusBatch === 2) {
+        const transactionUrl = frenetData.TransactionUrl || frenetData.Items?.[0]?.TransactionUrl || null;
+        const pendingResponse = await tryCreatePendingFrenetOrder(transactionUrl);
+        if (pendingResponse) return pendingResponse;
         return NextResponse.json({
           error: 'Saldo insuficiente na carteira Frenet.',
-          transactionUrl: frenetData.TransactionUrl || frenetData.Items?.[0]?.TransactionUrl || null
+          transactionUrl
         }, { status: 402 });
       }
 
