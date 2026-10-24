@@ -745,6 +745,17 @@ export async function POST(req: Request) {
           }]
         })
       });
+      // IMPORTANTE: a API da Frenet aceita requisições em PascalCase (como a documentação
+      // mostra), mas RESPONDE em camelCase (confirmado empiricamente — a doc está errada
+      // nisso). Esse helper lê um campo tentando as duas variações, pra não depender de
+      // qual delas a Frenet decidir usar.
+      const pick = (obj: any, ...keys: string[]) => {
+        for (const k of keys) {
+          if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+        }
+        return undefined;
+      };
+
       const quoteText = await quoteRes.text();
       let quoteData: any;
       try {
@@ -753,33 +764,34 @@ export async function POST(req: Request) {
         throw new Error('Resposta inválida da Frenet na pós-cotação.');
       }
       if (!quoteRes.ok) {
-        const qMsg = quoteData?.Message || quoteData?.Details?.[0]?.Message || `Frenet HTTP ${quoteRes.status}`;
+        const qMsg = pick(quoteData, 'message', 'Message') || pick(pick(quoteData, 'details', 'Details')?.[0], 'message', 'Message') || `Frenet HTTP ${quoteRes.status}`;
         throw new Error(`Falha na pós-cotação Frenet: ${qMsg}`);
       }
       // O CarrierCode da cotação legada (exibida na tela) às vezes vem como o nome da
       // transportadora em vez do código curto, então pode não bater exatamente com o da
       // pós-cotação (whitelabel). Tenta por Carrier+Serviço primeiro, depois só por
       // Serviço (mais específico/estável entre os dois sistemas), só então usa o primeiro.
-      const quotations: any[] = quoteData.Quotations || [];
+      const quotations: any[] = pick(quoteData, 'quotations', 'Quotations') || [];
+      const matchByCarrierAndService = (q: any) =>
+        pick(q, 'carrierCode', 'CarrierCode') === selectedOption.frenetCarrierCode &&
+        String(pick(q, 'shippingServiceCode', 'ShippingServiceCode')) === String(selectedOption.frenetServiceCode);
       const matchedQuote =
-        quotations.find((q: any) =>
-          q.CarrierCode === selectedOption.frenetCarrierCode &&
-          String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode)
-        ) ||
-        quotations.find((q: any) => String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode)) ||
+        quotations.find(matchByCarrierAndService) ||
+        quotations.find((q: any) => String(pick(q, 'shippingServiceCode', 'ShippingServiceCode')) === String(selectedOption.frenetServiceCode)) ||
         quotations[0];
-      if (!matchedQuote || !quoteData.SessionId) {
+      const sessionId = pick(quoteData, 'sessionId', 'SessionId');
+      if (!matchedQuote || !sessionId) {
         console.error('Frenet pós-cotação sem resultado utilizável. Payload enviado:', JSON.stringify({
           SenderZipCode: senderZip, RecipientZipCode: destCep, RecipientCountry: 'BR', ShipmentItemValue: orderValue
         }));
         console.error('Frenet pós-cotação resposta completa:', quoteText.substring(0, 1000));
-        const debugMsg = quoteData?.Message || quoteData?.Details?.[0]?.Message || `Quotations vazio (${quotations.length}), SessionId: ${quoteData?.SessionId ? 'presente' : 'ausente'}`;
+        const debugMsg = pick(quoteData, 'message', 'Message') || pick(pick(quoteData, 'details', 'Details')?.[0], 'message', 'Message') || `Quotations vazio (${quotations.length}), SessionId: ${sessionId ? 'presente' : 'ausente'}`;
         throw new Error(`Frenet não retornou cotação válida para gerar a etiqueta. Detalhe: ${debugMsg}`);
       }
-      if (matchedQuote !== quotations.find((q: any) => q.CarrierCode === selectedOption.frenetCarrierCode && String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode))) {
+      if (matchedQuote !== quotations.find(matchByCarrierAndService)) {
         console.warn('Frenet: pós-cotação não encontrou exatamente o mesmo serviço selecionado na tela, usando aproximação:', {
           selecionado: { carrier: selectedOption.frenetCarrierCode, servico: selectedOption.frenetServiceCode },
-          usado: { carrier: matchedQuote.CarrierCode, servico: matchedQuote.ShippingServiceCode }
+          usado: { carrier: pick(matchedQuote, 'carrierCode', 'CarrierCode'), servico: pick(matchedQuote, 'shippingServiceCode', 'ShippingServiceCode') }
         });
       }
 
@@ -834,13 +846,13 @@ export async function POST(req: Request) {
           DeclaredValue: orderValue
         }],
         Quotation: {
-          ShippingServiceCode: matchedQuote.ShippingServiceCode,
-          ShippingServiceName: matchedQuote.ShippingServiceName,
-          Carrier: matchedQuote.Carrier,
-          CarrierCode: matchedQuote.CarrierCode,
-          ShippingPrice: matchedQuote.ShippingPrice,
-          DeliveryTime: matchedQuote.DeliveryTime || 0,
-          SessionId: quoteData.SessionId
+          ShippingServiceCode: pick(matchedQuote, 'shippingServiceCode', 'ShippingServiceCode'),
+          ShippingServiceName: pick(matchedQuote, 'shippingServiceName', 'ShippingServiceName'),
+          Carrier: pick(matchedQuote, 'carrier', 'Carrier'),
+          CarrierCode: pick(matchedQuote, 'carrierCode', 'CarrierCode'),
+          ShippingPrice: pick(matchedQuote, 'shippingPrice', 'ShippingPrice'),
+          DeliveryTime: pick(matchedQuote, 'deliveryTime', 'DeliveryTime') || 0,
+          SessionId: sessionId
         }
       }];
 
@@ -884,17 +896,19 @@ export async function POST(req: Request) {
           });
           const pendingText = await pendingRes.text();
           const pendingData = JSON.parse(pendingText);
-          const pendingItem = pendingData?.Items?.[0];
-          if (!pendingRes.ok || !pendingItem || (pendingItem.Errors && pendingItem.Errors.length > 0)) {
+          const pendingItem = pick(pendingData, 'items', 'Items')?.[0];
+          const pendingErrors = pendingItem ? pick(pendingItem, 'errors', 'Errors') : null;
+          if (!pendingRes.ok || !pendingItem || (pendingErrors && pendingErrors.length > 0)) {
             console.warn('Frenet: fallback /orders (pendente) também falhou:', pendingText.substring(0, 400));
             return null;
           }
+          const pendingShipmentId = pick(pendingItem, 'shipmentId', 'ShipmentId');
           return NextResponse.json({
             success: true,
             inCart: true,
             message: 'Sem saldo na carteira Frenet — pedido criado, mas é necessário pagar e imprimir a etiqueta no painel da Frenet (painel.frenet.com.br).',
-            shipmentId: String(pendingItem.ShipmentId || ''),
-            trackingNumber: String(pendingItem.ShipmentId || ''),
+            shipmentId: String(pendingShipmentId || ''),
+            trackingNumber: String(pendingShipmentId || ''),
             shippingProvider: 'frenet',
             transactionUrl
           });
@@ -905,9 +919,9 @@ export async function POST(req: Request) {
       };
 
       if (!frenetRes.ok) {
-        const detail = frenetData?.Details?.[0];
-        if (detail?.Code === 3000) {
-          const transactionUrl = frenetData?.TransactionUrl || null;
+        const detail = pick(frenetData, 'details', 'Details')?.[0];
+        if (pick(detail, 'code', 'Code') === 3000) {
+          const transactionUrl = pick(frenetData, 'transactionUrl', 'TransactionUrl') || null;
           const pendingResponse = await tryCreatePendingFrenetOrder(transactionUrl);
           if (pendingResponse) return pendingResponse;
           return NextResponse.json({
@@ -915,13 +929,15 @@ export async function POST(req: Request) {
             transactionUrl
           }, { status: 402 });
         }
-        const errMsg = frenetData?.Message || detail?.Message || `Frenet HTTP ${frenetRes.status}`;
+        const errMsg = pick(frenetData, 'message', 'Message') || pick(detail, 'message', 'Message') || `Frenet HTTP ${frenetRes.status}`;
         throw new Error(errMsg);
       }
 
-      // StatusBatch 2 = saldo insuficiente, retorna TransactionUrl para recarregar
-      if (frenetData.StatusBatch === 2) {
-        const transactionUrl = frenetData.TransactionUrl || frenetData.Items?.[0]?.TransactionUrl || null;
+      // statusBatch 2 = saldo insuficiente, retorna transactionUrl para recarregar
+      const statusBatch = pick(frenetData, 'statusBatch', 'StatusBatch');
+      if (statusBatch === 2) {
+        const items0 = pick(frenetData, 'items', 'Items')?.[0];
+        const transactionUrl = pick(frenetData, 'transactionUrl', 'TransactionUrl') || pick(items0, 'transactionUrl', 'TransactionUrl') || null;
         const pendingResponse = await tryCreatePendingFrenetOrder(transactionUrl);
         if (pendingResponse) return pendingResponse;
         return NextResponse.json({
@@ -930,23 +946,28 @@ export async function POST(req: Request) {
         }, { status: 402 });
       }
 
-      const item = frenetData?.Items?.[0];
+      const item = pick(frenetData, 'items', 'Items')?.[0];
       if (!item) throw new Error('Frenet não retornou dados do envio.');
+
+      const labelUrl = pick(item, 'labelUrl', 'LabelUrl') || null;
+      const trackingUrl = pick(item, 'trackingUrl', 'TrackingUrl') || null;
+      const declarationUrl = pick(item, 'declarationUrl', 'DeclarationUrl') || null;
+      const shipmentIdValue = pick(item, 'shipmentId', 'ShipmentId');
 
       // O rastreio (app/api/shipping/track) precisa do código real da transportadora
       // (ex: PY943133131BR), não do ShipmentId interno da Frenet. Esse código vem embutido
       // no final da TrackingUrl (ex: http://rastreio.../COR/PY943133131BR).
-      const trackingCodeFromUrl = item.TrackingUrl
-        ? String(item.TrackingUrl).split('/').filter(Boolean).pop()
+      const trackingCodeFromUrl = trackingUrl
+        ? String(trackingUrl).split('/').filter(Boolean).pop()
         : null;
 
       return NextResponse.json({
         success: true,
-        labelUrl: item.LabelUrl || null,
-        trackingUrl: item.TrackingUrl || null,
-        declarationUrl: item.DeclarationUrl || null,
-        shipmentId: String(item.ShipmentId || ''),
-        trackingNumber: trackingCodeFromUrl || String(item.ShipmentId || ''),
+        labelUrl,
+        trackingUrl,
+        declarationUrl,
+        shipmentId: String(shipmentIdValue || ''),
+        trackingNumber: trackingCodeFromUrl || String(shipmentIdValue || ''),
         shippingProvider: 'frenet'
       });
     }
