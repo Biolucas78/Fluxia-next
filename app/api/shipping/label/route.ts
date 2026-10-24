@@ -951,6 +951,14 @@ export async function POST(req: Request) {
       const item = pick(frenetData, 'items', 'Items')?.[0];
       if (!item) throw new Error('Frenet não retornou dados do envio.');
 
+      // Mesmo com HTTP 200, o item individual pode ter falhado (ex: statusBatch "Erro"/
+      // "ParcialmenteProcessado") — sem checar isso, retornaríamos "sucesso" com tudo null.
+      const itemErrors = pick(item, 'errors', 'Errors');
+      if (itemErrors && itemErrors.length > 0) {
+        const errDetail = itemErrors.map((e: any) => `[${pick(e, 'code', 'Code')}] ${pick(e, 'message', 'Message')}`).join('; ');
+        throw new Error(`Frenet não conseguiu processar o envio: ${errDetail}`);
+      }
+
       const labelUrl = pick(item, 'labelUrl', 'LabelUrl') || null;
       const trackingUrl = pick(item, 'trackingUrl', 'TrackingUrl') || null;
       const declarationUrl = pick(item, 'declarationUrl', 'DeclarationUrl') || null;
