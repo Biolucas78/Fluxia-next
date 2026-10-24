@@ -838,13 +838,15 @@ export async function POST(req: Request) {
             Invoice: { Key: order.invoiceKey.replace(/\D/g, '') }
           } : {})
         },
-        Volumes: [{
+        // Apesar do nome no plural, o schema da Frenet (Shipment.Volumes) é um objeto ÚNICO
+        // ($ref: Volume), não uma lista — confirmado pelo erro de deserialização da API.
+        Volumes: {
           Weight: totalWeightKg,
           Length: Math.max(16, order.boxDimensions?.length || 15),
           Height: Math.max(2, order.boxDimensions?.height || 10),
           Width: Math.max(11, order.boxDimensions?.width || 15),
           DeclaredValue: orderValue
-        }],
+        },
         Quotation: {
           ShippingServiceCode: pick(matchedQuote, 'shippingServiceCode', 'ShippingServiceCode'),
           ShippingServiceName: pick(matchedQuote, 'shippingServiceName', 'ShippingServiceName'),
