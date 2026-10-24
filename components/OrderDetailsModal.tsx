@@ -1034,10 +1034,13 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         if (data.inCart) {
           toast.success(data.message || 'Emissão enviada para o carrinho da transportadora para finalizar pagamento.', { duration: 6000 });
         } else if (data.labelUrl) {
-          console.log('[DEBUG label response]', JSON.stringify({labelUrl: data.labelUrl, dceUrl: data.dceUrl, idReciboDce: data.idReciboDce}));
-          toast.success('Etiqueta gerada!' + (data.dceUrl ? ' DC-e gerada!' : ' (sem DC-e)'), {duration: 8000});
+          // dceUrl (Correios/ME) e declarationUrl (Frenet) são o mesmo tipo de documento —
+          // a declaração de conteúdo gerada automaticamente quando o pedido não tem NF-e.
+          const declarationDocUrl = data.dceUrl || data.declarationUrl;
+          console.log('[DEBUG label response]', JSON.stringify({labelUrl: data.labelUrl, declarationDocUrl, idReciboDce: data.idReciboDce}));
+          toast.success('Etiqueta gerada!' + (declarationDocUrl ? ' DC-e gerada!' : ' (sem DC-e)'), {duration: 8000});
           window.open(data.labelUrl, '_blank');
-          if (data.dceUrl) setTimeout(() => window.open(data.dceUrl, '_blank'), 800);
+          if (declarationDocUrl) setTimeout(() => window.open(declarationDocUrl, '_blank'), 800);
         } else {
           toast.success('Ação realizada com sucesso!');
         }
