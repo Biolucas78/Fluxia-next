@@ -769,7 +769,12 @@ export async function POST(req: Request) {
         quotations.find((q: any) => String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode)) ||
         quotations[0];
       if (!matchedQuote || !quoteData.SessionId) {
-        throw new Error('Frenet não retornou cotação válida para gerar a etiqueta.');
+        console.error('Frenet pós-cotação sem resultado utilizável. Payload enviado:', JSON.stringify({
+          SenderZipCode: senderZip, RecipientZipCode: destCep, RecipientCountry: 'BR', ShipmentItemValue: orderValue
+        }));
+        console.error('Frenet pós-cotação resposta completa:', quoteText.substring(0, 1000));
+        const debugMsg = quoteData?.Message || quoteData?.Details?.[0]?.Message || `Quotations vazio (${quotations.length}), SessionId: ${quoteData?.SessionId ? 'presente' : 'ausente'}`;
+        throw new Error(`Frenet não retornou cotação válida para gerar a etiqueta. Detalhe: ${debugMsg}`);
       }
       if (matchedQuote !== quotations.find((q: any) => q.CarrierCode === selectedOption.frenetCarrierCode && String(q.ShippingServiceCode) === String(selectedOption.frenetServiceCode))) {
         console.warn('Frenet: pós-cotação não encontrou exatamente o mesmo serviço selecionado na tela, usando aproximação:', {
