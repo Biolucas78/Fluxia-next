@@ -854,6 +854,16 @@ export async function POST(req: Request) {
           CarrierCode: pick(matchedQuote, 'carrierCode', 'CarrierCode'),
           ShippingPrice: pick(matchedQuote, 'shippingPrice', 'ShippingPrice'),
           DeliveryTime: pick(matchedQuote, 'deliveryTime', 'DeliveryTime') || 0,
+          // Ecoa de volta o mesmo objeto Services que a pós-cotação retornou pra essa opção —
+          // sem isso a emissão pode rejeitar com erro genérico (2999).
+          Services: (() => {
+            const svc = pick(matchedQuote, 'services', 'Services') || {};
+            return {
+              DeclaredValue: pick(svc, 'declaredValue', 'DeclaredValue') ?? false,
+              ReceiptNotification: pick(svc, 'receiptNotification', 'ReceiptNotification') ?? false,
+              OwnHand: pick(svc, 'ownHand', 'OwnHand') ?? false
+            };
+          })(),
           SessionId: sessionId
         }
       }];
