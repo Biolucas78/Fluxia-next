@@ -51,6 +51,8 @@ interface KanbanBoardProps {
   onArchiveOrder: (orderId: string) => void;
   onAddOrder?: (order: Order) => void;
   searchQuery: string;
+  // Pedido a abrir automaticamente (link vindo de outra página, ex: Recorrência) — pode estar arquivado
+  initialOpenOrder?: Order | null;
 }
 
 interface SortableOrderCardProps {
@@ -94,10 +96,16 @@ function SortableOrderCard(props: SortableOrderCardProps) {
   );
 }
 
-export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDeleteOrder, onArchiveOrder, onAddOrder, searchQuery }: KanbanBoardProps) {
+export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDeleteOrder, onArchiveOrder, onAddOrder, searchQuery, initialOpenOrder }: KanbanBoardProps) {
   const router = useRouter();
   const { userProfile, effectiveRole } = useUser();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+
+  const initialOpenOrderId = initialOpenOrder?.id;
+  useEffect(() => {
+    if (initialOpenOrder) setSelectedOrder(initialOpenOrder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpenOrderId]);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [startDate, setStartDate] = useState<string>('');

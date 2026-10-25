@@ -23,16 +23,22 @@ const COLUMNS: { id: OrderStatus; title: string }[] = [
 ];
 
 export default function ProducaoPage() {
-  const { activeOrders: orders, setOrders, handleOrderCreated, handleUpdateOrder, handleDeleteOrder, handleArchiveOrder, isLoaded } = useOrders();
+  const { activeOrders: orders, allOrders, setOrders, handleOrderCreated, handleUpdateOrder, handleDeleteOrder, handleArchiveOrder, isLoaded } = useOrders();
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const busca = params.get('busca');
     if (busca) setSearchQuery(busca);
+    const pedido = params.get('pedido');
+    if (pedido) setOpenOrderId(pedido);
   }, []);
+
+  // Busca em todos os pedidos (inclusive arquivados) para o link "Último pedido" da Recorrência
+  const initialOpenOrder = openOrderId ? allOrders.find(o => o.id === openOrderId) || null : null;
   const [authLoading, setAuthLoading] = useState(true);
   const { userProfile: currentUser } = useUser();
 
@@ -150,6 +156,7 @@ export default function ProducaoPage() {
             onArchiveOrder={handleArchiveOrder}
             onAddOrder={handleOrderCreated}
             searchQuery={searchQuery}
+            initialOpenOrder={initialOpenOrder}
           />
         </div>
       </main>
