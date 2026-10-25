@@ -148,6 +148,29 @@ export function useRecurrenceMessages() {
   return { messages, updateMessages };
 }
 
+// Momento em que a fila da Recorrência foi reorganizada pela última vez (botão "Atualizar").
+// Clientes "movidos para o fim" antes desse momento (ou antes do início do dia) voltam à posição normal.
+export function useRecurrenceQueueReset() {
+  const [resetAt, setResetAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    const isDev = window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+    const docId = isDev ? 'recurrence_queue_dev' : 'recurrence_queue_prod';
+    const unsub = onSnapshot(doc(db, 'settings', docId), (docSnap) => {
+      setResetAt(docSnap.exists() ? (docSnap.data().resetAt || null) : null);
+    });
+    return unsub;
+  }, []);
+
+  const resetQueue = async () => {
+    const isDev = window.location.hostname.includes('ais-dev') || window.location.hostname.includes('localhost');
+    const docId = isDev ? 'recurrence_queue_dev' : 'recurrence_queue_prod';
+    await setDoc(doc(db, 'settings', docId), { resetAt: new Date().toISOString() }, { merge: true });
+  };
+
+  return { resetAt, resetQueue };
+}
+
 export function useOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);

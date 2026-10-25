@@ -212,6 +212,8 @@ export interface Order {
     userName?: string;
   }[];
   lastRecurrenceContact?: string;
+  lastRecurrenceApproach?: string;
+  recurrenceApproachChannel?: 'pessoal' | 'business';
   recurrenceRemoved?: boolean;
   shelfRemovals?: Array<{
     productName: string;

@@ -1,140 +1,510 @@
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { useOrders, useUser, useRecurrenceMessages, RecurrenceMessages } from '@/lib/hooks';
+import { useOrders, useUser, useRecurrenceMessages, useRecurrenceQueueReset, RecurrenceMessages } from '@/lib/hooks';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
-import { Loader2, Calendar, MessageSquare, AlertCircle, Filter, Search, Edit2, X, Send, EyeOff, Save, CheckCircle2, RefreshCw, Settings, Clock, Users } from 'lucide-react';
+import RecurrenceCard, { RecurrenceEdits } from '@/components/RecurrenceCard';
+import {
+  Loader2, MessageSquare, AlertCircle, Filter, Search, X, Send, EyeOff, Save, CheckCircle2, RefreshCw,
+  Settings, Clock, Users, ArrowUpDown, Paperclip, Share2, RotateCcw, AlertTriangle, FileText,
+} from 'lucide-react';
 import Login from '@/components/Login';
 import { motion, AnimatePresence } from 'motion/react';
-import { Order } from '@/lib/types';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, doc, updateDoc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
+import { getValidBlingToken } from '@/lib/bling-client';
+import {
+  ClientRecurrence, RecurrenceColor, RecurrenceTab, ApproachChannel, CustomerEntry, RECURRENCE_TAGS, APPROACH_COOLDOWN_DAYS,
+  buildCustomersIndex, buildRecurrenceClients, sortRecurrenceQueue, fillMessage, isBeloHorizonte, normalizeString,
+  getCustomerPhone, getCustomerCity, getCustomerState,
+} from '@/lib/recurrence';
 
-interface ClientRecurrence {
-  identifier: string;
-  clientName: string;
-  phone: string;
-  cpf: string;
-  cnpj: string;
-  origin: string;
-  totalOrders: number;
-  latestOrder: Order;
-  // Dias desde a CRIAÇÃO do último pedido real — é o que o card exibe e a base da fila
-  daysSinceLastOrder: number;
-  // Data de entrega do último pedido, só pra exibição (não rege mais a fila)
-  deliveryDateDisplay: string | null;
-  daysSinceContact: number | null;
-  // Data efetiva usada pra ordenar a fila: a mais recente entre criação do pedido e último
-  // "mover pro fim" — pedido novo OU clique no botão empurram o cliente pro final.
-  queueDate: number;
-}
+const TABS: { id: RecurrenceTab; label: string }[] = [
+  { id: 'todos', label: 'Todos' },
+  { id: 'cnpj', label: 'CNPJ' },
+  { id: 'cpf', label: 'CPF' },
+  { id: 'bh', label: 'Belo Horizonte' },
+  { id: 'fora', label: 'Fora da recorrência' },
+];
 
-// Entrada do cliente na coleção bling_customers (fonte única da flag de participação)
-interface CustomerFlagEntry {
-  id: string;
-  participaRecorrencia?: boolean;
-}
+const COLOR_FILTERS: { id: RecurrenceColor; label: string; cls: string; activeCls: string }[] = [
+  { id: 'red', label: '+30 dias', cls: 'text-red-600 dark:text-red-400', activeCls: 'bg-red-500 text-white border-red-500' },
+  { id: 'yellow', label: '20–30 dias', cls: 'text-amber-600 dark:text-amber-400', activeCls: 'bg-amber-400 text-white border-amber-400' },
+  { id: 'green', label: '-20 dias', cls: 'text-emerald-600 dark:text-emerald-400', activeCls: 'bg-emerald-500 text-white border-emerald-500' },
+];
 
-const EXCLUDED_ORIGINS = ['amazon', 'wix', 'meli', 'mercado'];
-function isExcludedOrigin(origin?: string): boolean {
-  const o = (origin || '').toLowerCase();
-  return EXCLUDED_ORIGINS.some(k => o.includes(k));
-}
+const MESSAGE_OPTIONS: { group: string; options: { key: keyof RecurrenceMessages; label: string }[] }[] = [
+  { group: 'Revenda (B2B)', options: [
+    { key: 'b2b_1', label: 'Opção 1: Oferta Direta Reposição' },
+    { key: 'b2b_2', label: 'Opção 2: Oferta com Agendamento' },
+    { key: 'b2b_3', label: 'Opção 3: Relacionamento / Suporte' },
+  ]},
+  { group: 'Pessoa Física (Consumo)', options: [
+    { key: 'pf_1', label: 'Opção 1: Acabando o estoque' },
+    { key: 'pf_2', label: 'Opção 2: Torra Fresquinha' },
+    { key: 'pf_3', label: 'Opção 3: Renovar para casa' },
+  ]},
+];
 
-const normalizeString = (str?: string) => {
-  if (!str) return '';
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+const selectCls = 'w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-sm text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary';
+const filterLabelCls = 'text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block';
+
+const isDevHost = () => typeof window !== 'undefined'
+  && (window.location.hostname.includes('localhost') || window.location.hostname.includes('ais-dev'));
+
+const monthKey = (time: number) => {
+  const d = new Date(time);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
-function getOriginTag(origin: string): { label: string; cls: string } {
-  const o = (origin || '').toLowerCase();
-  if (o.includes('amazon'))   return { label: 'Amazon',      cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 border-orange-200 dark:border-orange-800' };
-  if (o.includes('meli') || o.includes('mercado')) return { label: 'Meli', cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800' };
-  if (o.includes('wix'))      return { label: 'Wix',         cls: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300 border-pink-200 dark:border-pink-800' };
-  if (o === 'whatsapp pf')    return { label: 'WhatsApp PF', cls: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300 border-teal-200 dark:border-teal-800' };
-  if (o.includes('whatsapp')) return { label: 'WhatsApp',    cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 border-green-200 dark:border-green-800' };
-  if (o.includes('crm'))      return { label: 'CRM',         cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800' };
-  return { label: origin || 'N/A', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700' };
+const monthLabel = (key: string) => {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+};
+
+function suggestMessage(client: ClientRecurrence): keyof RecurrenceMessages {
+  if (client.tags.includes('Revendedor')) return 'b2b_1';
+  if (client.tags.includes('Consumidor final')) return 'pf_1';
+  if (client.docType === 'cnpj') return 'b2b_1';
+  if (client.docType === 'cpf' || client.origin.toLowerCase().includes('pf')) return 'pf_1';
+  return 'b2b_1';
+}
+
+// Monta o payload do Bling a partir do cadastro salvo + edições (mesmo formato usado em Clientes)
+function buildBlingPayload(data: any, edits: RecurrenceEdits) {
+  const docNum = (data.numeroDocumento || '').replace(/\D/g, '');
+  const indicadorIe = parseInt(data.indicadorIe || data.contribuinte || '9');
+  return {
+    nome: edits.razaoSocial || data.nome,
+    fantasia: edits.fantasia,
+    tipo: data.tipo || (docNum.length === 14 ? 'J' : 'F'),
+    situacao: data.situacao || 'A',
+    numeroDocumento: data.numeroDocumento || '',
+    ie: indicadorIe === 9 ? '' : (data.ie || ''),
+    indicadorIe,
+    telefone: data.telefone || '',
+    celular: edits.phone,
+    telefones: { celular: edits.phone },
+    email: data.email || '',
+    endereco: {
+      geral: {
+        cep: data.endereco?.geral?.cep || data.endereco?.cep || '',
+        uf: edits.state,
+        municipio: edits.city,
+        bairro: data.endereco?.geral?.bairro || data.endereco?.bairro || '',
+        endereco: data.endereco?.geral?.endereco || data.endereco?.endereco || '',
+        numero: data.endereco?.geral?.numero || data.endereco?.numero || '',
+        complemento: data.endereco?.geral?.complemento || data.endereco?.complemento || '',
+      },
+    },
+    dadosAdicionais: {
+      codigoRegimeTributario: parseInt(data.dadosAdicionais?.codigoRegimeTributario || data.codigoRegimeTributario || '0'),
+    },
+  };
 }
 
 export default function RecorrenciaPage() {
   const { allOrders, isLoaded, handleUpdateOrder } = useOrders();
   const { userProfile, loading: userLoading, effectiveRole } = useUser();
+  const { messages, updateMessages } = useRecurrenceMessages();
+  const { resetAt, resetQueue } = useRecurrenceQueueReset();
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterOrigin, setFilterOrigin] = useState<string>('all');
-
-  // Índice de clientes (bling_customers) — fonte única da flag "participa da recorrência".
-  // Indexado por: doc.id, identifier (cnpj/cpf/telefone/nome normalizado) e 'nome:<normalizado>'.
-  const [customersIndex, setCustomersIndex] = useState<Map<string, CustomerFlagEntry>>(new Map());
+  // ── Cadastro de clientes (bling_customers) em tempo real ────────────────────
+  const [customersIndex, setCustomersIndex] = useState<Map<string, CustomerEntry>>(new Map());
   const [customersLoaded, setCustomersLoaded] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, 'bling_customers'));
-        const idx = new Map<string, CustomerFlagEntry>();
-        snap.docs.forEach(d => {
-          const data = d.data() as any;
-          const entry: CustomerFlagEntry = { id: d.id, participaRecorrencia: data.participaRecorrencia };
-          idx.set(d.id, entry);
-          const docNum = (data.numeroDocumento || '').replace(/\D/g, '');
-          if (docNum) idx.set(docNum, entry);
-          const nome = normalizeString(data.nome || '');
-          if (nome) idx.set('nome:' + nome, entry);
-          const fantasia = normalizeString(data.fantasia || '');
-          if (fantasia) idx.set('nome:' + fantasia, entry);
-        });
-        setCustomersIndex(idx);
-      } catch (e) {
-        console.warn('Não foi possível carregar bling_customers para a recorrência:', e);
-      } finally {
-        setCustomersLoaded(true);
-      }
-    })();
+    if (!userProfile) return;
+    const unsub = onSnapshot(collection(db, 'bling_customers'), (snap) => {
+      setCustomersIndex(buildCustomersIndex(snap.docs.map(d => ({ id: d.id, data: d.data() }))));
+      setCustomersLoaded(true);
+    }, (e) => {
+      console.warn('Não foi possível carregar bling_customers para a recorrência:', e);
+      setCustomersLoaded(true);
+    });
+    return unsub;
+  }, [userProfile]);
+
+  // Recalcula as contagens de dias quando a página fica aberta de um dia pro outro
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60 * 60 * 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  const findCustomerEntry = (order: Order, identifier: string): CustomerFlagEntry | null => {
-    if (customersIndex.has(identifier)) return customersIndex.get(identifier)!;
-    const docNum = (order.cnpj || order.cpf || '').replace(/\D/g, '');
-    if (docNum && customersIndex.has(docNum)) return customersIndex.get(docNum)!;
-    const nome = normalizeString(order.clientName);
-    if (nome && customersIndex.has('nome:' + nome)) return customersIndex.get('nome:' + nome)!;
-    return null;
+  const allClients = useMemo(() => {
+    if (!isLoaded || !customersLoaded) return [];
+    return buildRecurrenceClients(allOrders, customersIndex, resetAt, now);
+  }, [allOrders, isLoaded, customersIndex, customersLoaded, resetAt, now]);
+
+  // ── Filtros ─────────────────────────────────────────────────────────────────
+  const [tab, setTab] = useState<RecurrenceTab>('cnpj');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterState, setFilterState] = useState('all');
+  const [filterCity, setFilterCity] = useState('all');
+  const [filterMonth, setFilterMonth] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [filterTag, setFilterTag] = useState('all');
+  const [filterOrigin, setFilterOrigin] = useState('all');
+  const [filterColor, setFilterColor] = useState<RecurrenceColor | 'all'>('all');
+
+  const stateOptions = useMemo(
+    () => [...new Set(allClients.map(c => c.state).filter(Boolean))].sort(),
+    [allClients]
+  );
+  const cityOptions = useMemo(
+    () => [...new Set(allClients.filter(c => filterState === 'all' || c.state === filterState).map(c => c.city).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [allClients, filterState]
+  );
+  const monthOptions = useMemo(
+    () => [...new Set(allClients.map(c => monthKey(c.lastOrderAt)))].sort().reverse(),
+    [allClients]
+  );
+  const originOptions = useMemo(
+    () => [...new Set(allClients.map(c => c.origin))].sort(),
+    [allClients]
+  );
+
+  const activeFilterCount = [filterState !== 'all', filterCity !== 'all', filterMonth !== 'all', !!startDate || !!endDate, filterTag !== 'all', filterOrigin !== 'all']
+    .filter(Boolean).length;
+
+  const clearFilters = () => {
+    setFilterState('all'); setFilterCity('all'); setFilterMonth('all');
+    setStartDate(''); setEndDate(''); setFilterTag('all'); setFilterOrigin('all'); setFilterColor('all');
   };
 
-  // Define a participação do cliente na recorrência (bling_customers é a fonte única da verdade).
-  // Se o cliente ainda não existir em bling_customers, cria um doc mínimo usando o identifier.
-  const setParticipaRecorrencia = async (client: ClientRecurrence, value: boolean) => {
-    const entry = findCustomerEntry(client.latestOrder, client.identifier);
-    const docId = entry?.id || client.identifier;
-    await setDoc(doc(db, 'bling_customers', docId), {
-      participaRecorrencia: value,
-      ...(entry ? {} : { nome: client.clientName, numeroDocumento: (client.cnpj || client.cpf || '').replace(/\D/g, '') }),
-    }, { merge: true });
+  // Filtros secundários (combinam com qualquer aba)
+  const secondaryFiltered = useMemo(() => {
+    const term = normalizeString(searchTerm);
+    const termDigits = searchTerm.replace(/\D/g, '');
+    const start = startDate ? new Date(startDate + 'T00:00:00').getTime() : null;
+    const end = endDate ? new Date(endDate + 'T23:59:59').getTime() : null;
+    return allClients.filter(c => {
+      if (term) {
+        const matchesText = [c.fantasia, c.razaoSocial, c.contatoNome, c.city].some(v => normalizeString(v).includes(term));
+        const matchesPhone = termDigits.length >= 3 && c.phone.replace(/\D/g, '').includes(termDigits);
+        if (!matchesText && !matchesPhone) return false;
+      }
+      if (filterState !== 'all' && c.state !== filterState) return false;
+      if (filterCity !== 'all' && c.city !== filterCity) return false;
+      if (filterMonth !== 'all' && monthKey(c.lastOrderAt) !== filterMonth) return false;
+      if (start !== null && c.lastOrderAt < start) return false;
+      if (end !== null && c.lastOrderAt > end) return false;
+      if (filterTag === 'none' && c.tags.length > 0) return false;
+      if (filterTag !== 'all' && filterTag !== 'none' && !c.tags.includes(filterTag)) return false;
+      if (filterOrigin !== 'all' && c.origin !== filterOrigin) return false;
+      return true;
+    });
+  }, [allClients, searchTerm, filterState, filterCity, filterMonth, startDate, endDate, filterTag, filterOrigin]);
 
-    setCustomersIndex(prev => {
-      const next = new Map(prev);
-      const newEntry: CustomerFlagEntry = { id: docId, participaRecorrencia: value };
-      next.set(docId, newEntry);
-      next.set(client.identifier, newEntry);
-      const docNum = (client.cnpj || client.cpf || '').replace(/\D/g, '');
-      if (docNum) next.set(docNum, newEntry);
-      next.set('nome:' + normalizeString(client.clientName), newEntry);
+  const matchesTab = (c: ClientRecurrence, t: RecurrenceTab) => {
+    if (t === 'fora') return !c.participates;
+    if (!c.participates) return false;
+    if (t === 'cnpj') return c.docType === 'cnpj';
+    if (t === 'cpf') return c.docType === 'cpf';
+    if (t === 'bh') return isBeloHorizonte(c.city);
+    return true;
+  };
+
+  const tabCounts = useMemo(() => {
+    const counts = {} as Record<RecurrenceTab, number>;
+    TABS.forEach(t => { counts[t.id] = secondaryFiltered.filter(c => matchesTab(c, t.id)).length; });
+    return counts;
+  }, [secondaryFiltered]);
+
+  const tabFiltered = useMemo(() => secondaryFiltered.filter(c => matchesTab(c, tab)), [secondaryFiltered, tab]);
+
+  const colorCounts = useMemo(() => ({
+    red: tabFiltered.filter(c => c.color === 'red').length,
+    yellow: tabFiltered.filter(c => c.color === 'yellow').length,
+    green: tabFiltered.filter(c => c.color === 'green').length,
+  }), [tabFiltered]);
+
+  const filteredData = useMemo(() => sortRecurrenceQueue(
+    tabFiltered.filter(c => filterColor === 'all' || c.color === filterColor),
+    sortDir
+  ), [tabFiltered, filterColor, sortDir]);
+
+  // ── Seleção em massa ────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false);
+
+  useEffect(() => { setSelectedIds(new Set()); },
+    [tab, searchTerm, filterState, filterCity, filterMonth, startDate, endDate, filterTag, filterOrigin, filterColor]);
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
 
-  const [selectedClient, setSelectedClient] = useState<ClientRecurrence | null>(null);
-  const [editedName, setEditedName] = useState('');
-  const [editedContactName, setEditedContactName] = useState('');
-  const [editedPhone, setEditedPhone] = useState('');
-  const [isEditingData, setIsEditingData] = useState(false);
-  const [selectedMessage, setSelectedMessage] = useState('b2b_1');
+  const handleSelectAll = () => {
+    setSelectedIds(selectedIds.size === filteredData.length ? new Set() : new Set(filteredData.map(c => c.identifier)));
+  };
 
-  const { messages, updateMessages } = useRecurrenceMessages();
+  const selectedClients = () => filteredData.filter(c => selectedIds.has(c.identifier));
+
+  // ── Escritas ────────────────────────────────────────────────────────────────
+  // Grava no cadastro do cliente (bling_customers). Se o cliente ainda não existir lá,
+  // cria um doc mínimo usando o identifier, igual ao padrão já usado pela flag de participação.
+  const writeCustomer = async (client: ClientRecurrence, fields: Record<string, any>) => {
+    const docId = client.customer?.id || client.identifier;
+    await setDoc(doc(db, 'bling_customers', docId), {
+      ...fields,
+      ...(client.customer ? {} : {
+        nome: client.razaoSocial,
+        numeroDocumento: (client.latestOrder.cnpj || client.latestOrder.cpf || '').replace(/\D/g, ''),
+      }),
+    }, { merge: true });
+  };
+
+  const setParticipaRecorrencia = (client: ClientRecurrence, value: boolean) =>
+    writeCustomer(client, { participaRecorrencia: value });
+
+  // "Mover para o fim" vale até o fim do dia ou até o próximo "Atualizar"
+  const moveToEnd = async (client: ClientRecurrence) => {
+    const nowIso = new Date().toISOString();
+    await handleUpdateOrder({
+      ...client.latestOrder,
+      lastRecurrenceContact: nowIso,
+      statusHistory: [
+        ...(client.latestOrder.statusHistory || []),
+        { action: 'Recorrência — movido para o fim da fila', timestamp: nowIso },
+      ],
+    });
+  };
+
+  // Abordagem registrada ao abrir o WhatsApp: também move o cliente pro fim da fila do dia
+  const recordApproach = async (client: ClientRecurrence, channel?: ApproachChannel) => {
+    const nowIso = new Date().toISOString();
+    await handleUpdateOrder({
+      ...client.latestOrder,
+      lastRecurrenceContact: nowIso,
+      lastRecurrenceApproach: nowIso,
+      ...(channel ? { recurrenceApproachChannel: channel } : {}),
+      statusHistory: [
+        ...(client.latestOrder.statusHistory || []),
+        { action: `Recorrência — abordagem via WhatsApp${channel ? (channel === 'business' ? ' Business' : ' Pessoal') : ' (com anexo)'}`, timestamp: nowIso },
+      ],
+    });
+  };
+
+  const handleMoveToEnd = async (client: ClientRecurrence) => {
+    try {
+      await moveToEnd(client);
+      toast.success('Cliente movido para o fim da fila (até o fim do dia).');
+    } catch (e: any) {
+      toast.error('Erro ao mover: ' + e.message);
+    }
+  };
+
+  const handleReinclude = async (client: ClientRecurrence) => {
+    try {
+      await setParticipaRecorrencia(client, true);
+      toast.success('Cliente recolocado na recorrência.');
+    } catch (e: any) {
+      toast.error('Erro ao recolocar: ' + e.message);
+    }
+  };
+
+  const handleSaveEdits = async (client: ClientRecurrence, edits: RecurrenceEdits) => {
+    try {
+      await writeCustomer(client, {
+        ...(edits.razaoSocial.trim() ? { nome: edits.razaoSocial.trim() } : {}),
+        fantasia: edits.fantasia.trim(),
+        celular: edits.phone.trim(),
+        contatoNome: edits.contatoNome.trim(),
+        endereco: { geral: { municipio: edits.city.trim(), uf: edits.state.trim().toUpperCase() } },
+        tagsRecorrencia: edits.tags,
+        observacaoRecorrencia: edits.observacao.trim(),
+        updatedAt: Date.now(),
+      });
+
+      // Mantém o pedido mais recente coerente (o modal do pedido mostra o contato)
+      if (edits.contatoNome.trim() !== (client.latestOrder.contactName || '')) {
+        await handleUpdateOrder({ ...client.latestOrder, contactName: edits.contatoNome.trim() });
+      }
+
+      // Envia ao Bling os campos que ele também guarda — senão a próxima sincronização desfaz a correção
+      const data = client.customer?.data;
+      const isBlingContact = !!data && String(data.id) === client.customer!.id;
+      const blingFieldsChanged = edits.razaoSocial !== client.razaoSocial || edits.fantasia !== client.fantasia
+        || edits.phone !== client.phone || edits.city !== client.city || edits.state !== client.state;
+
+      if (isBlingContact && blingFieldsChanged) {
+        const token = await getValidBlingToken();
+        if (!token) {
+          toast('Salvo no Fluxia. Conecte o Bling em Configurações para enviar a correção ao Bling.', { icon: '⚠️' });
+          return;
+        }
+        const res = await fetch(`/api/bling/customers/${client.customer!.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(buildBlingPayload(data, edits)),
+        });
+        if (!res.ok) {
+          const result = await res.json().catch(() => ({}));
+          toast.error('Salvo no Fluxia, mas o Bling recusou: ' + (result.error || res.status), { duration: 6000 });
+          return;
+        }
+        toast.success('Cadastro atualizado no Fluxia e no Bling!');
+      } else {
+        toast.success('Cadastro atualizado!');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao salvar: ' + e.message);
+      throw e;
+    }
+  };
+
+  // ── Atualizar ───────────────────────────────────────────────────────────────
+  // Pedidos e cadastro já chegam em tempo real. O botão: (1) devolve à posição normal quem foi
+  // movido pro fim, (2) preenche campos VAZIOS do cadastro com os dados dos pedidos (nunca sobrescreve).
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await resetQueue();
+
+      // bling_customers é compartilhado entre dev e prod — não completar cadastro com pedidos de teste
+      if (isDevHost()) {
+        toast.success('Fila reorganizada pela data do pedido. (Complemento de cadastro desativado em localhost.)');
+        return;
+      }
+
+      const updates: { id: string; fields: Record<string, any> }[] = [];
+      allClients.forEach(c => {
+        if (!c.customer) return;
+        const data = c.customer.data;
+        const fields: Record<string, any> = {};
+        if (!getCustomerPhone(data) && c.phone) fields.celular = c.phone;
+        if (!data.contatoNome && c.contatoNome) fields.contatoNome = c.contatoNome;
+        if (!data.fantasia && c.fantasia) fields.fantasia = c.fantasia;
+        const geral: Record<string, string> = {};
+        if (!getCustomerCity(data) && c.city) geral.municipio = c.city;
+        if (!getCustomerState(data) && c.state) geral.uf = c.state;
+        if (Object.keys(geral).length) fields.endereco = { geral };
+        if (Object.keys(fields).length) updates.push({ id: c.customer.id, fields });
+      });
+
+      for (let i = 0; i < updates.length; i += 400) {
+        const batch = writeBatch(db);
+        updates.slice(i, i + 400).forEach(u => batch.set(doc(db, 'bling_customers', u.id), u.fields, { merge: true }));
+        await batch.commit();
+      }
+
+      toast.success(updates.length
+        ? `Fila reorganizada e ${updates.length} cadastro(s) completado(s) com dados dos pedidos.`
+        : 'Fila reorganizada pela data do pedido. Cadastros já estavam completos.');
+    } catch (e: any) {
+      toast.error('Erro ao atualizar: ' + e.message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // ── Remoção ─────────────────────────────────────────────────────────────────
+  const [clientToRemove, setClientToRemove] = useState<ClientRecurrence | null>(null);
+
+  const confirmRemove = async () => {
+    if (!clientToRemove) return;
+    try {
+      await setParticipaRecorrencia(clientToRemove, false);
+      toast.success('Cliente movido para "Fora da recorrência".');
+      if (selectedClientId === clientToRemove.identifier) setSelectedClientId(null);
+      setClientToRemove(null);
+    } catch (e: any) {
+      toast.error('Erro ao remover: ' + e.message);
+    }
+  };
+
+  const handleBulkSnooze = async () => {
+    const clients = selectedClients();
+    await Promise.all(clients.map(moveToEnd));
+    setSelectedIds(new Set());
+    toast.success(`${clients.length} clientes movidos para o fim da fila.`);
+  };
+
+  const handleBulkRemove = async () => {
+    const clients = selectedClients();
+    await Promise.all(clients.map(c => setParticipaRecorrencia(c, false)));
+    setSelectedIds(new Set());
+    setBulkRemoveConfirm(false);
+    toast.success(`${clients.length} clientes movidos para "Fora da recorrência".`);
+  };
+
+  const handleBulkReinclude = async () => {
+    const clients = selectedClients();
+    await Promise.all(clients.map(c => setParticipaRecorrencia(c, true)));
+    setSelectedIds(new Set());
+    toast.success(`${clients.length} clientes recolocados na recorrência.`);
+  };
+
+  // ── Modal de abordagem ──────────────────────────────────────────────────────
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<keyof RecurrenceMessages>('b2b_1');
+  // O anexo continua selecionado entre clientes, pra mandar a mesma promoção pra vários seguidos
+  const [attachment, setAttachment] = useState<File | null>(null);
+
+  const selectedClient = useMemo(
+    () => (selectedClientId ? allClients.find(c => c.identifier === selectedClientId) || null : null),
+    [allClients, selectedClientId]
+  );
+
+  const handleOpenClient = (client: ClientRecurrence) => {
+    setSelectedClientId(client.identifier);
+    setSelectedMessage(suggestMessage(client));
+  };
+
+  const messageText = selectedClient ? fillMessage(messages[selectedMessage], selectedClient) : '';
+
+  const generateWhatsappUrl = (tipo: ApproachChannel) => {
+    if (!selectedClient?.phone) return '#';
+    let phone = selectedClient.phone.replace(/\D/g, '');
+    if (!phone.startsWith('55')) phone = '55' + phone;
+    const encoded = encodeURIComponent(messageText);
+    if (tipo === 'business') {
+      return `intent://send?phone=${phone}&text=${encoded}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
+    }
+    return `https://wa.me/${phone}?text=${encoded}`;
+  };
+
+  const handleWhatsappClick = (channel: ApproachChannel) => {
+    if (!selectedClient?.phone) {
+      toast.error('Cliente sem telefone. Cadastre pelo lápis no card.');
+      return;
+    }
+    recordApproach(selectedClient, channel).then(() => toast.success('Abordagem registrada.'));
+  };
+
+  // O link do WhatsApp só leva texto — arquivo só vai pela tela de compartilhar do Android
+  const handleShareWithFile = async () => {
+    if (!selectedClient || !attachment) return;
+    if (!navigator.canShare || !navigator.canShare({ files: [attachment] })) {
+      toast.error('Este navegador não compartilha arquivos. Use o Chrome no celular Android.');
+      return;
+    }
+    // Copia o texto também: alguns envios de PDF descartam a legenda, aí é só colar
+    navigator.clipboard?.writeText(messageText).catch(() => {});
+    try {
+      await navigator.share({ files: [attachment], text: messageText });
+      await recordApproach(selectedClient);
+      toast.success('Abordagem registrada. Se o texto não foi junto, é só colar — ele está copiado.');
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') toast.error('Não foi possível compartilhar: ' + e.message);
+    }
+  };
+
+  // ── Frases ──────────────────────────────────────────────────────────────────
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingMessages, setEditingMessages] = useState<RecurrenceMessages | null>(null);
 
@@ -149,297 +519,6 @@ export default function RecorrenciaPage() {
       setIsSettingsOpen(false);
       toast.success('Frases atualizadas com sucesso!');
     }
-  };
-
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => {
-      setRefreshTrigger(prev => prev + 1);
-      setIsRefreshing(false);
-      toast.success('Dados atualizados!');
-    }, 600);
-  };
-
-  const recurrenceData = useMemo(() => {
-    if (!isLoaded || !customersLoaded) return [];
-
-    const clientsMap = new Map<string, { orders: Order[] }>();
-
-    const getIdentifier = (order: Order) => {
-      if (order.cnpj) return order.cnpj.replace(/\D/g, '');
-      if (order.cpf) return order.cpf.replace(/\D/g, '');
-      if (order.phone) return order.phone.replace(/\D/g, '');
-      return normalizeString(order.clientName);
-    };
-
-    allOrders.forEach(order => {
-      const id = getIdentifier(order);
-      if (!id) return;
-
-      if (!clientsMap.has(id)) {
-        clientsMap.set(id, { orders: [] });
-      }
-      clientsMap.get(id)!.orders.push(order);
-    });
-
-    const now = new Date();
-    const result: ClientRecurrence[] = [];
-
-    clientsMap.forEach((data, identifier) => {
-      const sortedOrders = [...data.orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-      // Ignorar amostras — clientes em prospecção não entram na recorrência
-      const realOrders = sortedOrders.filter(o => !o.isSample);
-      if (realOrders.length === 0) return;
-
-      const latestOrder = realOrders[0];
-
-      // Regra 1: todos os clientes entram, salvo exceções (pedido ainda não entregue continua de fora)
-      if (latestOrder.status !== 'entregue') return;
-
-      // Regra 8: exclusão definitiva por cliente. Fonte única: bling_customers.participaRecorrencia.
-      // Quando ainda não há flag explícita, aplica o padrão da regra 7 (Amazon/Wix/Meli começam fora).
-      // recurrenceRemoved (campo antigo, por pedido) é respeitado como exclusão legada, só leitura.
-      const customerEntry = findCustomerEntry(latestOrder, identifier);
-      const participates = customerEntry?.participaRecorrencia !== undefined
-        ? customerEntry.participaRecorrencia !== false
-        : !isExcludedOrigin(latestOrder.origin);
-      if (!participates) return;
-      if (latestOrder.recurrenceRemoved) return;
-
-      // Regra 5: contador de dias = desde a CRIAÇÃO do último pedido (não mais a entrega)
-      const createdAtDate = new Date(latestOrder.createdAt);
-      const daysSinceLastOrder = Math.floor((now.getTime() - createdAtDate.getTime()) / (1000 * 60 * 60 * 24));
-
-      // Regra 6: data de entrega só para exibição no card
-      let deliveredAtStr: string | null = null;
-      if (latestOrder.deliveryDate) {
-        deliveredAtStr = latestOrder.deliveryDate;
-      } else {
-        const deliveredHistory = latestOrder.statusHistory?.find(h => h.status === 'entregue');
-        if (deliveredHistory) deliveredAtStr = deliveredHistory.timestamp;
-      }
-
-      let daysSinceContact = null;
-      if (latestOrder.lastRecurrenceContact) {
-        const contactDate = new Date(latestOrder.lastRecurrenceContact);
-        daysSinceContact = Math.floor((now.getTime() - contactDate.getTime()) / (1000 * 60 * 60 * 24));
-      }
-
-      // Regras 2+3+4: posição na fila = a mais recente entre criação do pedido e "mover pro fim"
-      const contactTime = latestOrder.lastRecurrenceContact ? new Date(latestOrder.lastRecurrenceContact).getTime() : 0;
-      const queueDate = Math.max(createdAtDate.getTime(), contactTime);
-
-      result.push({
-        identifier,
-        clientName: latestOrder.clientName,
-        phone: latestOrder.phone || '',
-        cpf: latestOrder.cpf || '',
-        cnpj: latestOrder.cnpj || '',
-        origin: latestOrder.origin || 'N/A',
-        totalOrders: realOrders.length,
-        latestOrder,
-        daysSinceLastOrder,
-        deliveryDateDisplay: deliveredAtStr,
-        daysSinceContact,
-        queueDate,
-      });
-    });
-
-    // Regra 2: mais antigos primeiro
-    return result.sort((a, b) => a.queueDate - b.queueDate);
-  }, [allOrders, isLoaded, customersIndex, customersLoaded]);
-
-  const filteredData = useMemo(() => {
-    return recurrenceData.filter(client => {
-      if (searchTerm) {
-        const term = normalizeString(searchTerm);
-        const matchesName = normalizeString(client.clientName).includes(term);
-        const matchesPhone = client.phone?.includes(term);
-        if (!matchesName && !matchesPhone) return false;
-      }
-
-      if (filterOrigin !== 'all' && client.origin !== filterOrigin) return false;
-
-      return true;
-    });
-  }, [recurrenceData, searchTerm, filterOrigin]);
-
-  const handleOpenClient = (client: ClientRecurrence) => {
-    setSelectedClient(client);
-    setEditedName(client.clientName);
-    setEditedContactName(client.latestOrder.contactName || '');
-    setEditedPhone(client.phone || '');
-    setIsEditingData(false);
-    
-    if (client.origin.toLowerCase().includes('pf') || client.origin.toLowerCase() === 'whatsapp' && !client.cnpj) {
-      setSelectedMessage('pf_1');
-    } else {
-      setSelectedMessage('b2b_1');
-    }
-  };
-
-  const handleUpdateData = async () => {
-    if (!selectedClient) return;
-    try {
-      const orderToUpdate = { ...selectedClient.latestOrder };
-      orderToUpdate.clientName = editedName;
-      orderToUpdate.contactName = editedContactName;
-      if (editedPhone) {
-        orderToUpdate.phone = editedPhone;
-      }
-      orderToUpdate.statusHistory = [
-        ...(orderToUpdate.statusHistory || []),
-        {
-          action: 'Dados atualizados na Recorrência',
-          timestamp: new Date().toISOString()
-        }
-      ];
-      await handleUpdateOrder(orderToUpdate);
-
-      if (editedPhone) {
-        try {
-          const cleanPhone = editedPhone.replace(/\D/g, '');
-          const cleanDoc = (selectedClient.cnpj || selectedClient.cpf || '').replace(/\D/g, '');
-          const cleanName = normalizeString(selectedClient.clientName);
-
-          const snapshot = await getDocs(collection(db, 'bling_customers'));
-          const match = snapshot.docs.find(d => {
-            const data = d.data();
-            const docNum = (data.numeroDocumento || '').replace(/\D/g, '');
-            const nome = normalizeString(data.nome || '');
-            const fantasia = normalizeString(data.fantasia || '');
-
-            if (cleanDoc && docNum && cleanDoc === docNum) return true;
-            return nome === cleanName || fantasia === cleanName ||
-                   nome.includes(cleanName) || fantasia.includes(cleanName);
-          });
-
-          if (match) {
-            await updateDoc(doc(db, 'bling_customers', match.id), {
-              celular: cleanPhone
-            });
-            toast.success('Dados atualizados e sincronizados com o cadastro de clientes!');
-          } else {
-            toast.success('Dados atualizados com sucesso!');
-          }
-        } catch (syncError) {
-          console.warn('Não foi possível sincronizar com bling_customers:', syncError);
-          toast.success('Dados atualizados! (Sincronização com clientes falhou silenciosamente)');
-        }
-      } else {
-        toast.success('Dados atualizados com sucesso!');
-      }
-
-      setIsEditingData(false);
-    } catch (e: any) {
-      toast.error('Erro ao atualizar: ' + e.message);
-    }
-  };
-
-  // Regras 3+4: move o cliente pro final da fila (lastRecurrenceContact passa a reger o queueDate)
-  const handleMoveToEnd = async (client: ClientRecurrence) => {
-    try {
-      const orderToUpdate = { ...client.latestOrder };
-      orderToUpdate.lastRecurrenceContact = new Date().toISOString();
-      orderToUpdate.statusHistory = [
-        ...(orderToUpdate.statusHistory || []),
-        {
-          action: 'Contato de Recorrência realizado — movido para o fim da fila',
-          timestamp: new Date().toISOString()
-        }
-      ];
-      await handleUpdateOrder(orderToUpdate);
-      toast.success('Cliente movido para o fim da fila.');
-    } catch (e: any) {
-      toast.error('Erro ao registrar contato: ' + e.message);
-    }
-  };
-
-  const handleDidNotBuy = async () => {
-    if (!selectedClient) return;
-    await handleMoveToEnd(selectedClient);
-    setSelectedClient(null);
-  };
-
-  const [clientToRemove, setClientToRemove] = useState<typeof recurrenceData[0] | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false);
-
-  // Limpar seleção quando filtros mudam
-  useEffect(() => { setSelectedIds(new Set()); }, [filterOrigin, searchTerm]);
-
-  const handleToggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const handleSelectAll = () => {
-    if (selectedIds.size === filteredData.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredData.map(c => c.identifier)));
-    }
-  };
-
-  const handleBulkSnooze = async () => {
-    const clients = recurrenceData.filter(c => selectedIds.has(c.identifier));
-    await Promise.all(clients.map(client => handleMoveToEnd(client)));
-    setSelectedIds(new Set());
-    toast.success(`${clients.length} clientes movidos para o fim da fila.`);
-  };
-
-  const handleBulkRemove = async () => {
-    const clients = recurrenceData.filter(c => selectedIds.has(c.identifier));
-    await Promise.all(clients.map(client => setParticipaRecorrencia(client, false)));
-    setSelectedIds(new Set());
-    setBulkRemoveConfirm(false);
-    toast.success(`${clients.length} clientes removidos da recorrência.`);
-  };
-
-  const confirmRemove = async () => {
-    if (!clientToRemove) return;
-    try {
-      await setParticipaRecorrencia(clientToRemove, false);
-      toast.success('Cliente removido da recorrência.');
-      setClientToRemove(null);
-      if (selectedClient?.identifier === clientToRemove.identifier) {
-        setSelectedClient(null);
-      }
-    } catch (e: any) {
-      toast.error('Erro ao remover: ' + e.message);
-    }
-  };
-
-  const handleQuickRemove = (client: typeof recurrenceData[0]) => {
-    setClientToRemove(client);
-  };
-
-  const handleRemoveFromRecurrence = () => {
-    if (!selectedClient) return;
-    setClientToRemove(selectedClient);
-  };
-
-  const generateWhatsappUrl = (tipo: 'pessoal' | 'business') => {
-    if (!selectedClient) return '#';
-    let phone = editedPhone || selectedClient.phone;
-    if (!phone) return '#';
-    phone = phone.replace(/\D/g, '');
-    if (!phone.startsWith('55')) phone = '55' + phone;
-    const nameToUse = editedContactName || editedName;
-    const firstName = nameToUse.split(' ')[0] || 'Cliente';
-    const msg = (messages as any)[selectedMessage].replace('{Nome}', firstName);
-    const encoded = encodeURIComponent(msg);
-    if (tipo === 'business') {
-      return `intent://send?phone=${phone}&text=${encoded}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
-    }
-    return `https://wa.me/${phone}?text=${encoded}`;
   };
 
   if (userLoading) {
@@ -467,59 +546,65 @@ export default function RecorrenciaPage() {
     );
   }
 
+  const recentlyApproached = selectedClient?.daysSinceApproach !== null && selectedClient?.daysSinceApproach !== undefined
+    && selectedClient.daysSinceApproach < APPROACH_COOLDOWN_DAYS;
+
   return (
     <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
       <Sidebar />
-      
+
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <Header title="Gestão de Recorrência" />
-        
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-          <div className="max-w-6xl mx-auto space-y-6">
-            
-            {/* Cabecalho e Filtros */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-              
-              <div className="relative flex-1 w-full max-w-sm">
+
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
+          <div className="max-w-6xl mx-auto space-y-4">
+
+            {/* Busca + ações */}
+            <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+              <div className="relative flex-1 w-full md:max-w-sm">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="Buscar cliente ou celular..."
+                <input
+                  type="text"
+                  placeholder="Buscar nome, contato, cidade ou telefone..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3">
-                  <Filter className="size-4 text-slate-400" />
-                  <select
-                    value={filterOrigin}
-                    onChange={(e) => setFilterOrigin(e.target.value)}
-                    className="bg-transparent text-sm font-medium text-slate-700 dark:text-slate-300 outline-none"
-                  >
-                    <option value="all">Todas as Origens</option>
-                    <option value="whatsapp">Whatsapp</option>
-                    <option value="Whatsapp PF">Whatsapp PF</option>
-                    <option value="Amazon">Amazon</option>
-                    <option value="Meli">Mercado Livre</option>
-                    <option value="Wix">Wix Site</option>
-                    <option value="CRM">CRM Manual</option>
-                  </select>
-                </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setShowFilters(f => !f)}
+                  className={`flex items-center gap-2 border rounded-xl py-2 px-3 text-sm font-bold transition-all ${
+                    showFilters || activeFilterCount > 0
+                      ? 'bg-primary/10 border-primary text-primary'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <Filter className="size-4" />
+                  Filtros{activeFilterCount > 0 && ` (${activeFilterCount})`}
+                </button>
 
-                <button 
+                <button
+                  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                  title={sortDir === 'asc' ? 'Pedido mais antigo primeiro' : 'Pedido mais recente primeiro'}
+                  className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-sm font-bold text-slate-700 dark:text-slate-300 transition-all"
+                >
+                  <ArrowUpDown className="size-4 text-slate-400" />
+                  {sortDir === 'asc' ? 'Antigo' : 'Recente'}
+                </button>
+
+                <button
                   onClick={handleRefresh}
                   disabled={isRefreshing}
-                  className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-4 text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Atualizar dados manualmente"
+                  className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Reorganiza a fila pela data do pedido e completa cadastros vazios com dados dos pedidos"
                 >
                   <RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                   <span className="hidden sm:inline">Atualizar</span>
                 </button>
 
-                <button 
+                <button
                   onClick={handleOpenSettings}
                   className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl py-2 px-3 text-sm font-bold transition-all"
                   title="Configurar frases"
@@ -527,17 +612,110 @@ export default function RecorrenciaPage() {
                   <Settings className="size-4 text-slate-400" />
                 </button>
               </div>
-
             </div>
 
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 rounded-2xl flex items-start gap-3">
-              <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400">Fila de Recorrência</h3>
-                <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
-                  Todos os clientes entram na fila, dos mais antigos aos mais recentes. Ao abordar um cliente (ou quando ele fizer um pedido novo), ele vai para o fim da fila automaticamente.
-                </p>
-              </div>
+            {/* Abas */}
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+              {TABS.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                    tab === t.id
+                      ? (t.id === 'fora' ? 'bg-slate-700 text-white border-slate-700' : 'bg-primary text-white border-primary shadow-lg shadow-primary/20')
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-primary'
+                  }`}
+                >
+                  {t.label}
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-md ${tab === t.id ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                    {tabCounts[t.id] ?? 0}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Painel de filtros */}
+            <AnimatePresence>
+              {showFilters && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className={filterLabelCls}>Estado</label>
+                      <select value={filterState} onChange={e => { setFilterState(e.target.value); setFilterCity('all'); }} className={selectCls}>
+                        <option value="all">Todos</option>
+                        {stateOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={filterLabelCls}>Cidade</label>
+                      <select value={filterCity} onChange={e => setFilterCity(e.target.value)} className={selectCls}>
+                        <option value="all">Todas</option>
+                        {cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={filterLabelCls}>Mês do último pedido</label>
+                      <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className={selectCls}>
+                        <option value="all">Todos</option>
+                        {monthOptions.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={filterLabelCls}>Origem</label>
+                      <select value={filterOrigin} onChange={e => setFilterOrigin(e.target.value)} className={selectCls}>
+                        <option value="all">Todas</option>
+                        {originOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={filterLabelCls}>Pedido de</label>
+                      <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={selectCls} />
+                    </div>
+                    <div>
+                      <label className={filterLabelCls}>Pedido até</label>
+                      <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className={selectCls} />
+                    </div>
+                    <div>
+                      <label className={filterLabelCls}>Tag</label>
+                      <select value={filterTag} onChange={e => setFilterTag(e.target.value)} className={selectCls}>
+                        <option value="all">Todas</option>
+                        {RECURRENCE_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+                        <option value="none">Sem tag</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={clearFilters}
+                        className="w-full py-2 rounded-xl text-sm font-bold text-slate-500 hover:text-red-500 border border-slate-200 dark:border-slate-800 hover:border-red-200 transition-all"
+                      >
+                        Limpar filtros
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Placar por cor */}
+            <div className="grid grid-cols-3 gap-2">
+              {COLOR_FILTERS.map(cf => (
+                <button
+                  key={cf.id}
+                  onClick={() => setFilterColor(prev => prev === cf.id ? 'all' : cf.id)}
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2.5 rounded-xl border text-sm font-bold transition-all ${
+                    filterColor === cf.id ? cf.activeCls : `bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 ${cf.cls}`
+                  }`}
+                  title="Clique para filtrar por essa cor"
+                >
+                  <span className="text-lg font-black">{colorCounts[cf.id]}</span>
+                  <span className="text-[11px] uppercase tracking-wider">{cf.label}</span>
+                </button>
+              ))}
             </div>
 
             {/* Contagem + Selecionar todos + Ações em massa */}
@@ -554,123 +732,52 @@ export default function RecorrenciaPage() {
                 )}
               </div>
               {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-slate-500 font-medium">{selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}</span>
-                  <button onClick={handleBulkSnooze} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
-                    <Clock className="size-3.5" /> Mover para o fim
-                  </button>
-                  <button onClick={() => setBulkRemoveConfirm(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
-                    <EyeOff className="size-3.5" /> Remover selecionados
-                  </button>
+                  {tab === 'fora' ? (
+                    <button onClick={handleBulkReinclude} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors">
+                      <RotateCcw className="size-3.5" /> Recolocar selecionados
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={handleBulkSnooze} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
+                        <Clock className="size-3.5" /> Mover para o fim
+                      </button>
+                      <button onClick={() => setBulkRemoveConfirm(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
+                        <EyeOff className="size-3.5" /> Remover selecionados
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
 
-            {!isLoaded ? (
+            {!isLoaded || !customersLoaded ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="animate-spin size-8 text-primary" />
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {filteredData.map((client, index) => (
-                  <motion.div
+                  <RecurrenceCard
                     key={client.identifier}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 < 1 ? index * 0.05 : 0 }}
-                    className={`p-5 rounded-2xl shadow-sm border flex flex-col justify-between group transition-all relative overflow-hidden ${
-                      selectedIds.has(client.identifier)
-                        ? 'bg-primary/5 dark:bg-primary/10 border-primary ring-1 ring-primary/30'
-                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-primary'
-                    }`}
-                  >
-                    {client.daysSinceLastOrder > 30 && (
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 dark:bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
-                    )}
-
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(client.identifier)}
-                        onChange={() => handleToggleSelect(client.identifier)}
-                        onClick={e => e.stopPropagation()}
-                        className="mt-1 size-4 rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary cursor-pointer shrink-0"
-                      />
-                      <div className={`size-12 rounded-xl flex items-center justify-center font-bold text-lg shrink-0 ${
-                        client.daysSinceLastOrder > 40 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-light'
-                      }`}>
-                        {client.clientName.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start gap-2">
-                          <h4 className="font-bold text-slate-900 dark:text-white truncate" title={client.clientName}>
-                            {client.clientName}
-                          </h4>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getOriginTag(client.origin).cls}`}>
-                            {getOriginTag(client.origin).label}
-                          </span>
-                        </div>
-
-                        <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2">
-                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                            {client.phone ? client.phone : <span className="text-slate-400 italic">Sem telefone</span>}
-                          </span>
-                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                            <Calendar className="size-3" />
-                            {client.daysSinceLastOrder} dias desde o último pedido
-                          </span>
-                        </div>
-                        {client.deliveryDateDisplay && (
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            Entregue em {new Date(client.deliveryDateDisplay).toLocaleDateString('pt-BR')}
-                          </p>
-                        )}
-
-                        {client.daysSinceContact !== null && (
-                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded inline-block">
-                            Última abordagem há {client.daysSinceContact} dias
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
-                      <div className="flex flex-col">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">LTV (Pedidos)</p>
-                        <p className="text-sm font-black text-slate-700 dark:text-slate-300">{client.totalOrders}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleQuickRemove(client); }}
-                          className="flex items-center justify-center p-2 bg-slate-100 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 rounded-xl transition-all"
-                          title="Remover cliente da recorrência"
-                        >
-                          <EyeOff className="size-4" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleMoveToEnd(client); }}
-                          className="flex items-center justify-center p-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/40 text-amber-500 rounded-xl transition-all"
-                          title="Mover para o fim da fila"
-                        >
-                          <Clock className="size-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleOpenClient(client)}
-                          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-                        >
-                          <MessageSquare className="size-4" />
-                          Abordar
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
+                    client={client}
+                    index={index}
+                    selected={selectedIds.has(client.identifier)}
+                    onToggleSelect={() => handleToggleSelect(client.identifier)}
+                    onApproach={() => handleOpenClient(client)}
+                    onMoveToEnd={() => handleMoveToEnd(client)}
+                    onRemove={() => setClientToRemove(client)}
+                    onReinclude={() => handleReinclude(client)}
+                    onSave={(edits) => handleSaveEdits(client, edits)}
+                  />
                 ))}
 
                 {filteredData.length === 0 && (
                   <div className="col-span-full text-center py-20 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800">
                     <CheckCircle2 className="size-12 text-emerald-400 mx-auto mb-4" />
-                    <p className="text-slate-600 dark:text-slate-400 font-medium">Nenhum cliente na fila</p>
-                    <p className="text-sm text-slate-500 mt-1">Ajuste a busca ou o filtro de origem, ou nenhum cliente entregue entrou na recorrência ainda.</p>
+                    <p className="text-slate-600 dark:text-slate-400 font-medium">Nenhum cliente aqui</p>
+                    <p className="text-sm text-slate-500 mt-1">Troque de aba ou ajuste os filtros.</p>
                   </div>
                 )}
               </div>
@@ -682,7 +789,7 @@ export default function RecorrenciaPage() {
         <AnimatePresence>
           {selectedClient && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -693,143 +800,138 @@ export default function RecorrenciaPage() {
                     <MessageSquare className="size-5 text-primary" />
                     Abordagem Ativa
                   </h3>
-                  <button onClick={() => setSelectedClient(null)} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                  <button onClick={() => setSelectedClientId(null)} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
                     <X className="size-5 text-slate-500" />
                   </button>
                 </div>
 
-                <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+                <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-5">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                    <p className="font-bold text-slate-800 dark:text-slate-200">{selectedClient.fantasia || selectedClient.razaoSocial}</p>
+                    {selectedClient.contatoNome && <p className="text-sm text-slate-500">Contato: {selectedClient.contatoNome}</p>}
+                    <p className="text-sm font-medium text-slate-500">{selectedClient.phone || 'Sem telefone cadastrado'}</p>
+                  </div>
 
-                  {/* Detalhes do Cliente com Edição */}
-                  <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Informações de Contato</p>
-                      <button 
-                        onClick={() => setIsEditingData(!isEditingData)}
-                        className="text-[10px] flex items-center gap-1 font-bold text-primary"
-                      >
-                        {isEditingData ? <X className="size-3" /> : <Edit2 className="size-3" />}
-                        {isEditingData ? 'Cancelar' : 'Corrigir Cadastro'}
-                      </button>
+                  {!selectedClient.contatoNome && (
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="size-4 shrink-0" />
+                      Sem nome do contato: a mensagem vai usar &quot;{(selectedClient.fantasia || selectedClient.razaoSocial).split(' ')[0]}&quot;. Cadastre o contato pelo lápis no card para personalizar.
                     </div>
+                  )}
+                  {recentlyApproached && (
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-400">
+                      <AlertTriangle className="size-4 shrink-0" />
+                      Este cliente foi abordado {selectedClient.daysSinceApproach === 0 ? 'hoje' : `há ${selectedClient.daysSinceApproach} dia(s)`}. Mensagens muito próximas podem soar invasivas.
+                    </div>
+                  )}
+                  {selectedClient.inProgress && (
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs text-blue-700 dark:text-blue-400">
+                      <AlertCircle className="size-4 shrink-0" />
+                      Este cliente tem um pedido em andamento.
+                    </div>
+                  )}
 
-                    {isEditingData ? (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Nome do Cliente (Empresa)</label>
-                          <input 
-                            type="text" 
-                            value={editedName}
-                            onChange={(e) => setEditedName(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Nome do Contato (Para o Whatsapp)</label>
-                          <input 
-                            type="text" 
-                            value={editedContactName}
-                            onChange={(e) => setEditedContactName(e.target.value)}
-                            placeholder="Ex: João"
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Telefone / WhatsApp</label>
-                          <input 
-                            type="text" 
-                            value={editedPhone}
-                            onChange={(e) => setEditedPhone(e.target.value)}
-                            placeholder="Ex: 5543999999999"
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary outline-none"
-                          />
-                        </div>
-                        <button 
-                          onClick={handleUpdateData}
-                          className="w-full py-2 bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 mt-2"
-                        >
-                          <Save className="size-4" /> Salvar Alterações
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Escolha a Abordagem</p>
+                    <select
+                      value={selectedMessage}
+                      onChange={(e) => setSelectedMessage(e.target.value as keyof RecurrenceMessages)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 text-sm focus:ring-primary outline-none transition-all shadow-sm"
+                    >
+                      {MESSAGE_OPTIONS.map(g => (
+                        <optgroup key={g.group} label={g.group}>
+                          {g.options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-100 dark:border-slate-700/50 text-sm text-slate-600 dark:text-slate-400 italic whitespace-pre-line">
+                      &quot;{messageText}&quot;
+                    </div>
+                  </div>
+
+                  {/* Anexo */}
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Anexo (promoção)</p>
+                    {attachment ? (
+                      <div className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
+                        <FileText className="size-4 text-primary shrink-0" />
+                        <span className="text-sm text-slate-700 dark:text-slate-300 truncate flex-1">{attachment.name}</span>
+                        <button onClick={() => setAttachment(null)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full" title="Remover anexo">
+                          <X className="size-4 text-slate-500" />
                         </button>
                       </div>
                     ) : (
-                      <div className="flex flex-col gap-1">
-                        <span className="font-bold text-slate-800 dark:text-slate-200">
-                          {editedName} {editedContactName && <span className="font-normal text-slate-500 text-sm">(Contato: {editedContactName})</span>}
-                        </span>
-                        <span className="text-sm font-medium text-slate-500">{editedPhone || 'Sem telefone cadastrado'}</span>
-                      </div>
+                      <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-500 hover:border-primary hover:text-primary cursor-pointer transition-all">
+                        <Paperclip className="size-4" /> Escolher PDF, PNG ou JPG
+                        <input
+                          type="file"
+                          accept="application/pdf,image/png,image/jpeg"
+                          className="hidden"
+                          onChange={e => setAttachment(e.target.files?.[0] || null)}
+                        />
+                      </label>
+                    )}
+                    {attachment && (
+                      <p className="text-[11px] text-slate-500">
+                        O anexo fica selecionado para os próximos clientes. Na tela de compartilhar, escolha WhatsApp ou WhatsApp Business e depois o contato.
+                      </p>
                     )}
                   </div>
-
-                  {/* Seleção de Mensagem */}
-                  <div className="space-y-3">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Escolha a Abordagem</p>
-                    <select 
-                      value={selectedMessage}
-                      onChange={(e) => setSelectedMessage(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 text-sm focus:ring-primary outline-none transition-all shadow-sm"
-                    >
-                      <optgroup label="Revenda (B2B)">
-                        <option value="b2b_1">Opção 1: Oferta Direta Reposição</option>
-                        <option value="b2b_2">Opção 2: Oferta com Agendamento</option>
-                        <option value="b2b_3">Opção 3: Relacionamento / Suporte</option>
-                      </optgroup>
-                      <optgroup label="Pessoa Física (Consumo)">
-                        <option value="pf_1">Opção 1: Acabando o estoque</option>
-                        <option value="pf_2">Opção 2: Torra Fresquinha</option>
-                        <option value="pf_3">Opção 3: Renovar para casa</option>
-                      </optgroup>
-                    </select>
-
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-100 dark:border-slate-700/50 text-sm text-slate-600 dark:text-slate-400 italic">
-                      &quot;{ (messages as any)[selectedMessage].replace('{Nome}', (editedContactName || editedName).split(' ')[0] || 'Cliente') }&quot;
-                    </div>
-                  </div>
-                  
                 </div>
 
                 {/* Ações da Abordagem */}
                 <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex flex-col gap-3">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Iniciar conversa via</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <a
-                      href={generateWhatsappUrl('pessoal')}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-colors shadow-lg shadow-emerald-500/20 text-center"
+                  {attachment ? (
+                    <button
+                      onClick={handleShareWithFile}
+                      className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
                     >
-                      <Send className="size-4" />
-                      <span className="text-xs">Pessoal</span>
-                      <span className="text-[10px] opacity-75">DDD 31</span>
-                    </a>
-                    <a
-                      href={generateWhatsappUrl('business')}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-colors shadow-lg shadow-emerald-600/20 text-center"
-                    >
-                      <Send className="size-4" />
-                      <span className="text-xs">Business</span>
-                      <span className="text-[10px] opacity-75">DDD 11</span>
-                    </a>
-                  </div>
+                      <Share2 className="size-4" /> Enviar mensagem com anexo
+                    </button>
+                  ) : (
+                    <>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Iniciar conversa via</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {(['pessoal', 'business'] as ApproachChannel[]).map(channel => (
+                          <a
+                            key={channel}
+                            href={generateWhatsappUrl(channel)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => handleWhatsappClick(channel)}
+                            className={`relative py-3 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-colors shadow-lg text-center ${
+                              channel === 'pessoal'
+                                ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20'
+                                : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                            } ${selectedClient.lastChannel === channel ? 'ring-2 ring-offset-2 ring-emerald-400 dark:ring-offset-slate-900' : ''}`}
+                          >
+                            {selectedClient.lastChannel === channel && (
+                              <span className="absolute -top-2 right-2 text-[9px] font-black uppercase bg-white text-emerald-700 px-1.5 py-0.5 rounded-md shadow">Último usado</span>
+                            )}
+                            <Send className="size-4" />
+                            <span className="text-xs">{channel === 'pessoal' ? 'Pessoal' : 'Business'}</span>
+                            <span className="text-[10px] opacity-75">{channel === 'pessoal' ? 'DDD 31' : 'DDD 11'}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3 mt-2">
-                    <button 
-                      onClick={handleDidNotBuy}
+                    <button
+                      onClick={async () => { await handleMoveToEnd(selectedClient); setSelectedClientId(null); }}
                       className="py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all"
                     >
                       Mover para o fim da fila
                     </button>
-                    <button 
-                      onClick={handleRemoveFromRecurrence}
+                    <button
+                      onClick={() => setClientToRemove(selectedClient)}
                       className="py-2.5 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/50 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all"
                     >
                       <EyeOff className="size-4" /> Não Notificar
                     </button>
                   </div>
                 </div>
-
               </motion.div>
             </div>
           )}
@@ -839,7 +941,7 @@ export default function RecorrenciaPage() {
         <AnimatePresence>
           {isSettingsOpen && editingMessages && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -856,85 +958,43 @@ export default function RecorrenciaPage() {
                 </div>
 
                 <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
-                  <div>
-                    <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">Revenda (B2B)</h4>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Opção 1: Oferta Direta Reposição</label>
-                        <textarea
-                          value={editingMessages.b2b_1}
-                          onChange={(e) => setEditingMessages({ ...editingMessages, b2b_1: e.target.value })}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary outline-none min-h-[80px] resize-y"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Opção 2: Oferta com Agendamento</label>
-                        <textarea
-                          value={editingMessages.b2b_2}
-                          onChange={(e) => setEditingMessages({ ...editingMessages, b2b_2: e.target.value })}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary outline-none min-h-[80px] resize-y"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Opção 3: Relacionamento / Suporte</label>
-                        <textarea
-                          value={editingMessages.b2b_3}
-                          onChange={(e) => setEditingMessages({ ...editingMessages, b2b_3: e.target.value })}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary outline-none min-h-[80px] resize-y"
-                        />
+                  {MESSAGE_OPTIONS.map(g => (
+                    <div key={g.group}>
+                      <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-3">{g.group}</h4>
+                      <div className="space-y-4">
+                        {g.options.map(o => (
+                          <div key={o.key}>
+                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">{o.label}</label>
+                            <textarea
+                              value={editingMessages[o.key]}
+                              onChange={(e) => setEditingMessages({ ...editingMessages, [o.key]: e.target.value })}
+                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary outline-none min-h-[80px] resize-y"
+                            />
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  </div>
+                  ))}
 
-                  <div>
-                    <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">Pessoa Física (Consumo)</h4>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Opção 1: Acabando o estoque</label>
-                        <textarea
-                          value={editingMessages.pf_1}
-                          onChange={(e) => setEditingMessages({ ...editingMessages, pf_1: e.target.value })}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary outline-none min-h-[80px] resize-y"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Opção 2: Torra Fresquinha</label>
-                        <textarea
-                          value={editingMessages.pf_2}
-                          onChange={(e) => setEditingMessages({ ...editingMessages, pf_2: e.target.value })}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary outline-none min-h-[80px] resize-y"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Opção 3: Renovar para casa</label>
-                        <textarea
-                          value={editingMessages.pf_3}
-                          onChange={(e) => setEditingMessages({ ...editingMessages, pf_3: e.target.value })}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-sm focus:ring-primary outline-none min-h-[80px] resize-y"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
                   <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 rounded-2xl flex items-start gap-3">
                     <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400">Dica:</h3>
                       <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
-                        Use <strong className="font-bold">{'{Nome}'}</strong> (com chaves e N maiúsculo) onde deseja que o nome do cliente seja exibido automaticamente.
+                        Use <strong className="font-bold">{'{Nome}'}</strong> para o primeiro nome do contato e <strong className="font-bold">{'{Produto}'}</strong> para os cafés do último pedido (ex: &quot;como está o estoque do {'{Produto}'}?&quot;). Escreva com chaves e a primeira letra maiúscula.
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex justify-end gap-3">
-                  <button 
+                  <button
                     onClick={() => setIsSettingsOpen(false)}
                     className="py-2.5 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all"
                   >
                     Cancelar
                   </button>
-                  <button 
+                  <button
                     onClick={handleSaveSettings}
                     className="py-2.5 px-6 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20"
                   >
@@ -946,18 +1006,18 @@ export default function RecorrenciaPage() {
           )}
         </AnimatePresence>
 
-        {/* Confirmation Modal */}
+        {/* Confirmação de remoção */}
         <AnimatePresence>
           {clientToRemove && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <motion.div 
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setClientToRemove(null)}
                 className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
               />
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
@@ -969,22 +1029,22 @@ export default function RecorrenciaPage() {
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Remover da Recorrência</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Tem certeza que deseja ocultar o cliente <strong className="text-slate-700 dark:text-slate-300">{clientToRemove.clientName}</strong> da listagem de recorrência definitivamente?
+                    <strong className="text-slate-700 dark:text-slate-300">{clientToRemove.fantasia || clientToRemove.razaoSocial}</strong> vai para a aba &quot;Fora da recorrência&quot;, mesmo que faça pedidos novos. Você pode recolocá-lo de lá quando quiser.
                   </p>
                 </div>
-                
+
                 <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex justify-end gap-3">
-                  <button 
+                  <button
                     onClick={() => setClientToRemove(null)}
                     className="py-2.5 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all"
                   >
                     Cancelar
                   </button>
-                  <button 
+                  <button
                     onClick={confirmRemove}
                     className="py-2.5 px-6 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20"
                   >
-                    Sim, remover cliente
+                    Sim, remover
                   </button>
                 </div>
               </motion.div>
@@ -992,7 +1052,7 @@ export default function RecorrenciaPage() {
           )}
         </AnimatePresence>
 
-        {/* Modal confirmação remoção em massa */}
+        {/* Confirmação de remoção em massa */}
         <AnimatePresence>
           {bulkRemoveConfirm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1006,7 +1066,7 @@ export default function RecorrenciaPage() {
                     <EyeOff className="size-6" />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Remover {selectedIds.size} cliente{selectedIds.size !== 1 ? 's' : ''} da Recorrência</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Esses clientes não aparecerão mais na lista de recorrência, mesmo que façam pedidos novos. Para aceitar algum de volta, use o toggle &quot;Participa da Recorrência&quot; no cadastro do cliente (em Clientes).</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Eles vão para a aba &quot;Fora da recorrência&quot;, mesmo que façam pedidos novos. Você pode recolocá-los de lá quando quiser.</p>
                 </div>
                 <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 flex justify-end gap-3">
                   <button onClick={() => setBulkRemoveConfirm(false)} className="py-2.5 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all">
