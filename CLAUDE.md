@@ -53,14 +53,22 @@ Sempre usar `adminDb` de `lib/firebase-admin.ts` nas rotas de API — nunca inic
   - Servido via `app/api/shipping/label/download/route.ts?tipo=dce&token={prePostageId}`
   - Frenet tem equivalente: campo `declarationUrl` na resposta de `/orders/oneclick` (gerado quando o pedido não tem `Invoice`/NF) — já tratado no front-end igual ao `dceUrl`
 
-### Recorrência (reformada em 2026-10)
-Página `app/recorrencia/page.tsx`. Não existe entidade "Cliente" própria — agrupa pedidos de `orders` por CNPJ/CPF/telefone/nome normalizado, pegando o pedido mais recente (`latestOrder`) de cada grupo.
-- **Entrada na fila**: todo cliente cujo `latestOrder.status === 'entregue'` entra, salvo exclusão (ver abaixo). Não há mais filtro de "dias desde entrega" — todos aparecem sempre.
-- **Ordem da fila**: por `queueDate = max(latestOrder.createdAt, latestOrder.lastRecurrenceContact)`, crescente (mais antigos primeiro). Ou seja, um pedido novo OU o botão "Mover para o fim da fila" (que grava `lastRecurrenceContact = agora`) empurram o cliente pro final — mesma fórmula cobre os dois casos.
-- **Contador do card**: dias desde a CRIAÇÃO do último pedido (não mais desde a entrega). A data de entrega aparece só como texto informativo no card.
-- **Exclusão/reinclusão** (fonte única de verdade): campo `participaRecorrencia` (boolean) na coleção `bling_customers`, mesmo padrão do `mostrarNoMapa` já usado no Mapa de Revendedores — toggle correspondente no modal de Clientes (`app/clientes/page.tsx`). Quando o campo nunca foi definido explicitamente, o padrão é `true`, EXCETO para pedidos com `origin` Amazon/Wix/Meli/Mercado Livre, que começam com `false` (mas o toggle pode religar manualmente). Join entre Recorrência (identifier por cnpj/cpf/telefone/nome) e `bling_customers` é feito em `app/recorrencia/page.tsx` via `findCustomerEntry()`.
-- **Campo legado** `Order.recurrenceRemoved` (por pedido, não por cliente) ainda é respeitado como exclusão adicional em modo leitura, mas não é mais escrito por nenhuma ação — foi substituído pelo `participaRecorrencia` justamente porque se perdia quando o cliente fazia um pedido novo.
-- `Order.lastRecurrenceContact` continua sendo usado (grava a cada clique em "Mover para o fim da fila"), só mudou o efeito (antes escondia por 10 dias, agora reordena a fila na hora).
+### Recorrência (2ª reforma, 2026-10-25)
+Página `app/recorrencia/page.tsx`; regras puras em `lib/recurrence.ts` (`buildRecurrenceClients`, `sortRecurrenceQueue`, `fillMessage`); card em `components/RecurrenceCard.tsx`. Não existe entidade "Cliente" própria — agrupa pedidos de `orders` por CNPJ/CPF/telefone/nome normalizado (`getOrderIdentifier`), pegando o pedido mais recente (`latestOrder`). Dados exibidos vêm primeiro do cadastro em `bling_customers` (join via `findCustomerEntry()`: doc.id → documento → telefone → nome) e caem no pedido como fallback.
+- **Entrada**: TODO cliente com pedido no Fluxia, em qualquer fase do Kanban (inclui arquivados). Ficam de fora só clientes que só têm amostras (`isSample`) e pedidos na Lixeira. Pedido não entregue mostra selo "Em andamento".
+- **Tempo real**: pedidos (`useOrders`) e `bling_customers` (onSnapshot na própria página) — cliente/pedido novo aparece sozinho.
+- **Abas**: Todos · CNPJ (padrão) · CPF · Belo Horizonte · Fora da recorrência. As quatro primeiras só mostram quem participa. Filtros combináveis: Estado, Cidade, Mês do último pedido, Período, Tag, Origem e placar por cor.
+- **Ordem**: por `latestOrder.createdAt`, botão Antigo (padrão)/Recente. Quem foi "movido para o fim" fica no final até o fim do dia OU até o próximo "Atualizar" — `Order.lastRecurrenceContact` > `max(início do dia, settings/recurrence_queue_{dev|prod}.resetAt)`. Pedido novo também anula o "fim da fila".
+- **Cores** (dias desde a criação do último pedido): verde < 20, amarelo 20–30, vermelho > 30.
+- **Participação** (fonte única): `bling_customers.participaRecorrencia`. Sem flag explícita: respeita o legado `Order.recurrenceRemoved` e depois o padrão por origem — Amazon/Meli/Mercado Livre começam fora; Wix começa DENTRO. "Remover" manda pra aba Fora; de lá "Recolocar" grava `true`. Toggle equivalente em Clientes.
+- **Campos do cliente em `bling_customers`** (exclusivos do Fluxia, sobrevivem à sync do Bling porque ela usa merge): `contatoNome` (dono/comprador, usado no `{Nome}`), `tagsRecorrencia` (`Revendedor` | `Consumidor final`, lista em `RECURRENCE_TAGS`), `observacaoRecorrencia`. Cliente sem doc ganha um doc mínimo com id = identifier ao ser editado/removido.
+- **Edição no card**: grava em `bling_customers` e, se o doc é um contato do Bling (`data.id === doc.id`) e mudou razão/fantasia/telefone/cidade/UF, envia PUT ao Bling — senão a próxima sincronização do Bling desfaria a correção.
+- **Abordagem**: clicar em Pessoal/Business (ou compartilhar com anexo) grava no `latestOrder` `lastRecurrenceApproach`, `recurrenceApproachChannel` e `lastRecurrenceContact` (move pro fim do dia). Card mostra "Abordado há X dias" e o modal avisa se < `APPROACH_COOLDOWN_DAYS` (15). O botão do último canal usado fica destacado.
+- **Anexo**: wa.me só aceita texto. PDF/PNG/JPG vai pela Web Share API (`navigator.share({ files, text })`, só Android/Chrome); o texto também é copiado pra área de transferência. O arquivo fica selecionado entre clientes.
+- **Botão Atualizar**: grava `resetAt` (reorganiza a fila) e completa campos VAZIOS do cadastro (celular, cidade/UF, contatoNome, fantasia) com dados dos pedidos — nunca sobrescreve. Complemento desativado em localhost porque `bling_customers` é compartilhado entre dev e prod.
+- **Variáveis das frases**: `{Nome}` (primeiro nome do contato) e `{Produto}` (até 2 produtos de maior quantidade do último pedido).
+- **Ciclo de compra**: média de dias entre compras (pedidos com < 3 dias de diferença contam como uma compra); card avisa "passou do ciclo".
+- **Link "Último pedido"**: abre `/producao?pedido={id}` em nova aba; `KanbanBoard` recebe `initialOpenOrder` (buscado em `allOrders`, então funciona com arquivados).
 
 ## Integrações Ativas
 - **Bling ERP** — sincronização de pedidos e clientes
@@ -176,11 +184,13 @@ trackingNumber?: string
 shipmentId?: string
 shippingProvider?: string       // 'melhorenvio' | 'correios' | 'superfrete' — tipo desatualizado, falta 'frenet'/'totalexpress' (não quebra pq é atribuído via `any`)
 dceUrl?: string                 // Correios/ME — ver também `declarationUrl` da Frenet (mesmo propósito, campo diferente na resposta da API)
-lastRecurrenceContact?: string  // ISO timestamp, usado pela Recorrência pra reordenar a fila
+lastRecurrenceContact?: string  // ISO timestamp — "movido para o fim" da fila da Recorrência (vale até o fim do dia / próximo Atualizar)
+lastRecurrenceApproach?: string // ISO timestamp da última abordagem via WhatsApp na Recorrência
+recurrenceApproachChannel?: 'pessoal' | 'business'
 recurrenceRemoved?: boolean     // legado — exclusão da recorrência agora é via bling_customers.participaRecorrencia
 ```
 
-**Campo `participaRecorrencia`** (boolean) vive na coleção **`bling_customers`**, não no `Order` — é a fonte única de verdade de quem participa da Recorrência (ver seção "Recorrência" acima e padrão `mostrarNoMapa`).
+**Campos `participaRecorrencia`, `contatoNome`, `tagsRecorrencia`, `observacaoRecorrencia`** vivem na coleção **`bling_customers`**, não no `Order` — `participaRecorrencia` é a fonte única de verdade de quem participa da Recorrência (ver seção "Recorrência" acima e padrão `mostrarNoMapa`).
 
 ## Convenções do Projeto (AGENTS.md)
 - Leads usam `notas` (português), não `notes`
