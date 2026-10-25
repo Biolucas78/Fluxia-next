@@ -45,18 +45,29 @@ Sempre usar `adminDb` de `lib/firebase-admin.ts` nas rotas de API — nunca inic
 - Arquivados computam; Lixeira não computa
 
 ### Logística
-- Cotação: Melhor Envio + Superfrete + Correios
-- Emissão de etiqueta: Melhor Envio ✅ | Correios ✅ | Superfrete ✅
+- Cotação: Melhor Envio + Superfrete + Correios + Frenet
+- Emissão de etiqueta: Melhor Envio ✅ | Correios ✅ | Superfrete ✅ | Frenet ⚠️ (ver seção própria abaixo — emissão implementada mas travando com erro genérico, aguardando retorno do suporte Frenet)
 - DACE (Declaração de Conteúdo Eletrônica): gerada automaticamente pelo Correios quando não há NF vinculada
   - Endpoint: `POST /prepostagem/v1/prepostagens/dce/dace/impressao`
   - Retorna base64 em `dados`, armazenado em `daceCache` (Map global em `app/api/shipping/label/route.ts`)
   - Servido via `app/api/shipping/label/download/route.ts?tipo=dce&token={prePostageId}`
+  - Frenet tem equivalente: campo `declarationUrl` na resposta de `/orders/oneclick` (gerado quando o pedido não tem `Invoice`/NF) — já tratado no front-end igual ao `dceUrl`
+
+### Recorrência (reformada em 2026-10)
+Página `app/recorrencia/page.tsx`. Não existe entidade "Cliente" própria — agrupa pedidos de `orders` por CNPJ/CPF/telefone/nome normalizado, pegando o pedido mais recente (`latestOrder`) de cada grupo.
+- **Entrada na fila**: todo cliente cujo `latestOrder.status === 'entregue'` entra, salvo exclusão (ver abaixo). Não há mais filtro de "dias desde entrega" — todos aparecem sempre.
+- **Ordem da fila**: por `queueDate = max(latestOrder.createdAt, latestOrder.lastRecurrenceContact)`, crescente (mais antigos primeiro). Ou seja, um pedido novo OU o botão "Mover para o fim da fila" (que grava `lastRecurrenceContact = agora`) empurram o cliente pro final — mesma fórmula cobre os dois casos.
+- **Contador do card**: dias desde a CRIAÇÃO do último pedido (não mais desde a entrega). A data de entrega aparece só como texto informativo no card.
+- **Exclusão/reinclusão** (fonte única de verdade): campo `participaRecorrencia` (boolean) na coleção `bling_customers`, mesmo padrão do `mostrarNoMapa` já usado no Mapa de Revendedores — toggle correspondente no modal de Clientes (`app/clientes/page.tsx`). Quando o campo nunca foi definido explicitamente, o padrão é `true`, EXCETO para pedidos com `origin` Amazon/Wix/Meli/Mercado Livre, que começam com `false` (mas o toggle pode religar manualmente). Join entre Recorrência (identifier por cnpj/cpf/telefone/nome) e `bling_customers` é feito em `app/recorrencia/page.tsx` via `findCustomerEntry()`.
+- **Campo legado** `Order.recurrenceRemoved` (por pedido, não por cliente) ainda é respeitado como exclusão adicional em modo leitura, mas não é mais escrito por nenhuma ação — foi substituído pelo `participaRecorrencia` justamente porque se perdia quando o cliente fazia um pedido novo.
+- `Order.lastRecurrenceContact` continua sendo usado (grava a cada clique em "Mover para o fim da fila"), só mudou o efeito (antes escondia por 10 dias, agora reordena a fila na hora).
 
 ## Integrações Ativas
 - **Bling ERP** — sincronização de pedidos e clientes
 - **Melhor Envio** — cotação e etiquetas (BH como origem)
 - **Superfrete** — cotação e etiquetas (CRV como origem)
 - **Correios** — cotação e etiquetas (CRV como origem)
+- **Frenet** — cotação (API legada) ✅ funcionando | emissão (API whitelabel/parceiro) ⚠️ implementada mas com erro genérico pendente de resposta do suporte — ver seção "Frenet — particularidades da API" abaixo antes de mexer em qualquer coisa relacionada
 - **Sicoob** — emissão de boletos, consulta e sincronização via webhook
 - **Make.com** — automação de leads via webhook
 - **Google Analytics (GA4)** — analytics
@@ -73,6 +84,7 @@ Principais:
 - `NEXT_PUBLIC_GEMINI_API_KEY`
 - `SICOOB_CERT_PFX_BASE64`, `SICOOB_CERT_PASSWORD`, `SICOOB_CLIENT_ID`
 - `SICOOB_NUMERO_CLIENTE`, `SICOOB_NUMERO_CONTA`, `SICOOB_NUMERO_CONTRATO`
+- `FRENET_TOKEN` (cotação legada + token do cliente na API whitelabel), `FRENET_PARTNER_TOKEN` (parceiro, obtido com parceiros@frenet.com.br), `FRENET_ORDERS_URL` (default `https://whitelabel.apifrenet.com.br/v1`)
 
 ## Estrutura de Arquivos Importantes
 ```
@@ -84,10 +96,11 @@ Fluxia-next/
 │   ├── recorrencia/page.tsx             # Página recorrência
 │   └── api/
 │       ├── shipping/
-│       │   ├── label/route.ts           # Emissão etiquetas (Correios, Superfrete, ME)
+│       │   ├── label/route.ts           # Emissão etiquetas (Correios, Superfrete, ME, Frenet)
 │       │   ├── label/download/route.ts  # Download etiqueta/DACE
-│       │   ├── quote/route.ts           # Cotação fretes
-│       │   └── track/route.ts           # Rastreamento
+│       │   ├── quote/route.ts           # Cotação fretes (ME, Superfrete, Correios)
+│       │   ├── quote-frenet/route.ts    # Cotação Frenet (API legada)
+│       │   └── track/route.ts           # Rastreamento (inclui Frenet, pull-based)
 │       ├── bling/                       # Integração Bling ERP
 │       ├── sicoob/                      # Integração Sicoob banco
 │       └── leads/webhook/               # Webhook Make.com
@@ -128,6 +141,20 @@ Fluxia-next/
 - Variações como "moído", "Moido", "moido" são normalizadas para "Moido"
 - "Graos", "grãos", "graos" → "Graos"
 
+### Frenet — particularidades da API (descobertas na integração, 2026-10)
+A documentação oficial (docs.frenet.com.br) está **errada ou desatualizada** em vários pontos — confirmado testando a API diretamente. Antes de mexer em `app/api/shipping/label/route.ts` (bloco `selectedOption.provider === 'Frenet'`) ou `app/api/shipping/quote-frenet/route.ts`, leia isto:
+
+1. **Dois sistemas de cotação, podem divergir**: a tela de cotação (`ShippingQuoteModal`) usa a API **legada** (`api.frenet.com.br/shipping/quote`, só com `FRENET_TOKEN`). A emissão precisa de uma **pós-cotação separada** (`POST /v1/quotes` na API whitelabel, com `token`+`x-partner-token`) feita na hora de emitir — o `SessionId` da cotação legada NÃO é válido pra emissão. **As transportadoras disponíveis podem ser diferentes entre os dois sistemas, e variam pela origem**: CEP de origem CRV (37430-000) só oferece Correios+Jadlog; BH (30575-110) oferece Optimus/J&T/Loggi/Total Express+Jadlog (sem Correios). Confirmado testando ambas origens direto na API.
+2. **Domínio mudou**: a doc e o código antigo usavam `whitelabel.frenet.com.br` — o domínio real de produção é **`whitelabel.apifrenet.com.br`** (confirmado pelo suporte Frenet). Não existe mais ambiente de homologação, só produção.
+3. **API responde em camelCase, aceita request em PascalCase**: toda resposta JSON da Frenet (whitelabel) vem em camelCase (`sessionId`, `quotations`, `shippingServiceCode`...), mas a doc OpenAPI mostra PascalCase (`SessionId`, `Quotations`...) e a API aceita o request nesse formato (deserialização case-insensitive do lado deles). O código usa um helper `pick(obj, 'camelCase', 'PascalCase')` pra ler respostas sem depender de qual formato vier.
+4. **`Order.Volumes` é objeto único, não array** — apesar do nome no plural e de alguns exemplos sugerirem lista, o schema real (`ShipmentBase.Volumes: $ref Volume`) é um único objeto. Enviar como array causa erro de deserialização .NET (`"The JSON value could not be converted to ...Models.Volume"`). Já corrigido no código.
+5. **Dois tokens**: `FRENET_TOKEN` (token do cliente, da conta normal) + `FRENET_PARTNER_TOKEN` (token de parceiro, só obtido contatando `parceiros@frenet.com.br`, com processo de homologação/apresentação). Sem os dois, `/orders/oneclick` falha com 401/credenciais.
+6. **Endpoint de emissão**: `POST /orders/oneclick` (existe um equivalente `POST /shipments/oneclick` com schema idêntico — não está claro qual é "oficial", usamos `/orders/oneclick` e o suporte confirmou que está certo).
+7. **Saldo insuficiente**: `/orders/oneclick` retorna erro com `Code: 3000` ou `StatusBatch: 2`, incluindo `TransactionUrl` pra recarregar. O código já tem fallback: tenta `POST /orders` (sem oneclick, não paga) pra pelo menos criar o pedido pendente — equivalente ao "carrinho" do Melhor Envio, mas a finalização (pagamento + impressão) só pode ser feita no painel da Frenet, não há confirmação de endpoint pra pagar de volta via API nesse caso específico. **Existe `POST /shipments/checkout`** (array de ShipmentIds) que parece servir pra isso — ainda não implementado/testado.
+8. **Rastreio não precisa de webhook**: `app/api/shipping/track/route.ts` já tem `trackFrenet()` plugada no mesmo sistema "pull" (botão Atualizar) que os outros transportadores, usando a API legada de tracking (`api.frenet.com.br/tracking/trackinginfo`). O `trackingNumber` salvo na emissão precisa ser o código real da transportadora (ex: `PY943133131BR`), extraído do final da `TrackingUrl` — não o `ShipmentId` interno da Frenet.
+9. **Erro genérico pendente de investigação**: emissões reais (mesmo com payload validado campo a campo contra a doc) retornam `código 2999 "Erro ao processar o envio"` com só um trace ID opaco, sem mais detalhe — reportado ao suporte Frenet, aguardando resposta. Não assumir que está resolvido sem confirmar com um teste real.
+10. **Diagnóstico direto**: dá pra testar chamadas de **cotação** (`/v1/quotes`, `/v1/carriers/services`) direto via `node -e` usando as credenciais de `.env.local` sem custo. **NUNCA testar `/orders/oneclick` fora do fluxo real do app** — é uma transação real que paga de verdade e consome o saldo/limite de etiquetas.
+
 ### Tipos canônicos de produto (Dashboard)
 Os 6 tipos canônicos para ranking de kg: `Catuaí`, `Torra Clara`, `Torra Intensa`, `Bourbon`, `Yellow`, `Gourmet`
 - DripCoffee → Catuaí (100g)
@@ -140,13 +167,20 @@ invoiceLinked?: boolean
 invoiceKey?: string
 invoiceNumber?: string
 noInvoiceLinked?: boolean
+noInvoiceBlingOrderId?: string
+blingOrderId?: number
+blingOrderNumero?: number       // número sequencial do pedido no Bling (não o ID interno)
 paymentConfirmedManually?: boolean
 isSample?: boolean
 trackingNumber?: string
 shipmentId?: string
-shippingProvider?: string
-dceUrl?: string
+shippingProvider?: string       // 'melhorenvio' | 'correios' | 'superfrete' — tipo desatualizado, falta 'frenet'/'totalexpress' (não quebra pq é atribuído via `any`)
+dceUrl?: string                 // Correios/ME — ver também `declarationUrl` da Frenet (mesmo propósito, campo diferente na resposta da API)
+lastRecurrenceContact?: string  // ISO timestamp, usado pela Recorrência pra reordenar a fila
+recurrenceRemoved?: boolean     // legado — exclusão da recorrência agora é via bling_customers.participaRecorrencia
 ```
+
+**Campo `participaRecorrencia`** (boolean) vive na coleção **`bling_customers`**, não no `Order` — é a fonte única de verdade de quem participa da Recorrência (ver seção "Recorrência" acima e padrão `mostrarNoMapa`).
 
 ## Convenções do Projeto (AGENTS.md)
 - Leads usam `notas` (português), não `notes`
