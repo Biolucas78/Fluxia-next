@@ -798,6 +798,9 @@ export async function POST(req: Request) {
       const oneclickPayload = [{
         Order: {
           Id: (order.invoiceNumber || order.id || String(Date.now())).substring(0, 50),
+          // Obrigatório pro oneclick apesar de a doc OpenAPI mostrar como opcional —
+          // confirmado pelo suporte Frenet (sem isso, o pedido é recusado antes de criar).
+          Created: new Date().toISOString(),
           Value: orderValue,
           Items: products.map((p: any) => ({
             ProductName: (p.name || 'Produto').substring(0, 50),
