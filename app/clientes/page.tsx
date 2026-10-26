@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import Login from '@/components/Login';
-import { getValidBlingToken } from '@/lib/bling-client';
+import { getValidBlingToken, relinkBlingCustomer } from '@/lib/bling-client';
 import { 
   User, 
   Search, 
@@ -126,6 +126,7 @@ export default function ClientesPage() {
   }
 
   const filteredCustomers = customers.filter(c => {
+    if (c.substituidoPor) return false;
     const search = removeAccents(searchTerm.toLowerCase());
     return (
       removeAccents((c.nome || '').toLowerCase()).includes(search) ||
@@ -222,6 +223,12 @@ export default function ClientesPage() {
 
       if (!response.ok) {
         throw new Error(result.error || 'Erro ao salvar cliente no Bling');
+      }
+
+      // O ID salvo estava desatualizado e o Bling atualizou o contato verdadeiro: corrige o vínculo no Fluxia
+      if (isEditing && result.resolvedId && result.resolvedId !== currentCustomer.id) {
+        const oldData = customers.find(c => String(c.id) === currentCustomer.id);
+        await relinkBlingCustomer(currentCustomer.id, result.resolvedId, result.data, oldData);
       }
 
       // Atualiza localmente para feedback imediato na UI

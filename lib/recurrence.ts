@@ -91,6 +91,8 @@ export function getOrderIdentifier(order: Order): string {
 export function buildCustomersIndex(docs: { id: string; data: any }[]): Map<string, CustomerEntry> {
   const idx = new Map<string, CustomerEntry>();
   docs.forEach(({ id, data }) => {
+    // Doc antigo cujo ID do Bling estava desatualizado — o cadastro válido está em `substituidoPor`
+    if (data.substituidoPor) return;
     const entry: CustomerEntry = { id, data };
     idx.set(id, entry);
     const docNum = onlyDigits(data.numeroDocumento);

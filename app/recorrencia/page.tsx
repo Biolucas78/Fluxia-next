@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
-import { getValidBlingToken } from '@/lib/bling-client';
+import { getValidBlingToken, relinkBlingCustomer } from '@/lib/bling-client';
 import {
   ClientRecurrence, RecurrenceColor, RecurrenceTab, ApproachChannel, CustomerEntry, RECURRENCE_TAGS, APPROACH_COOLDOWN_DAYS,
   buildCustomersIndex, buildRecurrenceClients, sortRecurrenceQueue, fillMessage, isBeloHorizonte, normalizeString,
@@ -350,10 +350,18 @@ export default function RecorrenciaPage() {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(buildBlingPayload(data, edits)),
         });
+        const result = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const result = await res.json().catch(() => ({}));
           toast.error('Salvo no Fluxia, mas o Bling recusou: ' + (result.error || res.status), { duration: 6000 });
           return;
+        }
+        // O ID salvo estava desatualizado e o Bling atualizou o contato verdadeiro: corrige o vínculo no Fluxia
+        if (result.resolvedId && result.resolvedId !== client.customer!.id) {
+          await relinkBlingCustomer(client.customer!.id, result.resolvedId, result.data, data, {
+            contatoNome: edits.contatoNome.trim(),
+            tagsRecorrencia: edits.tags,
+            observacaoRecorrencia: edits.observacao.trim(),
+          });
         }
         toast.success('Cadastro atualizado no Fluxia e no Bling!');
       } else {
