@@ -879,7 +879,9 @@ export async function POST(req: Request) {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'token': frenetToken,
-          'x-partner-token': frenetPartnerToken
+          'x-partner-token': frenetPartnerToken,
+          // Header opcional da Frenet pra formato da etiqueta — sem ele, sai em A4.
+          'x-printing-format': 'A6'
         },
         body: JSON.stringify(oneclickPayload)
       });
@@ -905,7 +907,8 @@ export async function POST(req: Request) {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
               'token': frenetToken,
-              'x-partner-token': frenetPartnerToken
+              'x-partner-token': frenetPartnerToken,
+              'x-printing-format': 'A6'
             },
             body: JSON.stringify(oneclickPayload)
           });
