@@ -1,4 +1,5 @@
 import { Order } from './types';
+import { cleanPhone } from './parser';
 
 // ─── Regras da Recorrência ────────────────────────────────────────────────────
 // Não existe entidade "Cliente" própria: os pedidos são agrupados por CNPJ/CPF/telefone/nome
@@ -85,7 +86,8 @@ export function isBeloHorizonte(city: string): boolean {
 export function getOrderIdentifier(order: Order): string {
   if (order.cnpj) return onlyDigits(order.cnpj);
   if (order.cpf) return onlyDigits(order.cpf);
-  if (order.phone) return onlyDigits(order.phone);
+  const phone = cleanPhone(order.phone);
+  if (phone) return onlyDigits(phone);
   return normalizeString(order.clientName);
 }
 
@@ -121,7 +123,7 @@ export function findCustomerEntry(index: Map<string, CustomerEntry>, order: Orde
 }
 
 export function getCustomerPhone(data: any): string {
-  return data?.celular || data?.telefones?.celular || data?.telefone || '';
+  return cleanPhone(data?.celular) || cleanPhone(data?.telefones?.celular) || cleanPhone(data?.telefone);
 }
 
 export function getCustomerCity(data: any): string {
@@ -243,7 +245,7 @@ export function buildRecurrenceClients(
       fantasia: data.fantasia || latestOrder.tradeName || '',
       razaoSocial: data.nome || latestOrder.clientName || '',
       contatoNome: data.contatoNome || realOrders.find(o => o.contactName)?.contactName || '',
-      phone: getCustomerPhone(data) || latestOrder.phone || '',
+      phone: getCustomerPhone(data) || cleanPhone(latestOrder.phone),
       city: getCustomerCity(data) || latestOrder.addressDetails?.city || '',
       state: (getCustomerState(data) || latestOrder.addressDetails?.state || '').toUpperCase(),
       docType: getDocType(latestOrder, data),

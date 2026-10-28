@@ -205,6 +205,13 @@ export function parseWhatsAppOrder(text: string): Partial<Order> {
   };
 }
 
+// A IA às vezes preenche o telefone com texto ("whatsapp", "null", "_phone_placeholder_...").
+// Só vale como telefone se tiver pelo menos 8 dígitos; senão, vazio.
+export function cleanPhone(value: unknown): string {
+  const text = value == null ? '' : String(value).trim();
+  return text.replace(/\D/g, '').length >= 8 ? text : '';
+}
+
 export function extractCityState(address: string | undefined | null) {
   if (!address) return { city: 'N/A', state: 'N/A' };
   

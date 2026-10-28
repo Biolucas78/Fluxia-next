@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { enrichOrderDataAsync } from "./customerService";
+import { cleanPhone } from "./parser";
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -77,7 +78,7 @@ export async function parseOrderWithGemini(text: string) {
        NUNCA retorne: "Grãos", "Moído", "grao", "graos", "moido" ou qualquer outra forma.
     7. NOME DO PRODUTO: Não inclua a palavra "Café".
     7b. PRODUTO PERSONALIZADO (CRÍTICO): Quando o produto for descrito como "personalizado" (ex: "Catuaí personalizado", "250g personalizado", "café personalizado"), a palavra "personalizado" deve ser adicionada ao final do campo "name" — NUNCA em "productionNotes". Ex: name = "Catuaí personalizado", weight = "250g", grindType = "grãos". O campo "productionNotes" deve ser usado APENAS para notas que não sejam "personalizado" (ex: data de entrega especial, observação de embalagem).
-    8. TELEFONE: O campo "phone" deve conter APENAS o número de telefone. Se o texto for longo e não parecer um telefone, deixe vazio ou extraia apenas os dígitos do telefone.
+    8. TELEFONE: O campo "phone" deve conter APENAS o número de telefone. Se o texto for longo e não parecer um telefone, deixe vazio ou extraia apenas os dígitos do telefone. Se não houver telefone, retorne "" (vazio) — nunca "whatsapp", "null", "N/A" ou texto inventado.
     9. FLEXIBILIDADE (CRÍTICO): Se o formato da mensagem for incomum ou bagunçado, use o contexto para identificar o que é o nome do cliente, o que é o endereço e o que são os produtos. Priorize a extração correta dos produtos mesmo que o endereço esteja incompleto ou misturado. Se houver dúvidas sobre o que é o nome do cliente, use a primeira linha ou a identificação mais clara de pessoa/empresa.
     10. CONDIÇÃO DE PAGAMENTO: Identifique a condição de pagamento se mencionada (ex: "A vista", "15 dias", "21 dias", "30 dias", "2x"). Se não mencionada, use "A vista".
     11. ORIGEM DO PEDIDO: Identifique a origem do pedido se mencionada. As origens possíveis são: 'whatsapp', 'Wix', 'Amazon', 'Meli', 'CRM'. Se não for mencionada, assuma 'whatsapp'.
@@ -199,7 +200,7 @@ export async function parseOrderWithGemini(text: string) {
         const order = parsed.orders[i];
         const sanitized = {
           ...order,
-          phone: order.phone ? order.phone.toString().slice(0, 50) : ''
+          phone: cleanPhone(order.phone).slice(0, 50)
         };
 
         // Enrich with customer database and ViaCEP if fields are missing
@@ -264,7 +265,7 @@ export async function parseAddressWithGemini(addressString: string, viaCepStreet
       TEXTO: "${addressString}"
       
       REGRAS:
-      1. TELEFONE: Extraia apenas o número de telefone. Se houver muito texto, ignore o que não for telefone.
+      1. TELEFONE: Extraia apenas o número de telefone. Se houver muito texto, ignore o que não for telefone. Se não houver telefone, retorne "" (vazio) — nunca invente um texto.
       2. CPF/CNPJ: Remova formatação se possível, mas mantenha os dígitos.
       3. NÚMERO E COMPLEMENTO: Se o contexto da rua for fornecido, procure o número e complemento que vêm logo após ou perto do nome da rua.
       
@@ -297,9 +298,7 @@ export async function parseAddressWithGemini(addressString: string, viaCepStreet
     let rawText = response.text || '{}';
     rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(rawText);
-    if (parsed.phone) {
-      parsed.phone = parsed.phone.toString().slice(0, 50);
-    }
+    parsed.phone = cleanPhone(parsed.phone).slice(0, 50);
     return parsed;
   } catch (e) {
     console.error("Erro ao parsear endereço com Gemini:", e);
