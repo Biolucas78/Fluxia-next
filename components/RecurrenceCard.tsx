@@ -274,15 +274,24 @@ export default function RecurrenceCard({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-500">
             <span className="flex items-center gap-1">
               <Repeat className="size-3" />
-              {client.cycleDays !== null
-                ? <>Compra a cada ~{client.cycleDays} dias{overCycle && <strong className="text-red-600 dark:text-red-400 ml-1">· passou do ciclo</strong>}</>
-                : 'Primeira compra'}
+              {client.sampleOnly
+                ? 'Ainda não comprou'
+                : client.cycleDays !== null
+                  ? <>Compra a cada ~{client.cycleDays} dias{overCycle && <strong className="text-red-600 dark:text-red-400 ml-1">· passou do ciclo</strong>}</>
+                  : 'Primeira compra'}
             </span>
-            <span>{client.totalOrders} pedido{client.totalOrders !== 1 ? 's' : ''}</span>
+            <span>
+              {client.totalOrders} {client.sampleOnly
+                ? `amostra${client.totalOrders !== 1 ? 's' : ''}`
+                : `pedido${client.totalOrders !== 1 ? 's' : ''}`}
+            </span>
           </div>
 
-          {(client.tags.length > 0 || client.daysSinceApproach !== null || client.movedToEndAt) && (
+          {(client.sampleOnly || client.tags.length > 0 || client.daysSinceApproach !== null || client.movedToEndAt) && (
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {client.sampleOnly && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">Amostra</span>
+              )}
               {client.tags.map(tag => (
                 <span key={tag} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary dark:bg-primary/20">{tag}</span>
               ))}

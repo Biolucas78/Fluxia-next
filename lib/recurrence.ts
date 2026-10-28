@@ -30,7 +30,9 @@ export interface ClientRecurrence {
   identifier: string;
   customer: CustomerEntry | null;
   latestOrder: Order;
+  // Com `sampleOnly`, conta as amostras (o cliente nunca fez pedido de verdade)
   totalOrders: number;
+  sampleOnly: boolean;
   fantasia: string;
   razaoSocial: string;
   contatoNome: string;
@@ -188,11 +190,12 @@ export function buildRecurrenceClients(
   const result: ClientRecurrence[] = [];
 
   groups.forEach((orders, identifier) => {
-    // Amostras ficam de fora — clientes só em prospecção são tratados no CRM
-    const realOrders = orders
-      .filter(o => !o.isSample)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    if (realOrders.length === 0) return;
+    // Amostras não contam como compra. Quem só recebeu amostra aparece com a tag "Amostra",
+    // fora da recorrência por padrão (pode ser recolocado manualmente)
+    const byDateDesc = (a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    const purchases = orders.filter(o => !o.isSample).sort(byDateDesc);
+    const sampleOnly = purchases.length === 0;
+    const realOrders = sampleOnly ? [...orders].sort(byDateDesc) : purchases;
 
     const latestOrder = realOrders[0];
     const customer = findCustomerEntry(customersIndex, latestOrder, identifier);
@@ -202,7 +205,7 @@ export function buildRecurrenceClients(
     // Flag explícita no cadastro manda; sem ela, respeita o campo legado e depois o padrão por origem
     const participates = data.participaRecorrencia !== undefined
       ? data.participaRecorrencia !== false
-      : !latestOrder.recurrenceRemoved && !isExcludedOrigin(origin);
+      : !sampleOnly && !latestOrder.recurrenceRemoved && !isExcludedOrigin(origin);
 
     const lastOrderAt = new Date(latestOrder.createdAt).getTime();
     const daysSinceLastOrder = Math.max(0, Math.floor((now.getTime() - lastOrderAt) / DAY_MS));
@@ -236,6 +239,7 @@ export function buildRecurrenceClients(
       customer,
       latestOrder,
       totalOrders: realOrders.length,
+      sampleOnly,
       fantasia: data.fantasia || latestOrder.tradeName || '',
       razaoSocial: data.nome || latestOrder.clientName || '',
       contatoNome: data.contatoNome || realOrders.find(o => o.contactName)?.contactName || '',
@@ -255,13 +259,16 @@ export function buildRecurrenceClients(
       lastApproachAt,
       daysSinceApproach,
       lastChannel,
-      cycleDays: computeCycleDays(realOrders),
+      cycleDays: sampleOnly ? null : computeCycleDays(realOrders),
       participates,
       productSummary: summarizeProducts(latestOrder),
     });
   });
 
-  return result;
+  // Amostra e compra cadastradas com identificadores diferentes (ex: nome x CNPJ) mas mesmo cadastro:
+  // o cliente já comprou, então a ficha "só amostra" sobra
+  const buyers = new Set(result.filter(c => !c.sampleOnly && c.customer).map(c => c.customer!.id));
+  return result.filter(c => !c.sampleOnly || !c.customer || !buyers.has(c.customer.id));
 }
 
 // Ordem da fila: por data do último pedido; quem foi "movido para o fim" fica sempre no final

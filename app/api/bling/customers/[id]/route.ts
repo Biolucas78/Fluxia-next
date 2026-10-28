@@ -126,6 +126,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
+    // ?create=false (Recorrência): só atualiza contatos que já existem, nunca cria
+    if (res.status === 404 && new URL(request.url).searchParams.get('create') === 'false') {
+      return NextResponse.json({ error: 'Contato não encontrado no Bling', notFound: true }, { status: 404 });
+    }
+
     // Se o contato não existe mais no Bling (404) e não há outro com o mesmo documento, cria como novo (POST)
     if (res.status === 404) {
       console.warn(`[Bling Update Customer] ID ${id} não encontrado no Bling — criando como novo contato.`);

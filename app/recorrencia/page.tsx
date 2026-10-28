@@ -197,7 +197,8 @@ export default function RecorrenciaPage() {
       if (start !== null && c.lastOrderAt < start) return false;
       if (end !== null && c.lastOrderAt > end) return false;
       if (filterTag === 'none' && c.tags.length > 0) return false;
-      if (filterTag !== 'all' && filterTag !== 'none' && !c.tags.includes(filterTag)) return false;
+      if (filterTag === 'amostra' && !c.sampleOnly) return false;
+      if (!['all', 'none', 'amostra'].includes(filterTag) && !c.tags.includes(filterTag)) return false;
       if (filterOrigin !== 'all' && c.origin !== filterOrigin) return false;
       return true;
     });
@@ -345,12 +346,17 @@ export default function RecorrenciaPage() {
           toast('Salvo no Fluxia. Conecte o Bling em Configurações para enviar a correção ao Bling.', { icon: '⚠️' });
           return;
         }
-        const res = await fetch(`/api/bling/customers/${client.customer!.id}`, {
+        // A Recorrência nunca cria contato no Bling — só corrige quem já existe lá
+        const res = await fetch(`/api/bling/customers/${client.customer!.id}?create=false`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(buildBlingPayload(data, edits)),
         });
         const result = await res.json().catch(() => ({}));
+        if (result.notFound) {
+          toast.success('Cadastro atualizado no Fluxia. (Cliente não encontrado no Bling pelo CNPJ/CPF — nada foi criado lá.)', { duration: 6000 });
+          return;
+        }
         if (!res.ok) {
           toast.error('Salvo no Fluxia, mas o Bling recusou: ' + (result.error || res.status), { duration: 6000 });
           return;
@@ -693,6 +699,7 @@ export default function RecorrenciaPage() {
                       <select value={filterTag} onChange={e => setFilterTag(e.target.value)} className={selectCls}>
                         <option value="all">Todas</option>
                         {RECURRENCE_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+                        <option value="amostra">Amostra (só recebeu amostra)</option>
                         <option value="none">Sem tag</option>
                       </select>
                     </div>
