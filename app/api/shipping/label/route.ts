@@ -3,6 +3,7 @@ import { getCorreiosToken } from '@/lib/correios';
 import { getTotalExpressAuthHeader, TOTAL_EXPRESS_URL, TOTAL_EXPRESS_SENDER_ID, TOTAL_EXPRESS_SERVICE_TYPE } from '@/lib/totalexpress';
 import { generateTexLabelPdf } from '@/lib/tex-label';
 import { texLabelCache } from '@/lib/texLabelCache';
+import { frenetLabelCache } from '@/lib/frenetLabelCache';
 
 const CORREIOS_USER = process.env.CORREIOS_USER;
 const CORREIOS_TOKEN = process.env.CORREIOS_ACCESS_CODE;
@@ -987,11 +988,52 @@ export async function POST(req: Request) {
         ? String(trackingUrl).split('/').filter(Boolean).pop()
         : null;
 
+      // LabelUrl/DeclarationUrl da Frenet são páginas HTML de "preview de impressão", não um
+      // PDF — por isso abre no navegador em vez de baixar. Pra baixar um PDF de verdade (igual
+      // Correios/TEX), buscamos o PDF já combinado (etiqueta + declaração) via
+      // /shipments/batch/label/generate e servimos pelo nosso proxy local.
+      let finalLabelUrl = labelUrl;
+      let finalDeclarationUrl = declarationUrl;
+      let labelIncludesDeclaration = false;
+      try {
+        const batchRes = await fetch(`${frenetOrdersUrl}/shipments/batch/label/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'token': frenetToken,
+            'x-partner-token': frenetPartnerToken,
+            'x-printing-format': 'A6'
+          },
+          body: JSON.stringify([Number(shipmentIdValue)])
+        });
+        const batchText = await batchRes.text();
+        const batchData = JSON.parse(batchText);
+        const documentBase64 = pick(batchData, 'document', 'Document');
+        if (batchRes.ok && documentBase64) {
+          const pdfBuffer = Buffer.from(documentBase64, 'base64');
+          const cacheKey = String(shipmentIdValue);
+          frenetLabelCache.set(cacheKey, pdfBuffer);
+          setTimeout(() => frenetLabelCache.delete(cacheKey), 30 * 60 * 1000);
+          finalLabelUrl = `/api/shipping/label/download?tipo=frenet&token=${encodeURIComponent(cacheKey)}`;
+          // O PDF combinado já inclui a declaração (quando existe) — evita abrir uma segunda janela.
+          if (declarationUrl) {
+            labelIncludesDeclaration = true;
+            finalDeclarationUrl = null;
+          }
+        } else {
+          console.warn('Frenet: não gerou PDF combinado via batch/label/generate, usando LabelUrl da Frenet (abre no navegador):', batchText.substring(0, 300));
+        }
+      } catch (pdfErr) {
+        console.warn('Frenet: erro ao buscar PDF combinado via batch/label/generate:', pdfErr);
+      }
+
       return NextResponse.json({
         success: true,
-        labelUrl,
+        labelUrl: finalLabelUrl,
         trackingUrl,
-        declarationUrl,
+        declarationUrl: finalDeclarationUrl,
+        labelIncludesDeclaration,
         shipmentId: String(shipmentIdValue || ''),
         trackingNumber: trackingCodeFromUrl || String(shipmentIdValue || ''),
         shippingProvider: 'frenet'

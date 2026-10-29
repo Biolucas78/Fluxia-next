@@ -1036,9 +1036,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
         } else if (data.labelUrl) {
           // dceUrl (Correios/ME) e declarationUrl (Frenet) são o mesmo tipo de documento —
           // a declaração de conteúdo gerada automaticamente quando o pedido não tem NF-e.
+          // Na Frenet, quando dá pra baixar o PDF combinado, a declaração já vem dentro do
+          // próprio labelUrl (não abre em janela separada) — por isso o flag separado.
           const declarationDocUrl = data.dceUrl || data.declarationUrl;
+          const hasDeclaration = !!declarationDocUrl || !!data.labelIncludesDeclaration;
           console.log('[DEBUG label response]', JSON.stringify({labelUrl: data.labelUrl, declarationDocUrl, idReciboDce: data.idReciboDce}));
-          toast.success('Etiqueta gerada!' + (declarationDocUrl ? ' DC-e gerada!' : ' (sem DC-e)'), {duration: 8000});
+          toast.success('Etiqueta gerada!' + (hasDeclaration ? ' DC-e gerada!' : ' (sem DC-e)'), {duration: 8000});
           window.open(data.labelUrl, '_blank');
           if (declarationDocUrl) setTimeout(() => window.open(declarationDocUrl, '_blank'), 800);
         } else {

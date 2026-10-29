@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCorreiosToken } from '@/lib/correios';
 import { daceCache } from '@/lib/daceCache';
 import { texLabelCache } from '@/lib/texLabelCache';
+import { frenetLabelCache } from '@/lib/frenetLabelCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,21 @@ export async function GET(req: Request) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="etiqueta-tex-${token}.pdf"`
+      }
+    });
+  }
+
+  // Handler Frenet — PDF combinado (etiqueta + declaração) gerado via batch/label/generate,
+  // armazenado em frenetLabelCache
+  if (tipo === 'frenet') {
+    const token = searchParams.get('token');
+    if (!token) return NextResponse.json({ error: 'Token não informado.' }, { status: 400 });
+    const pdfBuffer = frenetLabelCache.get(token);
+    if (!pdfBuffer) return NextResponse.json({ error: 'Etiqueta Frenet não encontrada ou expirada (30 min).' }, { status: 404 });
+    return new Response(new Uint8Array(pdfBuffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="etiqueta-frenet-${token}.pdf"`
       }
     });
   }
