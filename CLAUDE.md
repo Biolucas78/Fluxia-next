@@ -46,7 +46,7 @@ Sempre usar `adminDb` de `lib/firebase-admin.ts` nas rotas de API — nunca inic
 
 ### Logística
 - Cotação: Melhor Envio + Superfrete + Correios + Frenet
-- Emissão de etiqueta: Melhor Envio ✅ | Correios ✅ | Superfrete ✅ | Frenet ⚠️ (ver seção própria abaixo — emissão implementada mas travando com erro genérico, aguardando retorno do suporte Frenet)
+- Emissão de etiqueta: Melhor Envio ✅ | Correios ✅ | Superfrete ✅ | Frenet ✅ (ver seção "Frenet — particularidades da API" abaixo antes de mexer em qualquer coisa relacionada)
 - DACE (Declaração de Conteúdo Eletrônica): gerada automaticamente pelo Correios quando não há NF vinculada
   - Endpoint: `POST /prepostagem/v1/prepostagens/dce/dace/impressao`
   - Retorna base64 em `dados`, armazenado em `daceCache` (Map global em `app/api/shipping/label/route.ts`)
@@ -78,7 +78,7 @@ Página `app/recorrencia/page.tsx`; regras puras em `lib/recurrence.ts` (`buildR
 - **Melhor Envio** — cotação e etiquetas (BH como origem)
 - **Superfrete** — cotação e etiquetas (CRV como origem)
 - **Correios** — cotação e etiquetas (CRV como origem)
-- **Frenet** — cotação (API legada) ✅ funcionando | emissão (API whitelabel/parceiro) ⚠️ implementada mas com erro genérico pendente de resposta do suporte — ver seção "Frenet — particularidades da API" abaixo antes de mexer em qualquer coisa relacionada
+- **Frenet** — cotação (API legada) ✅ | emissão (API whitelabel/parceiro) ✅ funcionando em produção — ver seção "Frenet — particularidades da API" abaixo antes de mexer em qualquer coisa relacionada
 - **Sicoob** — emissão de boletos, consulta e sincronização via webhook
 - **Make.com** — automação de leads via webhook
 - **Google Analytics (GA4)** — analytics
@@ -165,7 +165,8 @@ A documentação oficial (docs.frenet.com.br) está **errada ou desatualizada** 
 8. **Rastreio não precisa de webhook**: `app/api/shipping/track/route.ts` já tem `trackFrenet()` plugada no mesmo sistema "pull" (botão Atualizar) que os outros transportadores, usando a API legada de tracking (`api.frenet.com.br/tracking/trackinginfo`). O `trackingNumber` salvo na emissão precisa ser o código real da transportadora (ex: `PY943133131BR`), extraído do final da `TrackingUrl` — não o `ShipmentId` interno da Frenet.
 9. **`Order.Created` é obrigatório** (ISO 8601, ex: `new Date().toISOString()`), apesar de a doc OpenAPI mostrar como campo opcional. Sem ele, o oneclick recusa o pedido ANTES de validar o resto, retornando só o erro genérico `código 2999 "Erro ao processar o envio"` com um trace ID opaco — foi preciso o suporte Frenet olhar os logs internos pra identificar isso (não dava pra descobrir só pela doc). Já corrigido no código — se o 2999 voltar a aparecer, não é mais esse campo (já investigar outra causa).
 10. **Diagnóstico direto**: dá pra testar chamadas de **cotação** (`/v1/quotes`, `/v1/carriers/services`) direto via `node -e` usando as credenciais de `.env.local` sem custo. **NUNCA testar `/orders/oneclick` fora do fluxo real do app** — é uma transação real que paga de verdade e consome o saldo/limite de etiquetas.
-11. **Formato da etiqueta (A4/A6)**: não é campo do corpo da requisição — é o header opcional `x-printing-format` em `/orders/oneclick` (e também em `/orders`, `/shipments/oneclick`, `GET /shipments/{id}/label`). Sem o header, a Frenet gera em A4. Código já envia `'x-printing-format': 'A6'` nas duas chamadas (`/orders/oneclick` e o fallback `/orders`). A doc não lista os valores aceitos (sem enum) — confirmar com o usuário se a etiqueta saiu mesmo em A6 após o deploy.
+11. **Formato da etiqueta (A4/A6)**: não é campo do corpo da requisição — é o header opcional `x-printing-format` em `/orders/oneclick` (e também em `/orders`, `/shipments/oneclick`, `GET /shipments/{id}/label`, `/shipments/batch/label/generate`). Sem o header, a Frenet gera em A4. Código envia `'x-printing-format': 'A6'` em todas essas chamadas. **Confirmado pelo usuário em produção — funciona.**
+12. **`LabelUrl`/`DeclarationUrl` da resposta do oneclick são páginas HTML de "preview de impressão" (`PrintPreviewCart/Label?...`), não um PDF** — por isso abrem no navegador exigindo Ctrl+P, diferente de Correios/TEX (cujo link já é um PDF com `Content-Disposition: attachment`). Pra baixar um PDF de verdade, o código faz uma chamada extra depois do oneclick: `POST /shipments/batch/label/generate` (body `[ShipmentId]`, mesmos headers + `x-printing-format`) retorna um PDF já combinado (etiqueta + declaração) em base64 no campo `Document`. Esse PDF é cacheado em memória (`lib/frenetLabelCache.ts`, TTL 30 min, mesmo padrão de `texLabelCache`/`daceCache`) e servido via `/api/shipping/label/download?tipo=frenet&token={shipmentId}` com `Content-Disposition: attachment`. Se essa chamada extra falhar, cai no fallback do `LabelUrl`/`DeclarationUrl` originais (abre no navegador, como antes).
 
 ### Tipos canônicos de produto (Dashboard)
 Os 6 tipos canônicos para ranking de kg: `Catuaí`, `Torra Clara`, `Torra Intensa`, `Bourbon`, `Yellow`, `Gourmet`
