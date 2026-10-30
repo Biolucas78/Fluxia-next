@@ -199,11 +199,12 @@ export default function KanbanBoard({ orders, onUpdateOrder, onMoveOrder, onDele
         const response = await fetch('/api/shipping/track', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            trackingNumber: order.trackingNumber, 
+          body: JSON.stringify({
+            trackingNumber: order.trackingNumber,
             shipmentId: order.shipmentId,
             shippingProvider: order.shippingProvider,
-            carrier: order.carrier 
+            carrier: order.carrier,
+            frenetServiceCode: order.frenetServiceCode
           })
         });
         if (response.ok) {

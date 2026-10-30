@@ -138,6 +138,7 @@ export default function LogisticaPage() {
           shipmentId: order.shipmentId,
           shippingProvider: order.shippingProvider,
           carrier: order.carrier,
+          frenetServiceCode: order.frenetServiceCode,
         })
       });
       const data = await response.json();

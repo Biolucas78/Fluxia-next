@@ -929,6 +929,7 @@ export async function POST(req: Request) {
             shipmentId: String(pendingShipmentId || ''),
             trackingNumber: String(pendingShipmentId || ''),
             shippingProvider: 'frenet',
+            frenetServiceCode: pick(matchedQuote, 'shippingServiceCode', 'ShippingServiceCode') || null,
             transactionUrl
           });
         } catch (e) {
@@ -1036,7 +1037,10 @@ export async function POST(req: Request) {
         labelIncludesDeclaration,
         shipmentId: String(shipmentIdValue || ''),
         trackingNumber: trackingCodeFromUrl || String(shipmentIdValue || ''),
-        shippingProvider: 'frenet'
+        shippingProvider: 'frenet',
+        // Rastreio da Frenet (/tracking/trackinginfo) exige o ShippingServiceCode junto do
+        // TrackingNumber — sem ele, transportadoras como JadLog não são encontradas.
+        frenetServiceCode: pick(matchedQuote, 'shippingServiceCode', 'ShippingServiceCode') || null
       });
     }
 

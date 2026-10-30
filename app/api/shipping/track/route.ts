@@ -377,7 +377,7 @@ async function trackMelhorEnvio(trackingNumber: string) {
   }
 }
 
-async function trackFrenet(trackingNumber: string) {
+async function trackFrenet(trackingNumber: string, shippingServiceCode?: string | null) {
   const frenetToken = process.env.FRENET_TOKEN;
   if (!frenetToken) {
     console.warn('Frenet: Token não configurado para rastreamento.');
@@ -385,6 +385,12 @@ async function trackFrenet(trackingNumber: string) {
   }
 
   try {
+    // ShippingServiceCode é obrigatório na doc (TrackingRequest) junto do TrackingNumber —
+    // sem ele, a Frenet não consegue identificar a transportadora pra formatos de código que
+    // não são auto-detectáveis (ex: JadLog), e o rastreio falha silenciosamente.
+    const body: Record<string, string> = { TrackingNumber: trackingNumber };
+    if (shippingServiceCode) body.ShippingServiceCode = shippingServiceCode;
+
     const response = await fetch('https://api.frenet.com.br/tracking/trackinginfo', {
       method: 'POST',
       headers: {
@@ -392,7 +398,7 @@ async function trackFrenet(trackingNumber: string) {
         'Accept': 'application/json',
         'token': frenetToken
       },
-      body: JSON.stringify({ TrackingNumber: trackingNumber })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
@@ -502,7 +508,7 @@ async function trackTotalExpress(trackingNumber: string) {
 
 export async function POST(req: Request) {
   try {
-    const { trackingNumber, shipmentId, shippingProvider, carrier } = await req.json();
+    const { trackingNumber, shipmentId, shippingProvider, carrier, frenetServiceCode } = await req.json();
 
     if (!trackingNumber && !shipmentId) {
       return NextResponse.json({ error: 'Código de rastreio ou ID de envio ausente.' }, { status: 400 });
@@ -559,8 +565,8 @@ export async function POST(req: Request) {
 
     // PRIORIDADE 3: Frenet (shippingProvider = frenet)
     if (!result && shippingProvider === 'frenet' && trimmedTracking) {
-      console.log(`Rastreio Frenet: ${trimmedTracking}`);
-      result = await trackFrenet(trimmedTracking);
+      console.log(`Rastreio Frenet: ${trimmedTracking} (serviço ${frenetServiceCode || 'não informado'})`);
+      result = await trackFrenet(trimmedTracking, frenetServiceCode);
     }
 
     // PRIORIDADE 4: Total Express (AWB termina em "tx" ou shippingProvider = totalexpress)

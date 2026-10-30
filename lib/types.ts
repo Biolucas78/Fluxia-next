@@ -148,6 +148,7 @@ export interface Order {
   carrier?: string;
   shippingProvider?: 'melhorenvio' | 'correios' | 'superfrete';
   shipmentId?: string;
+  frenetServiceCode?: string; // necessário pro rastreio da Frenet (ex: JadLog) — ver trackFrenet() em app/api/shipping/track/route.ts
   labelUrl?: string;
   trackingNumber?: string;
   blingOrderId?: number;

@@ -478,11 +478,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       const response = await fetch('/api/shipping/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           trackingNumber: order.trackingNumber,
           shipmentId: order.shipmentId,
           shippingProvider: order.shippingProvider,
-          carrier: order.carrier
+          carrier: order.carrier,
+          frenetServiceCode: order.frenetServiceCode
         })
       });
 
@@ -1019,6 +1020,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
           shippingProvider: data.shippingProvider,
           labelUrl: data.labelUrl || order.labelUrl,
           carrier: data.provider === 'Manual' ? order.carrier : data.provider,
+          frenetServiceCode: data.frenetServiceCode || order.frenetServiceCode,
           statusHistory: [
             ...(order.statusHistory || []),
             { 
