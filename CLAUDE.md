@@ -152,6 +152,12 @@ Fluxia-next/
 - Variações como "moído", "Moido", "moido" são normalizadas para "Moido"
 - "Graos", "grãos", "graos" → "Graos"
 
+### Reimpressão de DANFE e boleto (2026-11)
+- **DANFE do Bling**: `GET /nfe/documento/{chaveAcesso}?formato=pdf` (não `/nfe/{id}/documento`, que nem existe). O PDF vem **comprimido em gzip, em base64**, dentro de `data[0].conteudo` — precisa `zlib.gunzipSync()` antes de usar, senão o arquivo não abre. Implementado em `app/api/bling/nfe-danfe/route.ts`; usa `order.invoiceKey` (chaveAcesso) direto — se só tiver `invoiceNumber`, busca a chave antes via `GET /nfe?numero=`. Retorna `pdfBase64` já descomprimido (nunca um link — diferente da Frenet/Correios).
+- **2ª via de boleto do Sicoob**: `GET /cobranca-bancaria/v3/boletos/segunda-via?numeroCliente=&codigoModalidade=1&numeroContaCorrente=&nossoNumero=&gerarPdf=true`, retorna `resultado.pdfBoleto` em base64 — **confirmado funcionando em produção**. Implementado em `app/api/sicoob/boleto-pdf/route.ts`.
+- **Botões no modal do pedido** (`OrderDetailsModal`): "Imprimir DANFE" no card de NF-e (abre blob URL) e um ícone de impressora em cada parcela de boleto vinculado (baixa o PDF).
+- **Fluxo "Cobrar" no Financeiro** (`app/financeiro/page.tsx`, dentro de `OrderCard`): painel expansível com 3 passos — 1) mensagem de cobrança (saudação + linha de dados, tudo em um envio ao WhatsApp), 2) compartilhar DANFE+boleto via `navigator.share` (só Android/Chrome, mesma limitação do anexo da Recorrência; fora disso baixa os PDFs pra anexar manual), 3) mensagem oferecendo PIX com a chave (CNPJ, de `ORIGIN_DOCUMENT` via `/api/config/pix-key`) — texto também copiado pra área de transferência.
+
 ### Frenet — particularidades da API (descobertas na integração, 2026-10)
 A documentação oficial (docs.frenet.com.br) está **errada ou desatualizada** em vários pontos — confirmado testando a API diretamente. Antes de mexer em `app/api/shipping/label/route.ts` (bloco `selectedOption.provider === 'Frenet'`) ou `app/api/shipping/quote-frenet/route.ts`, leia isto:
 
