@@ -545,24 +545,20 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
     const boletoValor = (boletos && boletos.length > 0) ? formatCurrency(boletos[0].valor || value) : v;
     return `Pedido faturado em ${emissao || '-'}, referente a nota fiscal ${nf || '-'}, no valor de ${boletoValor}, vencido em ${venc || '-'}.`;
   })();
-  const cobrancaMsg = `Oi ${firstName}. Tudo bem?\nEstamos com um boleto em aberto, você pode verificar pra gente por favor? Segue a relação:\n${cobrancaDetailLine}`;
+  // Aviso do PIX já embutido no final da mensagem — a chave com o valor é anexada manualmente
+  // pelo usuário depois (não existe API pra gerar o cartão de cobrança PIX nativo do WhatsApp,
+  // é recurso do WhatsApp Payments, só manual dentro do app).
+  const cobrancaMsg = `Oi ${firstName}. Tudo bem?\nEstamos com um boleto em aberto, você pode verificar pra gente por favor? Segue a relação:\n${cobrancaDetailLine}\nSe preferir evitar os juros do boleto, pode pagar o valor integral pela chave PIX abaixo.`;
 
   const waPersonal = phone ? `https://wa.me/55${phone}?text=${encodeURIComponent(cobrancaMsg)}` : null;
   const waBusiness = phone ? `intent://send?phone=55${phone}&text=${encodeURIComponent(cobrancaMsg)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end` : null;
 
-  // Painel "Cobrar" — passo 2 (arquivos) e passo 3 (aviso do PIX)
+  // Painel "Cobrar" — passo 2 (arquivos: DANFE + boleto)
   const [isCobrarOpen, setIsCobrarOpen] = useState(false);
   const [isSharingFiles, setIsSharingFiles] = useState(false);
   const nossoNumeroPrincipal = isItemView
     ? itemOverride!.nossoNumero
     : ((order as any).boletoNossoNumero || '').split(',')[0]?.trim() || null;
-
-  // Não dá pra gerar o "cartão de cobrança PIX" grandão (aquele do clipe > PIX do WhatsApp)
-  // por fora do app — é um recurso nativo do WhatsApp Payments, sem API pública. Por isso só
-  // manda o aviso; a chave com o valor é anexada manualmente pelo usuário depois.
-  const pixAvisoMsg = 'Se preferir pagar por PIX agora, evitamos os juros do boleto e eu dou baixa aqui.';
-  const waPersonalPix = phone ? `https://wa.me/55${phone}?text=${encodeURIComponent(pixAvisoMsg)}` : null;
-  const waBusinessPix = phone ? `intent://send?phone=55${phone}&text=${encodeURIComponent(pixAvisoMsg)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end` : null;
 
   const handleShareFiles = async () => {
     if (isSharingFiles) return;
@@ -871,26 +867,6 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
               {isSharingFiles ? <Loader2 className="size-3 animate-spin" /> : <Paperclip className="size-3" />}
               Compartilhar arquivos
             </button>
-          </div>
-
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-emerald-100 dark:border-emerald-900/30">
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">3. Aviso do PIX (anexe a chave manualmente depois)</p>
-            <div className="flex gap-1.5">
-              {waPersonalPix && (
-                <a href={waPersonalPix} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all"
-                  title="WhatsApp Pessoal">
-                  <MessageSquare className="size-3.5" />
-                </a>
-              )}
-              {waBusinessPix && (
-                <a href={waBusinessPix} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 transition-all"
-                  title="WhatsApp Business">
-                  <MessageSquare className="size-3.5" />
-                </a>
-              )}
-            </div>
           </div>
         </div>
       )}
