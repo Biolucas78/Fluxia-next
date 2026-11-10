@@ -175,6 +175,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
   const [blingSearchResults, setBlingSearchResults] = useState<any[]>([]);
   const [showBoletoModal, setShowBoletoModal] = useState(false);
   const [isEmittingBoleto, setIsEmittingBoleto] = useState(false);
+  const [isLoadingDanfe, setIsLoadingDanfe] = useState(false);
+  const [printingBoletoNossoNumero, setPrintingBoletoNossoNumero] = useState<string | null>(null);
   const [boletoForm, setBoletoForm] = useState<{
     valor: string;
     dataVencimento: string;
@@ -371,6 +373,54 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       toast.error('Erro ao emitir boleto: ' + e.message);
     } finally {
       setIsEmittingBoleto(false);
+    }
+  };
+
+  const handlePrintDanfe = async () => {
+    if (isLoadingDanfe) return;
+    if (!order.invoiceKey && !order.invoiceNumber) {
+      toast.error('Pedido sem chave ou número de NF-e para buscar o DANFE.');
+      return;
+    }
+    setIsLoadingDanfe(true);
+    try {
+      const params = new URLSearchParams();
+      if (order.invoiceKey) params.set('invoiceKey', order.invoiceKey);
+      if (order.invoiceNumber) params.set('invoiceNumber', String(order.invoiceNumber));
+      const res = await fetch(`/api/bling/nfe-danfe?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || 'Não foi possível buscar o DANFE no Bling.');
+        return;
+      }
+      window.open(data.link, '_blank');
+    } catch (e: any) {
+      toast.error('Erro ao buscar DANFE: ' + e.message);
+    } finally {
+      setIsLoadingDanfe(false);
+    }
+  };
+
+  const handlePrintBoleto = async (nossoNumero: string) => {
+    if (!nossoNumero || printingBoletoNossoNumero) return;
+    setPrintingBoletoNossoNumero(nossoNumero);
+    try {
+      const res = await fetch(`/api/sicoob/boleto-pdf?nossoNumero=${encodeURIComponent(nossoNumero)}`);
+      const data = await res.json();
+      if (!data.ok) {
+        toast.error(data.error || 'Não foi possível buscar o boleto no Sicoob.');
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = 'data:application/pdf;base64,' + data.pdfBoleto;
+      link.download = `boleto-${nossoNumero}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e: any) {
+      toast.error('Erro ao buscar boleto: ' + e.message);
+    } finally {
+      setPrintingBoletoNossoNumero(null);
     }
   };
 
@@ -1847,7 +1897,19 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                           <div className="px-3 space-y-2">
                             <div className="flex justify-between items-center">
                               <p className="text-[9px] text-slate-400 font-bold uppercase">Dados da NF-e</p>
-                              <button 
+                              <div className="flex items-center gap-2">
+                              {!isEditingInvoiceManually && (order.invoiceKey || order.invoiceNumber) && (
+                                <button
+                                  onClick={handlePrintDanfe}
+                                  disabled={isLoadingDanfe}
+                                  className="flex items-center gap-1 text-[9px] font-bold text-primary hover:underline disabled:opacity-50"
+                                  title="Buscar e imprimir o DANFE no Bling"
+                                >
+                                  {isLoadingDanfe ? <Loader2 className="size-3 animate-spin" /> : <Printer className="size-3" />}
+                                  Imprimir DANFE
+                                </button>
+                              )}
+                              <button
                                 onClick={() => {
                                   if (isEditingInvoiceManually) {
                                     onUpdateOrder({
@@ -1871,8 +1933,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                               >
                                 {isEditingInvoiceManually ? 'Salvar' : 'Editar Manual'}
                               </button>
+                              </div>
                             </div>
-                            
+
                             {isEditingInvoiceManually ? (
                               <div className="space-y-2">
                                 <div>
@@ -2336,6 +2399,14 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
                                             title="Atualizar situação no Sicoob"
                                           >
                                             <RefreshCw className="size-3" />
+                                          </button>
+                                          <button
+                                            onClick={() => handlePrintBoleto(b.nossoNumero)}
+                                            disabled={printingBoletoNossoNumero === b.nossoNumero}
+                                            className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50"
+                                            title="Imprimir 2ª via do boleto no Sicoob"
+                                          >
+                                            {printingBoletoNossoNumero === b.nossoNumero ? <Loader2 className="size-3 animate-spin" /> : <Printer className="size-3" />}
                                           </button>
                                           {(sit === 'BAIXADO' || sit === 'CANCELADO') && (
                                             <button
