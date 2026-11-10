@@ -66,31 +66,63 @@ function OrderCard({
   const [selectedQuote, setSelectedQuote] = useState<ShippingOption | null>(null);
   const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleMouseEnter = () => {
-    // Clear any existing timeout just in case
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    
-    hoverTimeoutRef.current = setTimeout(() => {
-      setIsExpanded(true);
-    }, 1200); // 1.2 seconds delay as requested
-  };
+  // Mesmo breakpoint usado no resto do app (md) pra decidir se é "mobile" — sem expansão lá
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
-  const handleMouseLeave = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-    setIsExpanded(false);
-  };
+  // Clique fora do card expandido volta pro estado normal
+  useEffect(() => {
+    if (!isExpanded) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isExpanded]);
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
     };
   }, []);
+
+  const handleCardClick = () => {
+    if (isMobile) {
+      onClick?.();
+      return;
+    }
+    if (isExpanded) {
+      onClick?.();
+      return;
+    }
+    // Atraso pra dar tempo de diferenciar clique simples (expande) de duplo clique (abre direto)
+    if (clickTimeoutRef.current) return;
+    clickTimeoutRef.current = setTimeout(() => {
+      setIsExpanded(true);
+      clickTimeoutRef.current = null;
+    }, 250);
+  };
+
+  const handleCardDoubleClick = () => {
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+    if (!isExpanded) {
+      onClick?.();
+    }
+  };
 
   const getCarrierColor = (carrier: string) => {
     const c = carrier.toLowerCase();
@@ -392,11 +424,11 @@ function OrderCard({
   }, [order.status, order.createdAt, order.statusHistory]);
 
   return (
-    <motion.div 
+    <motion.div
       layout
-      onClick={onClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      ref={cardRef}
+      onClick={handleCardClick}
+      onDoubleClick={handleCardDoubleClick}
       className={`order-card bg-white dark:bg-slate-900 p-3 rounded-xl shadow-sm border transition-all cursor-pointer relative group ${
         selected ? 'ring-2 ring-primary border-primary' : ''
       } ${
