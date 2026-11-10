@@ -389,11 +389,16 @@ export default function OrderDetailsModal({ order, onClose, onUpdateOrder, onArc
       if (order.invoiceNumber) params.set('invoiceNumber', String(order.invoiceNumber));
       const res = await fetch(`/api/bling/nfe-danfe?${params.toString()}`);
       const data = await res.json();
-      if (!res.ok || !data.ok) {
+      if (!res.ok || !data.ok || !data.pdfBase64) {
         toast.error(data.error || 'Não foi possível buscar o DANFE no Bling.');
         return;
       }
-      window.open(data.link, '_blank');
+      const byteChars = atob(data.pdfBase64);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
     } catch (e: any) {
       toast.error('Erro ao buscar DANFE: ' + e.message);
     } finally {

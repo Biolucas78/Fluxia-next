@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
+import zlib from 'zlib';
 import { getValidBlingTokenServer } from '@/lib/bling-server';
 import { fetchWithRetry } from '@/lib/bling-utils';
 
-// Busca o DANFE (PDF) de uma NF-e já emitida no Bling. O pedido só guarda invoiceKey/
-// invoiceNumber (não o ID interno da nota no Bling), então primeiro resolve o ID via busca
-// por chaveAcesso, com fallback pra numero.
+// DANFE: GET /nfe/documento/{chaveAcesso}?formato=pdf (doc oficial Bling) — retorna o PDF
+// comprimido em gzip, em base64, dentro de data[0].conteudo. Precisa descomprimir antes de
+// usar. O pedido já guarda invoiceKey (chaveAcesso); se só tiver invoiceNumber, busca a
+// chave primeiro via /nfe?numero=.
 export async function GET(request: Request) {
   try {
     const token = await getValidBlingTokenServer();
@@ -13,7 +15,7 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const invoiceKey = (searchParams.get('invoiceKey') || '').replace(/\D/g, '');
+    let invoiceKey = (searchParams.get('invoiceKey') || '').replace(/\D/g, '');
     const invoiceNumber = searchParams.get('invoiceNumber') || '';
 
     if (!invoiceKey && !invoiceNumber) {
@@ -21,29 +23,20 @@ export async function GET(request: Request) {
     }
 
     const headers = { 'Authorization': `Bearer ${token}` };
-    let nfeId: string | number | null = null;
 
-    if (invoiceKey && invoiceKey.length === 44) {
-      const res = await fetchWithRetry(`https://api.bling.com.br/Api/v3/nfe?chaveAcesso=${invoiceKey}`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        nfeId = data.data?.[0]?.id || null;
-      }
-    }
-
-    if (!nfeId && invoiceNumber) {
+    if (invoiceKey.length !== 44 && invoiceNumber) {
       const res = await fetchWithRetry(`https://api.bling.com.br/Api/v3/nfe?numero=${encodeURIComponent(invoiceNumber)}`, { headers });
       if (res.ok) {
         const data = await res.json();
-        nfeId = data.data?.[0]?.id || null;
+        invoiceKey = (data.data?.[0]?.chaveAcesso || '').replace(/\D/g, '');
       }
     }
 
-    if (!nfeId) {
-      return NextResponse.json({ error: 'Nota fiscal não encontrada no Bling (chave/número não localizados).' }, { status: 404 });
+    if (invoiceKey.length !== 44) {
+      return NextResponse.json({ error: 'Chave de acesso da NF-e não encontrada (precisa ter 44 dígitos).' }, { status: 404 });
     }
 
-    const docRes = await fetchWithRetry(`https://api.bling.com.br/Api/v3/nfe/${nfeId}/documento`, { headers });
+    const docRes = await fetchWithRetry(`https://api.bling.com.br/Api/v3/nfe/documento/${invoiceKey}?formato=pdf`, { headers });
     const docText = await docRes.text();
 
     if (!docRes.ok) {
@@ -54,28 +47,16 @@ export async function GET(request: Request) {
     let docData: any = null;
     try { docData = JSON.parse(docText); } catch { /* resposta não-JSON, tratado abaixo */ }
 
-    const link = docData?.data?.link || docData?.link || null;
-    if (!link) {
-      console.error('[Bling DANFE] Resposta sem link de documento:', docText.substring(0, 500));
+    const conteudo = docData?.data?.[0]?.conteudo;
+    if (!conteudo) {
+      console.error('[Bling DANFE] Resposta sem conteudo:', docText.substring(0, 500));
       return NextResponse.json({ error: 'Resposta inesperada do Bling ao buscar o DANFE.', details: docText.substring(0, 500) }, { status: 502 });
     }
 
-    // Baixa o PDF no servidor (pra quem precisa do arquivo de verdade, ex: compartilhar no
-    // WhatsApp) — quem só precisa abrir/imprimir usa o `link` direto.
-    let pdfBase64: string | null = null;
-    try {
-      const pdfRes = await fetch(link);
-      if (pdfRes.ok) {
-        const buf = Buffer.from(await pdfRes.arrayBuffer());
-        pdfBase64 = buf.toString('base64');
-      } else {
-        console.warn('[Bling DANFE] Falha ao baixar PDF do link:', pdfRes.status);
-      }
-    } catch (e) {
-      console.warn('[Bling DANFE] Erro ao baixar PDF do link:', e);
-    }
+    const gzipBuffer = Buffer.from(conteudo, 'base64');
+    const pdfBuffer = zlib.gunzipSync(gzipBuffer);
 
-    return NextResponse.json({ ok: true, link, pdfBase64 });
+    return NextResponse.json({ ok: true, pdfBase64: pdfBuffer.toString('base64') });
   } catch (error: any) {
     console.error('[Bling DANFE] Erro:', error);
     return NextResponse.json({ error: error.message || 'Erro ao buscar DANFE.' }, { status: 500 });
