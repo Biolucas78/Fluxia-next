@@ -550,44 +550,19 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
   const waPersonal = phone ? `https://wa.me/55${phone}?text=${encodeURIComponent(cobrancaMsg)}` : null;
   const waBusiness = phone ? `intent://send?phone=55${phone}&text=${encodeURIComponent(cobrancaMsg)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end` : null;
 
-  // Painel "Cobrar" — passo 2 (arquivos) e passo 3 (mensagem PIX)
+  // Painel "Cobrar" — passo 2 (arquivos) e passo 3 (aviso do PIX)
   const [isCobrarOpen, setIsCobrarOpen] = useState(false);
   const [isSharingFiles, setIsSharingFiles] = useState(false);
-  const [pixCnpj, setPixCnpj] = useState<string | null>(null);
-  const [isLoadingPix, setIsLoadingPix] = useState(false);
   const nossoNumeroPrincipal = isItemView
     ? itemOverride!.nossoNumero
     : ((order as any).boletoNossoNumero || '').split(',')[0]?.trim() || null;
 
-  const handleOpenPixMessage = async (channel: 'personal' | 'business') => {
-    if (!phone || isLoadingPix) return;
-    let cnpj = pixCnpj;
-    if (!cnpj) {
-      setIsLoadingPix(true);
-      try {
-        const res = await fetch('/api/config/pix-key');
-        const data = await res.json();
-        if (res.ok && data.cnpj) {
-          cnpj = data.cnpj;
-          setPixCnpj(data.cnpj);
-        } else {
-          toast.error(data.error || 'Não foi possível buscar a chave PIX.');
-          return;
-        }
-      } catch (e: any) {
-        toast.error('Erro ao buscar chave PIX: ' + e.message);
-        return;
-      } finally {
-        setIsLoadingPix(false);
-      }
-    }
-    const msg = `Se preferir pagar por PIX agora, evitamos os juros do boleto e eu dou baixa aqui.\n\nChave PIX (CNPJ): ${cnpj}`;
-    navigator.clipboard?.writeText(msg).catch(() => {});
-    const url = channel === 'personal'
-      ? `https://wa.me/55${phone}?text=${encodeURIComponent(msg)}`
-      : `intent://send?phone=55${phone}&text=${encodeURIComponent(msg)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
-    window.open(url, '_blank');
-  };
+  // Não dá pra gerar o "cartão de cobrança PIX" grandão (aquele do clipe > PIX do WhatsApp)
+  // por fora do app — é um recurso nativo do WhatsApp Payments, sem API pública. Por isso só
+  // manda o aviso; a chave com o valor é anexada manualmente pelo usuário depois.
+  const pixAvisoMsg = 'Se preferir pagar por PIX agora, evitamos os juros do boleto e eu dou baixa aqui.';
+  const waPersonalPix = phone ? `https://wa.me/55${phone}?text=${encodeURIComponent(pixAvisoMsg)}` : null;
+  const waBusinessPix = phone ? `intent://send?phone=55${phone}&text=${encodeURIComponent(pixAvisoMsg)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end` : null;
 
   const handleShareFiles = async () => {
     if (isSharingFiles) return;
@@ -899,22 +874,22 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-2 border-t border-emerald-100 dark:border-emerald-900/30">
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">3. Mensagem PIX (texto copiado)</p>
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">3. Aviso do PIX (anexe a chave manualmente depois)</p>
             <div className="flex gap-1.5">
-              <button
-                onClick={() => handleOpenPixMessage('personal')}
-                disabled={isLoadingPix}
-                className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all disabled:opacity-50"
-                title="WhatsApp Pessoal">
-                {isLoadingPix ? <Loader2 className="size-3.5 animate-spin" /> : <MessageSquare className="size-3.5" />}
-              </button>
-              <button
-                onClick={() => handleOpenPixMessage('business')}
-                disabled={isLoadingPix}
-                className="p-1.5 rounded-lg bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 transition-all disabled:opacity-50"
-                title="WhatsApp Business">
-                {isLoadingPix ? <Loader2 className="size-3.5 animate-spin" /> : <MessageSquare className="size-3.5" />}
-              </button>
+              {waPersonalPix && (
+                <a href={waPersonalPix} target="_blank" rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all"
+                  title="WhatsApp Pessoal">
+                  <MessageSquare className="size-3.5" />
+                </a>
+              )}
+              {waBusinessPix && (
+                <a href={waBusinessPix} target="_blank" rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 transition-all"
+                  title="WhatsApp Business">
+                  <MessageSquare className="size-3.5" />
+                </a>
+              )}
             </div>
           </div>
         </div>
