@@ -60,7 +60,22 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Resposta inesperada do Bling ao buscar o DANFE.', details: docText.substring(0, 500) }, { status: 502 });
     }
 
-    return NextResponse.json({ ok: true, link });
+    // Baixa o PDF no servidor (pra quem precisa do arquivo de verdade, ex: compartilhar no
+    // WhatsApp) — quem só precisa abrir/imprimir usa o `link` direto.
+    let pdfBase64: string | null = null;
+    try {
+      const pdfRes = await fetch(link);
+      if (pdfRes.ok) {
+        const buf = Buffer.from(await pdfRes.arrayBuffer());
+        pdfBase64 = buf.toString('base64');
+      } else {
+        console.warn('[Bling DANFE] Falha ao baixar PDF do link:', pdfRes.status);
+      }
+    } catch (e) {
+      console.warn('[Bling DANFE] Erro ao baixar PDF do link:', e);
+    }
+
+    return NextResponse.json({ ok: true, link, pdfBase64 });
   } catch (error: any) {
     console.error('[Bling DANFE] Erro:', error);
     return NextResponse.json({ error: error.message || 'Erro ao buscar DANFE.' }, { status: 500 });

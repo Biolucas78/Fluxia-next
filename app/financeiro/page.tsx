@@ -12,7 +12,8 @@ import {
   DollarSign, Clock, AlertTriangle, CheckCircle2, FileText,
   Loader2, X, Filter, Calendar, ChevronDown, CalendarOff, ArrowUpDown,
   MessageSquare, CreditCard, Search, SlidersHorizontal,
-  Receipt, Landmark, Smartphone, ShoppingBag, Store, Warehouse, RefreshCw, ExternalLink
+  Receipt, Landmark, Smartphone, ShoppingBag, Store, Warehouse, RefreshCw, ExternalLink,
+  Paperclip
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -487,6 +488,26 @@ function DueDateQuickFix({ order, onSave }: { order: Order; onSave: (date: strin
   );
 }
 
+// ─── Helpers de PDF (cobrança via WhatsApp) ────────────────────────────────────
+
+function base64ToFile(base64: string, filename: string): File {
+  const byteChars = atob(base64);
+  const byteNumbers = new Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+  return new File([new Uint8Array(byteNumbers)], filename, { type: 'application/pdf' });
+}
+
+function downloadFile(file: File) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 interface OrderCardProps {
   order: Order;
   showOverdue?: boolean;
@@ -515,7 +536,8 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
     : 0;
 
   const phone = order.phone?.replace(/\D/g, '');
-  const cobrancaMsg = (() => {
+  const firstName = (order.clientName || '').trim().split(' ')[0] || 'Cliente';
+  const cobrancaDetailLine = (() => {
     const v = formatCurrency(value);
     const emissao = issue ? formatDate(issue) : '';
     const nf = order.invoiceNumber || (order as any).noInvoiceBlingOrderId || '';
@@ -523,9 +545,94 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
     const boletoValor = (boletos && boletos.length > 0) ? formatCurrency(boletos[0].valor || value) : v;
     return `Pedido faturado em ${emissao || '-'}, referente a nota fiscal ${nf || '-'}, no valor de ${boletoValor}, vencido em ${venc || '-'}.`;
   })();
+  const cobrancaMsg = `Oi ${firstName}. Tudo bem?\nEstamos com um boleto em aberto, você pode verificar pra gente por favor? Segue a relação:\n${cobrancaDetailLine}`;
 
   const waPersonal = phone ? `https://wa.me/55${phone}?text=${encodeURIComponent(cobrancaMsg)}` : null;
   const waBusiness = phone ? `intent://send?phone=55${phone}&text=${encodeURIComponent(cobrancaMsg)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end` : null;
+
+  // Painel "Cobrar" — passo 2 (arquivos) e passo 3 (mensagem PIX)
+  const [isCobrarOpen, setIsCobrarOpen] = useState(false);
+  const [isSharingFiles, setIsSharingFiles] = useState(false);
+  const [pixCnpj, setPixCnpj] = useState<string | null>(null);
+  const [isLoadingPix, setIsLoadingPix] = useState(false);
+  const nossoNumeroPrincipal = isItemView
+    ? itemOverride!.nossoNumero
+    : ((order as any).boletoNossoNumero || '').split(',')[0]?.trim() || null;
+
+  const handleOpenPixMessage = async (channel: 'personal' | 'business') => {
+    if (!phone || isLoadingPix) return;
+    let cnpj = pixCnpj;
+    if (!cnpj) {
+      setIsLoadingPix(true);
+      try {
+        const res = await fetch('/api/config/pix-key');
+        const data = await res.json();
+        if (res.ok && data.cnpj) {
+          cnpj = data.cnpj;
+          setPixCnpj(data.cnpj);
+        } else {
+          toast.error(data.error || 'Não foi possível buscar a chave PIX.');
+          return;
+        }
+      } catch (e: any) {
+        toast.error('Erro ao buscar chave PIX: ' + e.message);
+        return;
+      } finally {
+        setIsLoadingPix(false);
+      }
+    }
+    const msg = `Se preferir pagar por PIX agora, evitamos os juros do boleto e eu dou baixa aqui.\n\nChave PIX (CNPJ): ${cnpj}`;
+    navigator.clipboard?.writeText(msg).catch(() => {});
+    const url = channel === 'personal'
+      ? `https://wa.me/55${phone}?text=${encodeURIComponent(msg)}`
+      : `intent://send?phone=55${phone}&text=${encodeURIComponent(msg)}#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end`;
+    window.open(url, '_blank');
+  };
+
+  const handleShareFiles = async () => {
+    if (isSharingFiles) return;
+    setIsSharingFiles(true);
+    try {
+      const danfeParams = new URLSearchParams();
+      if (order.invoiceKey) danfeParams.set('invoiceKey', order.invoiceKey);
+      if (order.invoiceNumber) danfeParams.set('invoiceNumber', String(order.invoiceNumber));
+      const hasInvoiceRef = order.invoiceKey || order.invoiceNumber;
+
+      const [danfeRes, boletoRes] = await Promise.all([
+        hasInvoiceRef ? fetch(`/api/bling/nfe-danfe?${danfeParams.toString()}`).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+        nossoNumeroPrincipal ? fetch(`/api/sicoob/boleto-pdf?nossoNumero=${encodeURIComponent(nossoNumeroPrincipal)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+      ]);
+
+      const files: File[] = [];
+      if (danfeRes?.ok && danfeRes.pdfBase64) {
+        files.push(base64ToFile(danfeRes.pdfBase64, `danfe-${order.invoiceNumber || order.id}.pdf`));
+      } else if (danfeRes?.error) {
+        toast.error('DANFE: ' + danfeRes.error);
+      }
+      if (boletoRes?.ok && boletoRes.pdfBoleto) {
+        files.push(base64ToFile(boletoRes.pdfBoleto, `boleto-${nossoNumeroPrincipal}.pdf`));
+      } else if (boletoRes?.error) {
+        toast.error('Boleto: ' + boletoRes.error);
+      }
+
+      if (files.length === 0) {
+        toast.error('Não consegui buscar nenhum dos dois arquivos.');
+        return;
+      }
+
+      if (navigator.canShare && navigator.canShare({ files })) {
+        await navigator.share({ files });
+        toast.success('Arquivos enviados pro compartilhamento.');
+      } else {
+        files.forEach((f, i) => setTimeout(() => downloadFile(f), i * 500));
+        toast('Este navegador não compartilha arquivos direto — baixei os PDFs pra você anexar manualmente.', { icon: '📎', duration: 6000 });
+      }
+    } catch (e: any) {
+      toast.error('Erro ao buscar arquivos: ' + e.message);
+    } finally {
+      setIsSharingFiles(false);
+    }
+  };
 
   return (
     <div className={`p-4 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all ${overdueFlag && showOverdue ? 'bg-red-50/60 dark:bg-red-900/10' : ''}`}>
@@ -689,19 +796,16 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
           )}
           {(showReceiveBtn || waPersonal || (isItemView ? (itemOverride!.nossoNumero || itemOverride!.paidManually) : ((order as any).boletoLinked && (order as any).boletoNossoNumero && !(boletos && boletos.length > 1)))) && (
             <div className="flex gap-1.5 items-center flex-wrap justify-end">
-              {waPersonal && (
-                <a href={waPersonal} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all"
-                  title="WhatsApp Pessoal">
+              {(waPersonal || waBusiness) && (
+                <button
+                  onClick={() => setIsCobrarOpen(!isCobrarOpen)}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all text-xs font-bold"
+                  title="Cobrar via WhatsApp"
+                >
                   <MessageSquare className="size-3.5" />
-                </a>
-              )}
-              {waBusiness && (
-                <a href={waBusiness} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 transition-all"
-                  title="WhatsApp Business">
-                  <MessageSquare className="size-3.5" />
-                </a>
+                  Cobrar
+                  <ChevronDown className={`size-3 transition-transform ${isCobrarOpen ? 'rotate-180' : ''}`} />
+                </button>
               )}
               {isItemView ? (
                 <>
@@ -760,6 +864,61 @@ function OrderCard({ order, showOverdue, showReceiveBtn, showStatusBadge, onRece
           )}
         </div>
       </div>
+      {isCobrarOpen && (waPersonal || waBusiness) && (
+        <div className="mt-3 p-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">1. Mensagem de cobrança</p>
+            <div className="flex gap-1.5">
+              {waPersonal && (
+                <a href={waPersonal} target="_blank" rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all"
+                  title="WhatsApp Pessoal">
+                  <MessageSquare className="size-3.5" />
+                </a>
+              )}
+              {waBusiness && (
+                <a href={waBusiness} target="_blank" rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 transition-all"
+                  title="WhatsApp Business">
+                  <MessageSquare className="size-3.5" />
+                </a>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-emerald-100 dark:border-emerald-900/30">
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">2. Enviar DANFE + Boleto</p>
+            <button
+              onClick={handleShareFiles}
+              disabled={isSharingFiles}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-[10px] font-bold disabled:opacity-50"
+            >
+              {isSharingFiles ? <Loader2 className="size-3 animate-spin" /> : <Paperclip className="size-3" />}
+              Compartilhar arquivos
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-emerald-100 dark:border-emerald-900/30">
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">3. Mensagem PIX (texto copiado)</p>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => handleOpenPixMessage('personal')}
+                disabled={isLoadingPix}
+                className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all disabled:opacity-50"
+                title="WhatsApp Pessoal">
+                {isLoadingPix ? <Loader2 className="size-3.5 animate-spin" /> : <MessageSquare className="size-3.5" />}
+              </button>
+              <button
+                onClick={() => handleOpenPixMessage('business')}
+                disabled={isLoadingPix}
+                className="p-1.5 rounded-lg bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 transition-all disabled:opacity-50"
+                title="WhatsApp Business">
+                {isLoadingPix ? <Loader2 className="size-3.5 animate-spin" /> : <MessageSquare className="size-3.5" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
